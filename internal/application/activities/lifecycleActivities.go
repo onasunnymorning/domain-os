@@ -74,7 +74,7 @@ func NewLifecycleActivities(repositoryID entities.RepositoryID) (*LifecycleActiv
 	domainService := services.NewDomainService(
 		domainRepo, hostRepo, *roidService, nndnRepo,
 		tldRepo, phaseRepo, premiumLabelRepo, fxRepo,
-		registrarRepo, eventPublisher,
+		registrarRepo, eventPublisher, postgres.NewTransactor(gormDB),
 	)
 	// The transfer auto-approval loop writes through the transfer repository,
 	// which queues the poll messages in the same transaction.

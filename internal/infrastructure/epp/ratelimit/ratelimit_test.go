@@ -293,3 +293,8 @@ func TestFailOpenBoundsAStalledRedis(t *testing.T) {
 	assert.True(t, ok)
 	assert.Less(t, time.Since(start), primaryTimeout+300*time.Millisecond)
 }
+
+func (f *failing) MarkQuotaReached(context.Context, string, time.Duration) (bool, error) {
+	f.calls++
+	return false, errors.New("down")
+}

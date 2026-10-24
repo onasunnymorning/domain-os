@@ -9,10 +9,14 @@ package lockout
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // Policy is when a key is locked out and for how long.
@@ -215,6 +219,66 @@ func (r *Redis) Clear(ctx context.Context, key string) error {
 		return fmt.Errorf("clear lockout: %w", err)
 	}
 	return nil
+}
+
+// ListLockouts implements repositories.EPPLockoutStore: every (login,
+// source address) pair locked now. The registrar is not known here; the
+// caller adds it.
+func (r *Redis) ListLockouts(ctx context.Context) ([]entities.EPPLoginLockout, error) {
+	var out []entities.EPPLoginLockout
+	prefix := "epp:lockout:lock:"
+	iter := r.client.Scan(ctx, 0, prefix+"*", 100).Iterator()
+	for iter.Next(ctx) {
+		key := iter.Val()
+		left, err := r.client.PTTL(ctx, key).Result()
+		if err != nil {
+			return nil, fmt.Errorf("read lockout: %w", err)
+		}
+		if left <= 0 {
+			continue
+		}
+		login, ip, _ := strings.Cut(strings.TrimPrefix(key, prefix), "|")
+		out = append(out, entities.EPPLoginLockout{Login: login, ClientIP: ip, EndsAt: time.Now().Add(left).UTC().Truncate(time.Second)})
+	}
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("list lockouts: %w", err)
+	}
+	slices.SortFunc(out, func(a, b entities.EPPLoginLockout) int {
+		return strings.Compare(a.Login+"|"+a.ClientIP, b.Login+"|"+b.ClientIP)
+	})
+	return out, nil
+}
+
+// LiftLockouts implements repositories.EPPLockoutStore: it clears the
+// login's lockouts, failure counts and strikes from every source, and
+// returns the lockouts that were in force.
+func (r *Redis) LiftLockouts(ctx context.Context, login string) ([]entities.EPPLoginLockout, error) {
+	all, err := r.ListLockouts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var lifted []entities.EPPLoginLockout
+	for _, l := range all {
+		if l.Login == login {
+			lifted = append(lifted, l)
+		}
+	}
+	var keys []string
+	for _, kind := range []string{"lock", "fail", "strikes"} {
+		iter := r.client.Scan(ctx, 0, "epp:lockout:"+kind+":"+login+"|*", 100).Iterator()
+		for iter.Next(ctx) {
+			keys = append(keys, iter.Val())
+		}
+		if err := iter.Err(); err != nil {
+			return nil, fmt.Errorf("find lockouts: %w", err)
+		}
+	}
+	if len(keys) > 0 {
+		if err := r.client.Del(ctx, keys...).Err(); err != nil {
+			return nil, fmt.Errorf("lift lockouts: %w", err)
+		}
+	}
+	return lifted, nil
 }
 
 // store is what FailOpen wraps.

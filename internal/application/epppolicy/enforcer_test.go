@@ -75,6 +75,16 @@ type fakeRates struct {
 	quotaKey string
 	limit    int
 	released int
+	reached  map[string]bool
+}
+
+func (f *fakeRates) MarkQuotaReached(_ context.Context, key string, _ time.Duration) (bool, error) {
+	if f.reached == nil {
+		f.reached = map[string]bool{}
+	}
+	first := !f.reached[key]
+	f.reached[key] = true
+	return first, nil
 }
 
 func (f *fakeRates) Take(_ context.Context, b []entities.EPPRateBucket, cost int, maxWait time.Duration) (entities.EPPRateTake, error) {
@@ -194,6 +204,9 @@ func TestEnforce(t *testing.T) {
 		assert.Equal(t, 2308, d.Code)
 		assert.Contains(t, d.Msg, "100 domains a day")
 		assert.Nil(t, release)
+		assert.True(t, d.QuotaReached, "the first refusal is told")
+		d, _ = enforcer(f).Enforce(ctx, Caller{ClID: "rar-a", Login: "login-a", Role: rw}, probation, Command{Name: "create", Object: "domain"})
+		assert.False(t, d.QuotaReached, "once a day")
 	})
 	t.Run("only domain creates count, and only under a cap", func(t *testing.T) {
 		f := &fakeRates{take: entities.EPPRateTake{Taken: true}, ok: true}

@@ -150,8 +150,10 @@ func registrarScope(cmd *command) (entities.RegistrarClID, error) {
 }
 
 // withActor marks ctx as acting for the session's login, so the events a
-// command writes name it, and correlates them with the command's svTRID.
+// command writes name it and the EPP server as their source, and
+// correlates them with the command's svTRID.
 func withActor(ctx context.Context, cmd *command) context.Context {
+	ctx = appcontext.WithEventSource(ctx, eventSource)
 	ctx = appcontext.WithUserID(ctx, "epp:"+cmd.session.loggedInAs())
 	ctx = appcontext.WithRegistrarID(ctx, cmd.session.registrar())
 	return appcontext.WithCorrelationID(ctx, cmd.svTRID)

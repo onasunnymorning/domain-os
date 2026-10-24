@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -214,4 +215,51 @@ func TestRedis(t *testing.T) {
 	left, err = r.LockedFor(ctx, key)
 	require.NoError(t, err)
 	require.Zero(t, left)
+}
+
+func TestRedisListAndLiftLockouts(t *testing.T) {
+	client := redis.NewClient(&redis.Options{Addr: "localhost:6379", DB: 9})
+	ctx := context.Background()
+	if err := client.Ping(ctx).Err(); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("Redis is required in CI for the lockout script tests: %v", err)
+		}
+		t.Skipf("no Redis on localhost:6379: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	require.NoError(t, client.FlushDB(ctx).Err())
+	r := NewRedis(client, testPolicy)
+	lock := func(key string) {
+		for range testPolicy.MaxFailures {
+			_, err := r.RecordFailure(ctx, key)
+			require.NoError(t, err)
+		}
+	}
+	lock("login-a|192.0.2.1")
+	lock("login-a|2001:db8::1")
+	lock("login-b|192.0.2.1")
+	_, err := r.RecordFailure(ctx, "login-a|198.51.100.7") // counted, not locked
+	require.NoError(t, err)
+
+	all, err := r.ListLockouts(ctx)
+	require.NoError(t, err)
+	require.Len(t, all, 3)
+	assert.Equal(t, "login-a", all[0].Login)
+	assert.Equal(t, "192.0.2.1", all[0].ClientIP)
+	assert.True(t, all[0].EndsAt.After(time.Now()))
+
+	lifted, err := r.LiftLockouts(ctx, "login-a")
+	require.NoError(t, err)
+	assert.Len(t, lifted, 2)
+	for _, src := range []string{"192.0.2.1", "2001:db8::1"} {
+		d, err := r.LockedFor(ctx, "login-a|"+src)
+		require.NoError(t, err)
+		assert.Zero(t, d, src)
+	}
+	keys, err := client.Keys(ctx, "epp:lockout:*login-a|*").Result()
+	require.NoError(t, err)
+	assert.Empty(t, keys, "failure counts and strikes go too, from every source")
+	all, _ = r.ListLockouts(ctx)
+	require.Len(t, all, 1)
+	assert.Equal(t, "login-b", all[0].Login)
 }

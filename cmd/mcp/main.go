@@ -89,6 +89,7 @@ func run() int {
 		nil,                    // fxRepo
 		nil,                    // registrarRepo
 		nil,                    // eventPublisher
+		postgres.NewTransactor(gormDB),
 	)
 
 	tldRepo := postgres.NewGormTLDRepo(gormDB)

@@ -137,6 +137,9 @@ type Decision struct {
 	Suspended  bool
 	Suspension entities.EPPLoginSuspension
 	Strikes    int
+	// QuotaReached is set on the first create refused for the day's quota,
+	// across every node, for the caller to record it once.
+	QuotaReached bool
 }
 
 // Decide applies the policy's rules to a command of a logged-in session, in
@@ -374,9 +377,11 @@ func (e *Enforcer) Enforce(ctx context.Context, who Caller, rp entities.EPPRegis
 		return closed, nil
 	}
 	if limits.CreatesPerDay > 0 {
-		release, ok, err := e.rates.ReserveQuota(ctx, QuotaKey(clid, e.now()), limits.CreatesPerDay, quotaTTL)
+		key := QuotaKey(clid, e.now())
+		release, ok, err := e.rates.ReserveQuota(ctx, key, limits.CreatesPerDay, quotaTTL)
 		if err == nil && !ok {
-			return Decision{Action: Reject, Rule: RuleCreateQuota, Code: codeDataPolicyViolation,
+			first, _ := e.rates.MarkQuotaReached(ctx, key, quotaTTL)
+			return Decision{Action: Reject, Rule: RuleCreateQuota, Code: codeDataPolicyViolation, QuotaReached: first,
 				Msg: fmt.Sprintf("Data management policy violation; the registrar may create %d domains a day (UTC), and has", limits.CreatesPerDay)}, nil
 		}
 		return d, release

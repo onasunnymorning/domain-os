@@ -45,6 +45,10 @@ type EPPRateLimiter interface {
 	// The count lasts ttl. release gives the reservation back, for a create
 	// that did not succeed; it is nil when ok is false.
 	ReserveQuota(ctx context.Context, key string, limit int, ttl time.Duration) (release func(context.Context), ok bool, err error)
+	// MarkQuotaReached records that the quota key has been reached, and
+	// reports whether this is the first time across every node, so it is
+	// told once. The mark lasts ttl.
+	MarkQuotaReached(ctx context.Context, key string, ttl time.Duration) (first bool, err error)
 }
 
 // EPPFailedCreateTracker counts domain creates refused because the name is
@@ -61,6 +65,13 @@ type EPPFailedCreateTracker interface {
 	Record(ctx context.Context, scopes []string, failed bool) error
 	// Suspended is how much longer a login is suspended, or 0.
 	Suspended(ctx context.Context, login string) (time.Duration, error)
+}
+
+// EPPLockoutService is the admin API's view of (login, source address)
+// pairs locked out after failed passwords.
+type EPPLockoutService interface {
+	List(ctx context.Context, clid string) ([]entities.EPPLoginLockout, error)
+	Lift(ctx context.Context, clid, login string) ([]entities.EPPLoginLockout, error)
 }
 
 // EPPSuspensionService is the admin API's view of logins suspended for

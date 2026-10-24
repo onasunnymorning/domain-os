@@ -102,6 +102,8 @@ type EPPCertificatePinRecord struct {
 	NotAfter   time.Time `gorm:"not null"`
 	// Logins is a JSON array of login IDs; empty means every login.
 	Logins string `gorm:"type:text;not null;default:'[]'"`
+	// ExpiryNotice is the expiry notice given, in days; 0 for none.
+	ExpiryNotice int `gorm:"not null;default:0"`
 	EPPLifecycleColumns
 }
 
@@ -219,6 +221,23 @@ func (r *EPPCredentialRepository) ListUsableAllowedNetworks(ctx context.Context,
 	return out, nil
 }
 
+// ListRegistrarsWithExpiringPins implements
+// repositories.EPPCredentialRepository.
+func (r *EPPCredentialRepository) ListRegistrarsWithExpiringPins(ctx context.Context, now time.Time) ([]string, error) {
+	var out []string
+	first, last := entities.EPPCertificateExpiryNotices[0], entities.EPPCertificateExpiryNotices[len(entities.EPPCertificateExpiryNotices)-1]
+	err := r.db.WithContext(ctx).Model(&EPPCertificatePinRecord{}).
+		Where("retire_at IS NULL OR retire_at > ?", now).
+		Where("not_after > ?", now).
+		Where("(expiry_notice = 0 AND not_after <= ?) OR (expiry_notice > ? AND not_after <= ?)",
+			now.AddDate(0, 0, first), last, now.AddDate(0, 0, last)).
+		Distinct().Order("cl_id").Pluck("cl_id", &out).Error
+	if err != nil {
+		return nil, fmt.Errorf("list registrars with expiring EPP certificates: %w", err)
+	}
+	return out, nil
+}
+
 // ListCompromisedSince returns the IDs of credentials of every kind retired
 // as compromised at or after since.
 func (r *EPPCredentialRepository) ListCompromisedSince(ctx context.Context, since time.Time) ([]uuid.UUID, error) {
@@ -302,7 +321,7 @@ func loadEPPAccess(db *gorm.DB, clid string) (*entities.EPPRegistrarAccess, erro
 		access.CertificatePins = append(access.CertificatePins, &entities.EPPCertificatePin{
 			EPPCredentialLifecycle: rec.toLifecycle(rec.ID),
 			SPKISHA256:             rec.SPKISHA256, Subject: rec.Subject, Issuer: rec.Issuer, Serial: rec.Serial,
-			NotBefore: rec.NotBefore.UTC(), NotAfter: rec.NotAfter.UTC(), Logins: restrict,
+			NotBefore: rec.NotBefore.UTC(), NotAfter: rec.NotAfter.UTC(), Logins: restrict, ExpiryNotice: rec.ExpiryNotice,
 		})
 	}
 
@@ -361,7 +380,7 @@ func saveEPPAccess(tx *gorm.DB, a *entities.EPPRegistrarAccess, before eppAccess
 		}
 		rec := EPPCertificatePinRecord{
 			ID: p.ID, ClID: clid, SPKISHA256: p.SPKISHA256, Subject: p.Subject, Issuer: p.Issuer, Serial: p.Serial,
-			NotBefore: p.NotBefore, NotAfter: p.NotAfter, Logins: string(logins),
+			NotBefore: p.NotBefore, NotAfter: p.NotAfter, Logins: string(logins), ExpiryNotice: p.ExpiryNotice,
 			EPPLifecycleColumns: toLifecycleColumns(p.EPPCredentialLifecycle),
 		}
 		if err := upsert(tx, !before.credentials[p.ID], &rec); err != nil {

@@ -39,4 +39,9 @@ type EPPCredentialRepository interface {
 	// compromised at or after since. The EPP server ends sessions that used
 	// them.
 	ListCompromisedSince(ctx context.Context, since time.Time) ([]uuid.UUID, error)
+	// ListRegistrarsWithExpiringPins returns the registrars with a usable
+	// pin, not yet expired at now, that is due an expiry notice it has not
+	// had (entities.EPPCertificateExpiryNotices). The caller gives them
+	// through UpdateAccess (EPPRegistrarAccess.NoteExpiringPins).
+	ListRegistrarsWithExpiringPins(ctx context.Context, now time.Time) ([]string, error)
 }

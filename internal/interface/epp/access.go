@@ -63,14 +63,40 @@ func (s *Server) admitSource(a net.Addr) bool {
 func (s *Server) watchCredentials(ctx context.Context) {
 	ticker := time.NewTicker(s.cfg.Auth.RefreshInterval)
 	defer ticker.Stop()
+	var noted time.Time
 	for {
 		s.refreshCredentials(ctx)
 		s.refreshPolicies(ctx)
+		if time.Since(noted) >= certificateNoticeInterval {
+			noted = time.Now()
+			s.noteExpiringCertificates(ctx)
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
+	}
+}
+
+// certificateNoticeInterval is how often a node looks for pinned
+// certificates due an expiry notice. Every node looks; each notice is
+// given once.
+const certificateNoticeInterval = time.Hour
+
+// noteExpiringCertificates records the expiry notices due
+// (epp.certificate.expiring). A failure is logged and tried again at the
+// next interval.
+func (s *Server) noteExpiringCertificates(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, s.cfg.Auth.RefreshInterval)
+	defer cancel()
+	n, err := s.auth.NoteExpiringCertificates(ctx)
+	if err != nil {
+		s.logger.Warn("EPP certificate expiry notices not all recorded; retrying next interval", "recorded", n, "error", err)
+		return
+	}
+	if n > 0 {
+		s.logger.Info("EPP certificate expiry notices recorded", "count", n)
 	}
 }
 

@@ -186,6 +186,9 @@ func TestCommandRates(t *testing.T) {
 		assert.Contains(t, msg(resp), "command rate refusals")
 		c.requireClosed()
 		assert.Equal(t, 1.0, counterOf(t, ts.metrics.policyDecisions, "rate", "close"))
+		closed := creds.events.of(entities.EventEPPSessionClosedByPolicy)
+		require.Len(t, closed, 1)
+		assert.Equal(t, "rate", closed[0].Data.(entities.EPPSessionClosedData).Rule)
 	})
 }
 
@@ -226,6 +229,12 @@ func TestCreateQuota(t *testing.T) {
 	assert.Contains(t, msg(resp), "may create 1 domains a day")
 	assert.Nil(t, creds.domains.registry.Domain("second.test"))
 	assert.Equal(t, 1.0, counterOf(t, ts.metrics.policyDecisions, "create_quota", "reject"))
+	requireCode(t, c.roundTrip(createXML("third.test", createOpts{})), "2308")
+	reached := creds.events.of(entities.EventEPPQuotaReached)
+	require.Len(t, reached, 1, "recorded once a day, at the first refusal")
+	qd := reached[0].Data.(entities.EPPQuotaReachedData)
+	assert.Equal(t, 1, qd.CreatesPerDay)
+	assert.Equal(t, time.Now().UTC().Format(time.DateOnly), qd.Day)
 	requireCode(t, c.roundTrip(hostCreateXML("ns1.first.test", addrXML("v4", "192.0.2.1"))), "1000") // host creates do not count
 }
 
@@ -260,6 +269,12 @@ func TestFailedCreateBudget(t *testing.T) {
 	assert.Contains(t, msg(resp), "the registrar's creates of registered names are over their budget")
 	assert.Equal(t, "failed-creates; scope=registrar; suspended-for-ms=0", resp.FindElement("/epp/response/result/extValue/reason").Text())
 	c.requireClosed()
+	closed := creds.events.of(entities.EventEPPSessionClosedByPolicy)
+	require.Len(t, closed, 1)
+	cd := closed[0].Data.(entities.EPPSessionClosedData)
+	assert.Equal(t, "failed_creates", cd.Rule)
+	assert.Equal(t, 2502, cd.Code)
+	assert.Equal(t, "system", closed[0].Actor)
 
 	other := login()
 	c = login()
@@ -340,4 +355,24 @@ func TestSuspensionWithoutItsEvent(t *testing.T) {
 	assert.Contains(t, msg(resp), "suspended")
 	assert.Equal(t, 1.0, counterOf(t, ts.metrics.eventsLost, entities.EventEPPLoginSuspended))
 	requireCode(t, dial(t, ts.addr).roundTrip(objectsLoginXML(testLogin, testPassword)), "2501")
+}
+
+// The failed login that starts a lockout is recorded, once.
+func TestLockoutIsRecorded(t *testing.T) {
+	creds := newTestCredentials(t)
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
+	bad := loginAsXML(testLogin, "not-the-pw-1", "", "BAD")
+	for range 2 { // testConfig allows 3 attempts a session; the test lockout locks at 5
+		c := dial(t, ts.addr)
+		for range 3 {
+			c.roundTrip(bad)
+		}
+	}
+	locked := creds.events.of(entities.EventEPPLoginLocked)
+	require.Len(t, locked, 1, "the attempt that locked, not those refused while locked")
+	l := locked[0].Data.(entities.EPPLoginLockout)
+	assert.Equal(t, entities.ClIDType(testRegistrar), l.ClID)
+	assert.Equal(t, testLogin, l.Login)
+	assert.Equal(t, "127.0.0.1", l.ClientIP)
+	assert.True(t, l.EndsAt.After(time.Now()))
 }

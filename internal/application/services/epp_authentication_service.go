@@ -84,7 +84,12 @@ func (s *EPPAuthenticationService) Login(ctx context.Context, cmd commands.EPPLo
 	pw, err := s.verifyPassword(ctx, adm, cmd.Password, now)
 	if err != nil {
 		if errors.Is(err, entities.ErrEPPPasswordMismatch) && s.lockout != nil {
-			_, _ = s.lockout.RecordFailure(ctx, key)
+			if d, _ := s.lockout.RecordFailure(ctx, key); d > 0 {
+				// This failure started the lock: say so, once.
+				return nil, &entities.EPPLockStartedError{Err: err, Lockout: entities.EPPLoginLockout{
+					ClID: adm.ClID, Login: cmd.LoginID, ClientIP: cmd.Source.Unmap().String(), EndsAt: now.Add(d).UTC().Truncate(time.Second),
+				}}
+			}
 		}
 		return nil, err
 	}
@@ -235,4 +240,29 @@ func (r *EPPCredentialUseRecorder) Flush(ctx context.Context) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// NoteExpiringCertificates implements interfaces.EPPAuthenticator. Each
+// registrar's notices are written with their events in one transaction,
+// under the registrar's lock, so with several nodes running it each notice
+// is given once.
+func (s *EPPAuthenticationService) NoteExpiringCertificates(ctx context.Context) (int, error) {
+	now := s.now()
+	clids, err := s.repo.ListRegistrarsWithExpiringPins(ctx, now)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	var errs []error
+	for _, clid := range clids {
+		_, err := s.repo.UpdateAccess(ctx, clid, func(a *entities.EPPRegistrarAccess) ([]entities.DomainEvent, error) {
+			events := a.NoteExpiringPins(now, eppServerEventSource)
+			n += len(events)
+			return events, nil
+		})
+		if err != nil {
+			errs = append(errs, fmt.Errorf("note expiring EPP certificates of %s: %w", clid, err))
+		}
+	}
+	return n, errors.Join(errs...)
 }

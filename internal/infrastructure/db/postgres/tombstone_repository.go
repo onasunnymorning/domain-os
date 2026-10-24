@@ -103,7 +103,7 @@ func NewGormTombstoneRepository(db *gorm.DB) *GormTombstoneRepository {
 
 func (r *GormTombstoneRepository) CreateTombstone(ctx context.Context, tombstone *entities.DomainTombstone) (*entities.DomainTombstone, error) {
 	rec := fromTombstone(tombstone)
-	result := r.db.WithContext(ctx).Clauses(clause.OnConflict{UpdateAll: true}).Create(rec)
+	result := dbFrom(ctx, r.db).Clauses(clause.OnConflict{UpdateAll: true}).Create(rec)
 	if err := result.Error; err != nil {
 		return nil, fmt.Errorf("CreateTombstone(roid=%s): %w", tombstone.RoID, err)
 	}
@@ -112,7 +112,7 @@ func (r *GormTombstoneRepository) CreateTombstone(ctx context.Context, tombstone
 
 func (r *GormTombstoneRepository) GetTombstoneByRoID(ctx context.Context, roid string) (*entities.DomainTombstone, error) {
 	var rec DomainTombstoneRecord
-	result := r.db.WithContext(ctx).Where("ro_id = ?", roid).First(&rec)
+	result := dbFrom(ctx, r.db).Where("ro_id = ?", roid).First(&rec)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrTombstoneNotFound
@@ -124,7 +124,7 @@ func (r *GormTombstoneRepository) GetTombstoneByRoID(ctx context.Context, roid s
 
 func (r *GormTombstoneRepository) GetTombstonesByName(ctx context.Context, name string) ([]*entities.DomainTombstone, error) {
 	var records []*DomainTombstoneRecord
-	result := r.db.WithContext(ctx).Where("name = ?", strings.ToLower(name)).Order("purged_at DESC").Find(&records)
+	result := dbFrom(ctx, r.db).Where("name = ?", strings.ToLower(name)).Order("purged_at DESC").Find(&records)
 	if result.Error != nil {
 		return nil, result.Error
 	}
@@ -138,7 +138,7 @@ func (r *GormTombstoneRepository) GetTombstonesByName(ctx context.Context, name 
 
 func (r *GormTombstoneRepository) ListTombstones(ctx context.Context, params queries.ListItemsQuery) ([]*entities.DomainTombstone, string, error) {
 	// Get a query object ordering by name (used for cursor pagination)
-	dbQuery := r.db.WithContext(ctx).Order("name ASC")
+	dbQuery := dbFrom(ctx, r.db).Order("name ASC")
 
 	// Add cursor pagination if a cursor is provided
 	if params.PageCursor != "" {
@@ -185,7 +185,7 @@ func (r *GormTombstoneRepository) ListTombstones(ctx context.Context, params que
 }
 
 func (r *GormTombstoneRepository) CountTombstones(ctx context.Context, filter queries.ListTombstonesFilter) (int64, error) {
-	dbQuery := r.db.WithContext(ctx).Model(&DomainTombstoneRecord{})
+	dbQuery := dbFrom(ctx, r.db).Model(&DomainTombstoneRecord{})
 	dbQuery = setTombstoneFilters(dbQuery, filter)
 	var count int64
 	err := dbQuery.Count(&count).Error

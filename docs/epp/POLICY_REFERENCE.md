@@ -500,12 +500,13 @@ Every refusal is answered 2200 with the same text, so a client cannot tell which
 |---|---|---|
 | Failed logins per (login, source address) before lock | 5 within 15m. Failures that arrive while locked are not counted, so a burst cannot start the next, doubled lock | `lockout.DefaultPolicy` (code) |
 | Lock duration | 15m, doubling on each further lock within 24h, up to 24h. A successful login clears it | `lockout.DefaultPolicy` (code) |
-| While locked | 2501, and the session closes, even with the right password | |
+| While locked | 2501, and the session closes, even with the right password. The attempt that starts a lock is recorded as an `epp.login.locked` event | |
+| Lifting a lockout | `GET /epp/lockouts?clid=` lists locked (login, source address) pairs with their registrar and end; `DELETE /registrars/{clid}/epp/logins/{login}/lockouts` clears the login's lockouts, failure counts and strikes from every source at once (permission `epp:credentials:admin`), recorded first as an `epp.login.lockout_lifted` event with the operator as actor. A lockout a node counted on its own while Redis was down is not reached, and ends on its own | |
 | Failed logins per session | 3, then 2501 and the session closes | `EPP_MAX_LOGIN_ATTEMPTS` |
 | Redis unavailable | Lockouts are counted on the node (fail-open, ADR 0013), with each Redis call bounded to 500 ms, and `epp_policy_store_degraded{store="lockout"}` is 1. The node-local count holds at most 100,000 (login, address) pairs and never drops a lock in force to make room. Redis being down at start is a warning, not a failure | |
 | Credential store unavailable | 2400; the session stays open and may retry. Open sessions are unaffected | |
 | Client certificate validity | Enforced at every login: no grace before `notBefore` or after `notAfter` | |
-| Certificate expiry alerts | 30 and 7 days before expiry, from `epp_client_cert_not_after_timestamp_seconds{clid,login}` (alert rules: Phase 7) | |
+| Certificate expiry notices | An `epp.certificate.expiring` event 30 and again 7 days before a pinned certificate's `notAfter`, once each: the pin records the notice it has had, written with its event under the registrar's lock. Every node looks hourly. `epp_client_cert_not_after_timestamp_seconds{clid,login}` stays for alert rules (Phase 7) | |
 | `<newPW>` | Strict RFC 5730: the new password replaces the one used to log in, which stops working at once. It is applied only once the session has been admitted under its session caps, so a login refused with 2502 leaves the password unchanged. An unacceptable `<newPW>` is 2306 and the login does not happen. Overlap is done with add-then-retire through the admin API | |
 | Last used | Recorded for the password, pin and network of each successful login, written at most once a minute per node | |
 | Compromise retire | Every session that authenticated with the credential, or set it through `<newPW>`, is ended within `EPP_CREDENTIAL_REFRESH_INTERVAL`. An already retired credential, such as a password replaced by `<newPW>`, can still be retired as compromised | |
@@ -594,6 +595,24 @@ Lifting ends the suspension on every node at once and **clears the strikes that 
 **Accounting.** Each registrar's creates per UTC day, created and refused 2302, are kept in `epp_create_outcomes` as the basis for a future fee. Each node writes its counts every minute and when it stops. They are read with `GET /registrars/{clid}/epp/create-outcomes?from=YYYY-MM-DD&to=YYYY-MM-DD` (permission `epp:policy:admin`; the last 30 days by default, at most 366), one row per day with any creates.
 
 **Where it is counted.** In Redis, shared by every node: per-minute counts per registrar and family, a registrar's strikes, and a login's suspension, all on Redis's clock. **If Redis cannot answer** (each call bounded to 200 ms, then skipped for 5s), the node counts on its own and sets `epp_policy_store_degraded{store="failed_creates"}`; a suspension made on the node holds after Redis returns.
+
+### Events
+
+What the EPP server decides on its own is recorded as an outbox event, once per change; every command is in the audit log, and rates and health are metrics. Events with actor `system` record what happened even if they cannot be written: a failed write is logged and counted (`epp_events_lost_total{event}`), not undone. An operator's action is recorded before it takes effect, and does not take effect without its event.
+
+| Event | When | Actor |
+|---|---|---|
+| `epp.login.locked` | The failed password that locks a (login, source address) pair | `system` |
+| `epp.login.lockout_lifted` | An operator lifts a login's lockouts | The operator |
+| `epp.login.suspended` | A login is suspended for failed creates | `system` |
+| `epp.login.suspension_lifted` | An operator lifts a suspension | The operator |
+| `epp.session.closed_by_policy` | The server ends a session for its client's behaviour: 10 rate refusals in 10s, or failed-create strikes 11 to 20 (not the close that suspends, which has its own event) | `system` |
+| `epp.quota.reached` | A registrar's first domain create refused for `creates_per_day`, once per UTC day across every node | `system` |
+| `epp.certificate.expiring` | A pinned certificate 30, then 7, days from expiry | `system` |
+| `epp.session.kill_requested` | An operator ends a session | The operator |
+| `epp.login.*`, `epp.password.*`, `epp.certificate_pin.*`, `epp.allowed_network.*`, `epp.policy.*`, `epp.family.*` | Credential and policy changes, including `<newPW>` (`epp.password.replaced`) | The operator, or the login |
+
+Changes to domains, hosts and contacts made over EPP are recorded by the application services as for the admin API (`domain.registered`, `domain.renewed`, …), with actor `epp:<login>`, source `domain-os/epp`, and the command's svTRID as correlation ID. A domain change and its event are written in one transaction: if the event cannot be written, the change is rolled back and the command fails.
 
 ### Create queue
 

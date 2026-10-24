@@ -161,6 +161,15 @@ func (r *Redis) reserve(ctx context.Context, key, id string, limit int, ttl time
 	return func(ctx context.Context) { _ = r.client.SRem(ctx, k, id).Err() }, true, nil
 }
 
+// MarkQuotaReached implements interfaces.EPPRateLimiter.
+func (r *Redis) MarkQuotaReached(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+	first, err := r.client.SetNX(ctx, "epp:quota-reached:"+key, "1", ttl).Result()
+	if err != nil {
+		return false, fmt.Errorf("mark quota reached: %w", err)
+	}
+	return first, nil
+}
+
 // QuotaCount is how much of a quota is used, for tests and diagnostics.
 func (r *Redis) QuotaCount(ctx context.Context, key string) (int, error) {
 	n, err := r.client.SCard(ctx, quotaKey(key)).Result()
@@ -180,6 +189,7 @@ var maxMemoryKeys = 100_000
 type quotaEntry struct {
 	n       int
 	expires time.Time
+	reached bool
 }
 
 // Memory keeps buckets and quotas on this node only.
@@ -261,6 +271,24 @@ func (m *Memory) ReserveQuota(_ context.Context, key string, limit int, ttl time
 	}, true, nil
 }
 
+// MarkQuotaReached implements interfaces.EPPRateLimiter, on the quota's
+// own entry.
+func (m *Memory) MarkQuotaReached(_ context.Context, key string, ttl time.Duration) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := m.now()
+	e := m.quotas[key]
+	if e == nil || !now.Before(e.expires) {
+		e = &quotaEntry{expires: now.Add(ttl)}
+		m.quotas[key] = e
+	}
+	if e.reached {
+		return false, nil
+	}
+	e.reached = true
+	return true, nil
+}
+
 func (m *Memory) quotaRoom(now time.Time) bool {
 	if len(m.quotas) < maxMemoryKeys {
 		return true
@@ -280,6 +308,7 @@ func (m *Memory) quotaRoom(now time.Time) bool {
 type limiter interface {
 	Take(ctx context.Context, buckets []entities.EPPRateBucket, cost int, maxWait time.Duration) (entities.EPPRateTake, error)
 	ReserveQuota(ctx context.Context, key string, limit int, ttl time.Duration) (func(context.Context), bool, error)
+	MarkQuotaReached(ctx context.Context, key string, ttl time.Duration) (bool, error)
 }
 
 const (
@@ -383,4 +412,19 @@ func (f *FailOpen) ReserveQuota(ctx context.Context, key string, limit int, ttl 
 	}
 	release, ok, _ := f.fallback.ReserveQuota(ctx, key, limit, ttl)
 	return release, ok, nil
+}
+
+// MarkQuotaReached implements interfaces.EPPRateLimiter.
+func (f *FailOpen) MarkQuotaReached(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+	if f.usePrimary() {
+		pctx, cancel := context.WithTimeout(ctx, primaryTimeout)
+		first, err := f.primary.MarkQuotaReached(pctx, key, ttl)
+		cancel()
+		f.result(err)
+		if err == nil {
+			return first, nil
+		}
+	}
+	first, _ := f.fallback.MarkQuotaReached(ctx, key, ttl)
+	return first, nil
 }
