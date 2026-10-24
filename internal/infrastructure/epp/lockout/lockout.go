@@ -76,17 +76,18 @@ func (m *Memory) LockedFor(_ context.Context, key string) (time.Duration, error)
 	return max(e.lockedUntil.Sub(m.now()), 0), nil
 }
 
-// RecordFailure counts a failure and returns the lockout now in force, if
-// any. A failure while the key is already locked is not counted: it was in
-// flight when the lock started, and counting it would start the next, doubled
-// lock from the same burst.
+// RecordFailure counts a failure and returns the lockout it started, or
+// zero (interfaces.EPPLoginLockout). A failure while the key is already
+// locked is not counted and returns zero: it was in flight when the lock
+// started, and counting it would start the next, doubled lock from the same
+// burst; reporting it would tell the lock again.
 func (m *Memory) RecordFailure(_ context.Context, key string) (time.Duration, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
 	e := m.keys[key]
 	if e != nil && now.Before(e.lockedUntil) {
-		return e.lockedUntil.Sub(now), nil
+		return 0, nil
 	}
 	if e == nil {
 		if !m.makeRoom(now) {
@@ -167,13 +168,13 @@ func keys(key string) (fail, lock, strikes string) {
 }
 
 // recordFailure counts a failure atomically and, at the threshold, starts a
-// lockout whose length doubles with each strike. It returns the lockout in
-// force in milliseconds, or 0. A failure while the key is locked is not
-// counted, so failures in flight when the lock started cannot start the next
-// one.
+// lockout whose length doubles with each strike. It returns the lockout it
+// started in milliseconds, or 0. A failure while the key is locked is not
+// counted and returns 0, so failures in flight when the lock started can
+// neither start the next one nor report this one again.
 var recordFailure = redis.NewScript(`
 local locked = redis.call('PTTL', KEYS[2])
-if locked > 0 then return locked end
+if locked > 0 then return 0 end
 local n = redis.call('INCR', KEYS[1])
 if n == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[2]) end
 if n < tonumber(ARGV[1]) then return 0 end
@@ -200,7 +201,7 @@ func (r *Redis) LockedFor(ctx context.Context, key string) (time.Duration, error
 	return max(d, 0), nil // -2 (no key) and -1 (no TTL) are not locked
 }
 
-// RecordFailure counts a failure and returns the lockout in force, if any.
+// RecordFailure counts a failure and returns the lockout it started, or zero.
 func (r *Redis) RecordFailure(ctx context.Context, key string) (time.Duration, error) {
 	fail, lock, strikes := keys(key)
 	ms, err := recordFailure.Run(ctx, r.client, []string{fail, lock, strikes},
@@ -237,7 +238,7 @@ func (r *Redis) ListLockouts(ctx context.Context) ([]entities.EPPLoginLockout, e
 		if left <= 0 {
 			continue
 		}
-		login, ip, _ := strings.Cut(strings.TrimPrefix(key, prefix), "|")
+		login, ip := splitKey(strings.TrimPrefix(key, prefix))
 		out = append(out, entities.EPPLoginLockout{Login: login, ClientIP: ip, EndsAt: time.Now().Add(left).UTC().Truncate(time.Second)})
 	}
 	if err := iter.Err(); err != nil {
@@ -247,6 +248,16 @@ func (r *Redis) ListLockouts(ctx context.Context) ([]entities.EPPLoginLockout, e
 		return strings.Compare(a.Login+"|"+a.ClientIP, b.Login+"|"+b.ClientIP)
 	})
 	return out, nil
+}
+
+// splitKey splits a lockout key, "<login>|<source address>", at its last
+// "|": a login ID may contain one, an address cannot.
+func splitKey(key string) (login, ip string) {
+	i := strings.LastIndex(key, "|")
+	if i < 0 {
+		return key, ""
+	}
+	return key[:i], key[i+1:]
 }
 
 // LiftLockouts implements repositories.EPPLockoutStore: it clears the
@@ -263,11 +274,17 @@ func (r *Redis) LiftLockouts(ctx context.Context, login string) ([]entities.EPPL
 			lifted = append(lifted, l)
 		}
 	}
+	// The login is matched exactly, never used in a pattern: a login ID
+	// may hold glob characters or "|", and must not reach another login's
+	// keys.
 	var keys []string
 	for _, kind := range []string{"lock", "fail", "strikes"} {
-		iter := r.client.Scan(ctx, 0, "epp:lockout:"+kind+":"+login+"|*", 100).Iterator()
+		prefix := "epp:lockout:" + kind + ":"
+		iter := r.client.Scan(ctx, 0, prefix+"*", 100).Iterator()
 		for iter.Next(ctx) {
-			keys = append(keys, iter.Val())
+			if l, _ := splitKey(strings.TrimPrefix(iter.Val(), prefix)); l == login {
+				keys = append(keys, iter.Val())
+			}
 		}
 		if err := iter.Err(); err != nil {
 			return nil, fmt.Errorf("find lockouts: %w", err)

@@ -27,7 +27,7 @@ func (r *FXRepository) UpdateAll(ctx context.Context, fxs []*FX) error {
 	if len(fxs) == 0 {
 		return nil
 	}
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return dbFrom(ctx, r.db).Transaction(func(tx *gorm.DB) error {
 		// Drop all records from the fx table for the given base currency
 		if err := tx.Where("base = ?", fxs[0].Base).Delete(&FX{}).Error; err != nil {
 			return err
@@ -40,7 +40,7 @@ func (r *FXRepository) UpdateAll(ctx context.Context, fxs []*FX) error {
 // ListByBaseCurrency lists all exchange rates by base currency
 func (r *FXRepository) ListByBaseCurrency(ctx context.Context, baseCurrency string) ([]*entities.FX, error) {
 	var fxs []*FX
-	err := r.db.WithContext(ctx).Where("base = ?", baseCurrency).Find(&fxs).Error
+	err := dbFrom(ctx, r.db).Where("base = ?", baseCurrency).Find(&fxs).Error
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (r *FXRepository) ListByBaseCurrency(ctx context.Context, baseCurrency stri
 // dates ever coexist.
 func (r *FXRepository) GetByBaseAndTargetCurrency(ctx context.Context, baseCurrency, targetCurrency string) (*entities.FX, error) {
 	var fx FX
-	err := r.db.WithContext(ctx).Where("base = ? AND target = ?", baseCurrency, targetCurrency).Order("date DESC").First(&fx).Error
+	err := dbFrom(ctx, r.db).Where("base = ? AND target = ?", baseCurrency, targetCurrency).Order("date DESC").First(&fx).Error
 	if err != nil {
 		return nil, err
 	}

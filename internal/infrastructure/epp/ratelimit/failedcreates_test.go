@@ -226,4 +226,30 @@ func TestRedisListAndLiftSuspensions(t *testing.T) {
 	assert.ErrorIs(t, err, entities.ErrEPPSuspensionNotFound)
 	got, _ = r.ListSuspensions(ctx)
 	assert.Len(t, got, 1)
+
+	t.Run("a registrar ID with | is kept whole", func(t *testing.T) {
+		odd := check(budget, nil)
+		odd.Login, odd.ClID, odd.Scopes[0].Key, odd.SuspendAfter = "login-odd", "rar|a", "reg:rar|a", 1
+		record(t, r, []string{"reg:rar|a"}, 1, 0)
+		for range 2 {
+			_, err := r.Assess(ctx, odd)
+			require.NoError(t, err)
+		}
+		got, err := r.ListSuspensions(ctx)
+		require.NoError(t, err)
+		var found *entities.EPPLoginSuspension
+		for i := range got {
+			if got[i].Login == "login-odd" {
+				found = &got[i]
+			}
+		}
+		require.NotNil(t, found)
+		assert.Equal(t, entities.ClIDType("rar|a"), found.ClID)
+		assert.Equal(t, "registrar", found.Scope)
+		_, err = r.LiftSuspension(ctx, "login-odd")
+		require.NoError(t, err)
+		n, err := client.Exists(ctx, strikeKey("reg:rar|a")).Result()
+		require.NoError(t, err)
+		assert.Zero(t, n, "its strikes went with it")
+	})
 }

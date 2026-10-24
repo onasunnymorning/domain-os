@@ -255,14 +255,17 @@ func (s *EPPAuthenticationService) NoteExpiringCertificates(ctx context.Context)
 	n := 0
 	var errs []error
 	for _, clid := range clids {
+		noted := 0
 		_, err := s.repo.UpdateAccess(ctx, clid, func(a *entities.EPPRegistrarAccess) ([]entities.DomainEvent, error) {
 			events := a.NoteExpiringPins(now, eppServerEventSource)
-			n += len(events)
+			noted = len(events)
 			return events, nil
 		})
 		if err != nil {
 			errs = append(errs, fmt.Errorf("note expiring EPP certificates of %s: %w", clid, err))
+			continue
 		}
+		n += noted // only once saved: a failed update records none
 	}
 	return n, errors.Join(errs...)
 }

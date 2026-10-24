@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -69,4 +70,31 @@ func TestDomainChangesCommitWithTheirEvents(t *testing.T) {
 			Where("subject = ? AND type = ?", create.Name, "domain.registered").Scan(&source).Error)
 		assert.Equal(t, "domain-os/epp", source)
 	})
+}
+
+// A domain change's reads run in its transaction, on its connection: with
+// one connection in the pool, a create and a renew still finish, where a
+// read that went back to the pool would wait for a second connection
+// until its deadline.
+func TestDomainChangesNeedOneConnection(t *testing.T) {
+	f := newEPPFixture(t)
+	sqlDB, err := f.db.DB()
+	require.NoError(t, err)
+	stats := sqlDB.Stats()
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { sqlDB.SetMaxOpenConns(stats.MaxOpenConnections) })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	scope := entities.RegistrarClID(f.rar1)
+	name := "pool." + f.tld
+	_, err = f.domains.Create(ctx, scope, commands.EPPCreateDomainCommand{
+		Name: name, Period: 1, PeriodUnit: "y", RegistrantID: "c" + f.rar1,
+		Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + f.rar1}},
+	})
+	require.NoError(t, err, "create, priced and registered in one connection")
+	d, err := f.domainRepo.GetDomainByName(ctx, name, false)
+	require.NoError(t, err)
+	_, err = f.domains.Renew(ctx, scope, commands.EPPRenewDomainCommand{Name: name, CurExpDate: d.ExpiryDate.UTC().Format("2006-01-02"), Period: 1, PeriodUnit: "y"})
+	require.NoError(t, err, "renew, priced and written in one connection")
 }

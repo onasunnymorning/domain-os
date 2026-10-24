@@ -26,7 +26,7 @@ func NewGORMPremiumListRepository(db *gorm.DB) *PremiumListRepository {
 func (plr *PremiumListRepository) Create(ctx context.Context, premiumList *entities.PremiumList) (*entities.PremiumList, error) {
 	pl := &PremiumList{}
 	pl.FromEntity(premiumList)
-	err := plr.db.WithContext(ctx).Create(pl).Error
+	err := dbFrom(ctx, plr.db).Create(pl).Error
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func (plr *PremiumListRepository) Create(ctx context.Context, premiumList *entit
 // GetByName retrieves a premium list by name
 func (plr *PremiumListRepository) GetByName(ctx context.Context, name string) (*entities.PremiumList, error) {
 	pl := &PremiumList{}
-	if err := plr.db.WithContext(ctx).Where("name = ?", name).First(pl).Error; err != nil {
+	if err := dbFrom(ctx, plr.db).Where("name = ?", name).First(pl).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrPremiumListNotFound
 		}
@@ -47,13 +47,13 @@ func (plr *PremiumListRepository) GetByName(ctx context.Context, name string) (*
 
 // DeleteByName deletes a premium list by name
 func (plr *PremiumListRepository) DeleteByName(ctx context.Context, name string) error {
-	return plr.db.WithContext(ctx).Where("name = ?", name).Delete(&PremiumList{}).Error
+	return dbFrom(ctx, plr.db).Where("name = ?", name).Delete(&PremiumList{}).Error
 }
 
 // List retrieves premium lists
 func (plr *PremiumListRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.PremiumList, string, error) {
 	// Create a query object
-	dbQuery := plr.db.WithContext(ctx).Order("name ASC")
+	dbQuery := dbFrom(ctx, plr.db).Order("name ASC")
 
 	// Add cursor pagination if a cursor is provided
 	if params.PageCursor != "" {

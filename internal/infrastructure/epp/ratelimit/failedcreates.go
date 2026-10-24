@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -40,8 +41,9 @@ func strikeKey(scope string) string     { return "epp:fc-strikes:" + scope }
 // script, so, like the rest of this package, it needs a single Redis, not
 // a cluster.
 //
-// A suspension's value is "<clid>|<scope key>", so it can be listed by
-// registrar and lifted with the strikes that caused it.
+// A suspension's value is JSON, {"c": registrar, "s": scope key}, so it can
+// be listed by registrar and lifted with the strikes that caused it. JSON,
+// not a separator: a registrar ID may contain any separator.
 //
 // KEYS: the suspension. ARGV: suspend after, suspend for ms, window ms,
 // slots, scope count, the registrar, then per scope its key, failures and
@@ -49,9 +51,9 @@ func strikeKey(scope string) string     { return "epp:fc-strikes:" + scope }
 var assessScript = redis.NewScript(`
 local suspended = redis.call('PTTL', KEYS[1])
 if suspended > 0 then
-  local v = redis.call('GET', KEYS[1]) or ''
+  local ok, v = pcall(cjson.decode, redis.call('GET', KEYS[1]) or '')
   local scope = 1
-  if string.find(v, '|fam:', 1, true) then scope = 2 end
+  if ok and type(v) == 'table' and type(v.s) == 'string' and string.sub(v.s, 1, 4) == 'fam:' then scope = 2 end
   return {suspended, 0, 0, scope}
 end
 local t = redis.call('TIME')
@@ -74,7 +76,7 @@ local strikeKey = 'epp:fc-strikes:' .. scopeKey
 local strikes = redis.call('INCR', strikeKey)
 redis.call('PEXPIRE', strikeKey, ARGV[3])
 if strikes > tonumber(ARGV[1]) then
-  redis.call('SET', KEYS[1], ARGV[6] .. '|' .. scopeKey, 'PX', ARGV[2])
+  redis.call('SET', KEYS[1], cjson.encode({c = ARGV[6], s = scopeKey}), 'PX', ARGV[2])
   return {tonumber(ARGV[2]), 1, strikes, over}
 end
 return {0, 0, strikes, over}
@@ -147,17 +149,24 @@ var liftScript = redis.NewScript(`
 local v = redis.call('GET', KEYS[1])
 if not v then return false end
 local left = redis.call('PTTL', KEYS[1])
-local sep = string.find(v, '|', 1, true)
-if sep then redis.call('DEL', 'epp:fc-strikes:' .. string.sub(v, sep + 1)) end
+local ok, d = pcall(cjson.decode, v)
+if ok and type(d) == 'table' and type(d.s) == 'string' then redis.call('DEL', 'epp:fc-strikes:' .. d.s) end
 redis.call('DEL', KEYS[1])
 return {v, left}
 `)
 
+// suspensionValue is a suspension's stored value.
+type suspensionValue struct {
+	ClID     string `json:"c"`
+	ScopeKey string `json:"s"`
+}
+
 // parseSuspension reads a suspension's value.
 func parseSuspension(login, value string, left time.Duration, now time.Time) entities.EPPLoginSuspension {
-	clid, scopeKey, _ := strings.Cut(value, "|")
-	s := entities.EPPLoginSuspension{ClID: entities.ClIDType(clid), Login: login, Scope: "registrar", EndsAt: now.Add(left).UTC().Truncate(time.Second)}
-	if f, ok := strings.CutPrefix(scopeKey, "fam:"); ok {
+	var v suspensionValue
+	_ = json.Unmarshal([]byte(value), &v) // a value it cannot read lists without a registrar
+	s := entities.EPPLoginSuspension{ClID: entities.ClIDType(v.ClID), Login: login, Scope: "registrar", EndsAt: now.Add(left).UTC().Truncate(time.Second)}
+	if f, ok := strings.CutPrefix(v.ScopeKey, "fam:"); ok {
 		s.Scope, s.Family = "family", f
 	}
 	return s

@@ -73,7 +73,7 @@ func TestFailuresWhileLockedDoNotStartTheNextLock(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		d, err := m.RecordFailure(ctx, "k")
 		require.NoError(t, err)
-		require.Equal(t, 10*time.Second, d, "the existing lock is reported, not extended")
+		require.Zero(t, d, "the existing lock is neither extended nor reported again")
 	}
 	c.advance(11 * time.Second)
 	_, _ = m.RecordFailure(ctx, "k")
@@ -193,11 +193,12 @@ func TestRedis(t *testing.T) {
 	require.NoError(t, err)
 	require.InDelta(t, float64(10*time.Second), float64(left), float64(time.Second))
 
-	// Failures in flight while locked report the lock and are not counted.
+	// Failures in flight while locked are not counted, and do not report
+	// the lock again: only the failure that started it does.
 	for i := 0; i < 5; i++ {
 		d, err = r.RecordFailure(ctx, key)
 		require.NoError(t, err)
-		require.InDelta(t, float64(10*time.Second), float64(d), float64(time.Second))
+		require.Zero(t, d)
 	}
 	strikes, err := client.Get(ctx, "epp:lockout:strikes:"+key).Int()
 	require.NoError(t, err)
@@ -262,4 +263,30 @@ func TestRedisListAndLiftLockouts(t *testing.T) {
 	all, _ = r.ListLockouts(ctx)
 	require.Len(t, all, 1)
 	assert.Equal(t, "login-b", all[0].Login)
+
+	t.Run("login IDs with | or glob characters reach only their own keys", func(t *testing.T) {
+		require.NoError(t, client.FlushDB(ctx).Err())
+		lock("ops|a|192.0.2.1")
+		lock("ops|192.0.2.1")
+		lock("a*b|192.0.2.1")
+		lock("axb|192.0.2.1")
+		all, err := r.ListLockouts(ctx)
+		require.NoError(t, err)
+		logins := map[string]string{}
+		for _, l := range all {
+			logins[l.Login] = l.ClientIP
+		}
+		assert.Equal(t, map[string]string{"ops|a": "192.0.2.1", "ops": "192.0.2.1", "a*b": "192.0.2.1", "axb": "192.0.2.1"}, logins)
+
+		lifted, err := r.LiftLockouts(ctx, "a*b")
+		require.NoError(t, err)
+		require.Len(t, lifted, 1)
+		_, err = r.LiftLockouts(ctx, "ops")
+		require.NoError(t, err)
+		for _, kept := range []string{"axb|192.0.2.1", "ops|a|192.0.2.1"} {
+			d, err := r.LockedFor(ctx, kept)
+			require.NoError(t, err)
+			assert.Positive(t, d, kept)
+		}
+	})
 }
