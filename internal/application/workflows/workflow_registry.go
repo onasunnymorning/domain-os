@@ -216,8 +216,10 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			ScheduleInfo: "Every hour",
 			ScheduleID:   "purge-loop",
 			Steps: []WorkflowStep{
+				{Key: "release-offset", Label: "Random Release Offset", ActivityName: "ReleaseOffset"},
 				{Key: "count-purgeable", Label: "Count Purgeable", ActivityName: "GetPurgeableDomainCount"},
 				{Key: "list-purgeable", Label: "List Purgeable", ActivityName: "ListPurgeableDomains"},
+				{Key: "shuffle-release", Label: "Shuffle Release Order", ActivityName: "ShuffleForRelease"},
 				{Key: "batch-purge", Label: "Batch Purge", ActivityName: "BatchPurgeDomains"},
 			},
 			docFile: "purgeLoop.doc.md",

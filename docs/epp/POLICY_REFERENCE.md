@@ -600,3 +600,11 @@ Each node runs at most `EPP_MAX_CREATES_IN_FLIGHT` `<domain:create>`s at once ([
 | None comes | **2400**, *"Command failed; the registry is busy with creates, try again"*, with `<extValue>` reason `create-queue; waited-ms=5000`, and the session continues (`epp_create_queue_timeouts_total`). The create quota gives the create back, and the failed-create budget does not count it; a strike it took because the registrar was over budget stands, since a strike counts creates sent |
 
 `epp_creates_in_flight` and `epp_creates_waiting` show the slots in use and the creates waiting. The queue is per node; across N nodes, up to N × `EPP_MAX_CREATES_IN_FLIGHT` creates run at once, and the database pool of each node bounds its share.
+
+### Release of deleted names
+
+A deleted domain is purged, and its name can be registered again, once its redemption and pending delete periods have ended (`<domain:delete>` under [§ Command handling](#command-handling)). The purge loop runs hourly; each scheduled run **waits a random offset within 45 minutes** before it purges, and **purges in a random order**, so the earliest purge date can be worked out from the periods but the moment a name is released cannot. A `<domain:create>` for a name not yet released is answered 2302, and counts towards the [failed-create budget](#failed-creates).
+
+| Setting | Default | Where to change it |
+|---|---|---|
+| Release window | 45 minutes for the scheduled runs, inside the hourly schedule | `releaseWindowMinutes` on the `purge-loop` workflow's parameters. A run launched by hand (the admin UI, or `POST /workflows/launch` with `{"workflowType": "purge-loop"}`) purges at once unless it passes a window. The offset is not shown, even to the workflow's progress query, until it has passed |
