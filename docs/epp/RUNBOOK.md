@@ -30,7 +30,7 @@ If `EPPServerCertReloadFailing` fires, the files on that node do not parse, do n
 
 ### A registrar certificate is expiring
 
-`EPPClientCertExpiresIn30Days` (info), `EPPClientCertExpiresIn7Days` (warning), per registrar and login, from the certificate each login last logged in with. The registry also records an `epp.certificate.expiring` event 30 and 7 days before a pin's end ([§ Events](POLICY_REFERENCE.md#events)).
+`EPPClientCertExpiresIn30Days` (info), `EPPClientCertExpiresIn7Days` (warning), per registrar and login, from the certificate each login last logged in with. That is per node and kept until the login logs in again or the node restarts: a login that has switched to a new certificate but not logged in since still shows the old one, so check the registrar's pins (`GET $API/registrars/$CLID/epp`) before chasing it. The registry also records an `epp.certificate.expiring` event 30 and 7 days before a pin's end ([§ Events](POLICY_REFERENCE.md#events)).
 
 The registrar pins its next certificate before the current one expires: `POST $API/registrars/$CLID/epp/certificate-pins` with the new certificate (`epp:credentials:admin`). Up to three pins are usable at once, so the next can be pinned ahead of the switch. Once the registrar has switched, retire the old pin (`POST …/certificate-pins/{id}/retire`, `{"kind": "normal"}`). See [§ Rotate a registrar's credentials](#rotate-a-registrars-credentials).
 

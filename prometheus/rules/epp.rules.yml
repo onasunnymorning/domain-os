@@ -48,7 +48,8 @@ groups:
   - name: epp-registrars
     rules:
       - alert: EPPClientCertExpiresIn30Days
-        expr: epp_client_cert_not_after_timestamp_seconds - time() < 30 * 86400
+        # Every node that saw the login reports it: one alert per login.
+        expr: min by (clid, login) (epp_client_cert_not_after_timestamp_seconds) - time() < 30 * 86400
         labels:
           severity: info
         annotations:
@@ -56,7 +57,7 @@ groups:
           runbook: "docs/epp/RUNBOOK.md#a-registrar-certificate-is-expiring"
 
       - alert: EPPClientCertExpiresIn7Days
-        expr: epp_client_cert_not_after_timestamp_seconds - time() < 7 * 86400
+        expr: min by (clid, login) (epp_client_cert_not_after_timestamp_seconds) - time() < 7 * 86400
         labels:
           severity: warning
         annotations:
@@ -76,6 +77,8 @@ groups:
 
       - alert: EPPCredentialsStale
         expr: time() - epp_credentials_refreshed_timestamp_seconds > 300
+        # The gauge is 0 until a node's first load, a moment after it starts.
+        for: 2m
         labels:
           severity: warning
         annotations:
@@ -84,6 +87,7 @@ groups:
 
       - alert: EPPPoliciesStale
         expr: time() - epp_policies_refreshed_timestamp_seconds > 300
+        for: 2m
         labels:
           severity: warning
         annotations:
