@@ -2,7 +2,10 @@ package ratelimit
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,18 +40,26 @@ func strikeKey(scope string) string     { return "epp:fc-strikes:" + scope }
 // script, so, like the rest of this package, it needs a single Redis, not
 // a cluster.
 //
+// A suspension's value is "<clid>|<scope key>", so it can be listed by
+// registrar and lifted with the strikes that caused it.
+//
 // KEYS: the suspension. ARGV: suspend after, suspend for ms, window ms,
-// slots, scope count, then per scope its key, failures and ratio. Returns
-// {suspended ms, newly suspended 0/1, strikes, scope from 1}.
+// slots, scope count, the registrar, then per scope its key, failures and
+// ratio. Returns {suspended ms, newly suspended 0/1, strikes, scope from 1}.
 var assessScript = redis.NewScript(`
 local suspended = redis.call('PTTL', KEYS[1])
-if suspended > 0 then return {suspended, 0, 0, tonumber(redis.call('GET', KEYS[1])) or 1} end
+if suspended > 0 then
+  local v = redis.call('GET', KEYS[1]) or ''
+  local scope = 1
+  if string.find(v, '|fam:', 1, true) then scope = 2 end
+  return {suspended, 0, 0, scope}
+end
 local t = redis.call('TIME')
 local slot = math.floor(tonumber(t[1]) / 60)
 local slots = tonumber(ARGV[4])
 local over = 0
 for i = 1, tonumber(ARGV[5]) do
-  local base = 5 + (i - 1) * 3
+  local base = 6 + (i - 1) * 3
   local f, ok = 0, 0
   for m = slot - slots + 1, slot do
     local v = redis.call('HMGET', 'epp:fc:' .. ARGV[base + 1] .. ':' .. m, 'f', 's')
@@ -58,11 +69,12 @@ for i = 1, tonumber(ARGV[5]) do
   if over == 0 and f >= tonumber(ARGV[base + 2]) and f * 100 >= tonumber(ARGV[base + 3]) * (f + ok) then over = i end
 end
 if over == 0 then return {0, 0, 0, 0} end
-local strikeKey = 'epp:fc-strikes:' .. ARGV[5 + (over - 1) * 3 + 1]
+local scopeKey = ARGV[6 + (over - 1) * 3 + 1]
+local strikeKey = 'epp:fc-strikes:' .. scopeKey
 local strikes = redis.call('INCR', strikeKey)
 redis.call('PEXPIRE', strikeKey, ARGV[3])
 if strikes > tonumber(ARGV[1]) then
-  redis.call('SET', KEYS[1], over, 'PX', ARGV[2])
+  redis.call('SET', KEYS[1], ARGV[6] .. '|' .. scopeKey, 'PX', ARGV[2])
   return {tonumber(ARGV[2]), 1, strikes, over}
 end
 return {0, 0, strikes, over}
@@ -86,7 +98,7 @@ var slotTTL = entities.EPPFailedCreateWindow + time.Minute
 
 // Assess implements interfaces.EPPFailedCreateTracker.
 func (r *Redis) Assess(ctx context.Context, c entities.EPPFailedCreateCheck) (entities.EPPFailedCreateStanding, error) {
-	args := []any{c.SuspendAfter, c.SuspendFor.Milliseconds(), entities.EPPFailedCreateWindow.Milliseconds(), windowSlots, len(c.Scopes)}
+	args := []any{c.SuspendAfter, c.SuspendFor.Milliseconds(), entities.EPPFailedCreateWindow.Milliseconds(), windowSlots, len(c.Scopes), c.ClID.String()}
 	for _, s := range c.Scopes {
 		args = append(args, s.Key, s.Budget.Failures, s.Budget.RatioPercent)
 	}
@@ -126,6 +138,73 @@ func (r *Redis) Suspended(ctx context.Context, login string) (time.Duration, err
 		return 0, fmt.Errorf("login suspension: %w", err)
 	}
 	return max(d, 0), nil
+}
+
+// liftScript ends a suspension and clears the strikes that caused it, so
+// the login's next create starts escalation afresh rather than suspending
+// it again. KEYS: the suspension. Returns {value, ms left}, or nil.
+var liftScript = redis.NewScript(`
+local v = redis.call('GET', KEYS[1])
+if not v then return false end
+local left = redis.call('PTTL', KEYS[1])
+local sep = string.find(v, '|', 1, true)
+if sep then redis.call('DEL', 'epp:fc-strikes:' .. string.sub(v, sep + 1)) end
+redis.call('DEL', KEYS[1])
+return {v, left}
+`)
+
+// parseSuspension reads a suspension's value.
+func parseSuspension(login, value string, left time.Duration, now time.Time) entities.EPPLoginSuspension {
+	clid, scopeKey, _ := strings.Cut(value, "|")
+	s := entities.EPPLoginSuspension{ClID: entities.ClIDType(clid), Login: login, Scope: "registrar", EndsAt: now.Add(left).UTC().Truncate(time.Second)}
+	if f, ok := strings.CutPrefix(scopeKey, "fam:"); ok {
+		s.Scope, s.Family = "family", f
+	}
+	return s
+}
+
+// ListSuspensions implements repositories.EPPSuspensionStore.
+func (r *Redis) ListSuspensions(ctx context.Context) ([]entities.EPPLoginSuspension, error) {
+	var out []entities.EPPLoginSuspension
+	iter := r.client.Scan(ctx, 0, suspensionKey("*"), 100).Iterator()
+	for iter.Next(ctx) {
+		key := iter.Val()
+		v, err := r.client.Get(ctx, key).Result()
+		if errors.Is(err, redis.Nil) {
+			continue // ended meanwhile
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read login suspension: %w", err)
+		}
+		left, err := r.client.PTTL(ctx, key).Result()
+		if err != nil {
+			return nil, fmt.Errorf("read login suspension: %w", err)
+		}
+		if left <= 0 {
+			continue
+		}
+		out = append(out, parseSuspension(strings.TrimPrefix(key, suspensionKey("")), v, left, time.Now()))
+	}
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("list login suspensions: %w", err)
+	}
+	slices.SortFunc(out, func(a, b entities.EPPLoginSuspension) int { return strings.Compare(a.Login, b.Login) })
+	return out, nil
+}
+
+// LiftSuspension implements repositories.EPPSuspensionStore.
+func (r *Redis) LiftSuspension(ctx context.Context, login string) (*entities.EPPLoginSuspension, error) {
+	v, err := liftScript.Run(ctx, r.client, []string{suspensionKey(login)}).Slice()
+	if errors.Is(err, redis.Nil) {
+		return nil, fmt.Errorf("%w: %s", entities.ErrEPPSuspensionNotFound, login)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lift login suspension: %w", err)
+	}
+	value, _ := v[0].(string)
+	left, _ := v[1].(int64)
+	s := parseSuspension(login, value, time.Duration(left)*time.Millisecond, time.Now())
+	return &s, nil
 }
 
 // ---------------------------------------------------------------------------

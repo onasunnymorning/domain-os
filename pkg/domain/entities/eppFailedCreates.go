@@ -9,6 +9,23 @@ import (
 // days are out of order or too far apart.
 var ErrInvalidCreateOutcomeRange = errors.New("invalid range of days")
 
+// ErrEPPSuspensionNotFound is a login that is not suspended.
+var ErrEPPSuspensionNotFound = errors.New("the login is not suspended")
+
+// EventEPPLoginSuspensionLifted records an operator ending a login's
+// suspension for failed creates early.
+const EventEPPLoginSuspensionLifted = "epp.login.suspension_lifted"
+
+// EPPLoginSuspension is a login suspended for failed creates: by its
+// registrar's strikes (Scope "registrar") or its family's ("family").
+type EPPLoginSuspension struct {
+	ClID   ClIDType  `json:"clid"`
+	Login  string    `json:"login"`
+	Scope  string    `json:"scope"`
+	Family string    `json:"family,omitempty"`
+	EndsAt time.Time `json:"ends_at"`
+}
+
 // The failed-create budget (docs/epp/ARCHITECTURE.md §5, anti-dropcatch):
 // domain creates answered 2302 because the name is registered are counted
 // per registrar and per family over a sliding window, and a registrar over
@@ -29,8 +46,10 @@ type EPPFailedCreateScope struct {
 
 // EPPFailedCreateCheck is what is asked before a domain create.
 type EPPFailedCreateCheck struct {
-	// Login is the login sending the create, whose suspension is checked.
+	// Login is the login sending the create, whose suspension is checked,
+	// and ClID its registrar.
 	Login string
+	ClID  ClIDType
 	// Scopes are the counts to hold the create to: the registrar's, and
 	// its family's if it is in one. The first over its budget takes the
 	// strike, so a family over budget is escalated as one, however many

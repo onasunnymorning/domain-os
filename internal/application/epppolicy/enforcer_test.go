@@ -273,7 +273,7 @@ func TestFailedCreateEscalation(t *testing.T) {
 		assert.Equal(t, Allow, d.Action)
 		require.NotNil(t, failed.asked)
 		assert.Equal(t, entities.EPPFailedCreateCheck{
-			Login: "login-a", SuspendAfter: 20, SuspendFor: 15 * time.Minute,
+			Login: "login-a", ClID: "rar-a", SuspendAfter: 20, SuspendFor: 15 * time.Minute,
 			Scopes: []entities.EPPFailedCreateScope{
 				{Key: "reg:rar-a", Budget: gold.Limits.FailedCreates},
 				{Key: "fam:acme", Budget: famPolicy.Limits.FamilyFailedCreates},

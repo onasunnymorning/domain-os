@@ -386,7 +386,7 @@ func (e *Enforcer) Enforce(ctx context.Context, who Caller, rp entities.EPPRegis
 func (e *Enforcer) failedCreates(ctx context.Context, who Caller, rp entities.EPPRegistrarPolicy, d *Decision) (Decision, bool) {
 	scopes := failedCreateScopes(who.ClID, rp)
 	st, err := e.failed.Assess(ctx, entities.EPPFailedCreateCheck{
-		Login: who.Login, Scopes: scopes, SuspendAfter: e.esc.SuspendAfter, SuspendFor: e.esc.SuspendFor,
+		Login: who.Login, ClID: who.ClID, Scopes: scopes, SuspendAfter: e.esc.SuspendAfter, SuspendFor: e.esc.SuspendFor,
 	})
 	if err != nil {
 		return Decision{}, true

@@ -19,6 +19,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	sharedconfig "github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/ratelimit"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/sessionstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/secrets"
@@ -405,6 +406,7 @@ func main() {
 	eppRedis := redis.NewClient(&redis.Options{Addr: net.JoinHostPort(cfg.RedisHost, cfg.RedisPort), Password: cfg.RedisPassword})
 	eppSessionService := appservices.NewEPPSessionService(sessionstore.NewRedis(eppRedis), entities.EPPSessionCaps{}, 0, eventPublisher)
 	rest.NewEPPSessionsController(r, eppSessionService, authMiddleware)
+	rest.NewEPPSuspensionsController(r, appservices.NewEPPSuspensionService(ratelimit.NewRedis(eppRedis), postgres.NewEPPCredentialRepository(gormDB), eventPublisher), authMiddleware)
 	// EPP policies and registrar families (ADR 0019): the EPP servers reload
 	// them within their credential refresh interval.
 	rest.NewEPPPoliciesController(r, appservices.NewEPPPolicyService(postgres.NewEPPPolicyRepository(gormDB), registrarRepo, postgres.NewEPPCreateOutcomeRepository(gormDB)), authMiddleware)

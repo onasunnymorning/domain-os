@@ -62,3 +62,10 @@ type EPPFailedCreateTracker interface {
 	// Suspended is how much longer a login is suspended, or 0.
 	Suspended(ctx context.Context, login string) (time.Duration, error)
 }
+
+// EPPSuspensionService is the admin API's view of logins suspended for
+// failed creates.
+type EPPSuspensionService interface {
+	List(ctx context.Context, clid string) ([]entities.EPPLoginSuspension, error)
+	Lift(ctx context.Context, clid, login string) (*entities.EPPLoginSuspension, error)
+}
