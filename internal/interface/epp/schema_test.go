@@ -19,7 +19,7 @@ var xmllint = sync.OnceValues(func() (string, error) { return exec.LookPath("xml
 // libxml2's xmllint, as escrow validation does (ADR 0012). CI installs it;
 // a developer machine without it skips the check and says so, rather than
 // skipping the test.
-func requireSchemaValid(t *testing.T, frame []byte) {
+func requireSchemaValid(t testing.TB, frame []byte) {
 	t.Helper()
 	bin, err := xmllint()
 	if err != nil {
