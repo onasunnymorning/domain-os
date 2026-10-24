@@ -305,8 +305,8 @@ func TestCreatesWaitForASlot(t *testing.T) {
 	require.NoError(t, ts.metrics.createQueueTimeouts.Write(&m))
 	assert.Equal(t, 1.0, m.GetCounter().GetValue())
 
-	go func() { time.Sleep(20 * time.Millisecond); hold() }()
-	requireCode(t, c.roundTrip(createXML("queued.test", createOpts{})), "1000") // let in when the slot frees
+	hold() // a slot freed while a create waits goes to it: TestCreateGateTakesTurns
+	requireCode(t, c.roundTrip(createXML("queued.test", createOpts{})), "1000")
 	running, waiting := ts.creates.inFlight()
 	assert.Zero(t, running)
 	assert.Zero(t, waiting)

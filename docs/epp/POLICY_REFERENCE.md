@@ -597,6 +597,6 @@ Each node runs at most `EPP_MAX_CREATES_IN_FLIGHT` `<domain:create>`s at once ([
 | Wait | Answer |
 |---|---|
 | A slot comes within `EPP_CREATE_QUEUE_WAIT` | The create runs (`epp_create_queue_wait_seconds`) |
-| None comes | **2400**, *"Command failed; the registry is busy with creates, try again"*, with `<extValue>` reason `create-queue; waited-ms=5000`, and the session continues (`epp_create_queue_timeouts_total`). The create is not counted against the create quota or the failed-create budget |
+| None comes | **2400**, *"Command failed; the registry is busy with creates, try again"*, with `<extValue>` reason `create-queue; waited-ms=5000`, and the session continues (`epp_create_queue_timeouts_total`). The create quota gives the create back, and the failed-create budget does not count it; a strike it took because the registrar was over budget stands, since a strike counts creates sent |
 
 `epp_creates_in_flight` and `epp_creates_waiting` show the slots in use and the creates waiting. The queue is per node; across N nodes, up to N × `EPP_MAX_CREATES_IN_FLIGHT` creates run at once, and the database pool of each node bounds its share.
