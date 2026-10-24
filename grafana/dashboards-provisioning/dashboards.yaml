@@ -1,0 +1,9 @@
+# Dashboards kept in the repository (grafana/dashboards), loaded at start.
+apiVersion: 1
+providers:
+  - name: domain-os
+    folder: domain-os
+    type: file
+    disableDeletion: true
+    options:
+      path: /var/lib/grafana/dashboards

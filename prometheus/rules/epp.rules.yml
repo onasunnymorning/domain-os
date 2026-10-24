@@ -1,0 +1,197 @@
+# Alert rules for the EPP server (docs/epp/ARCHITECTURE.md §6, Phase 7).
+#
+# Every metric named here is one the EPP server serves on its ops port:
+# TestAlertRulesNameServedMetrics (internal/interface/epp) fails if a rule
+# names one that does not exist. Each alert links to its section of the
+# operator runbook, docs/epp/RUNBOOK.md, which says what it means and what
+# to do.
+#
+# Severity: critical pages someone now; warning is looked at the same day;
+# info is for a dashboard or a ticket.
+
+groups:
+  - name: epp-availability
+    rules:
+      - alert: EPPServerDown
+        expr: up{job="epp-server"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "EPP node {{ $labels.instance }} is not answering on its ops port"
+          runbook: "docs/epp/RUNBOOK.md#epp-server-down"
+
+      - alert: EPPServerCertExpiresIn30Days
+        expr: epp_server_cert_not_after_timestamp_seconds - time() < 30 * 86400
+        labels:
+          severity: warning
+        annotations:
+          summary: "The EPP server certificate on {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+          runbook: "docs/epp/RUNBOOK.md#rotate-the-server-certificate"
+
+      - alert: EPPServerCertExpiresIn7Days
+        expr: epp_server_cert_not_after_timestamp_seconds - time() < 7 * 86400
+        labels:
+          severity: critical
+        annotations:
+          summary: "The EPP server certificate on {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+          runbook: "docs/epp/RUNBOOK.md#rotate-the-server-certificate"
+
+      - alert: EPPServerCertReloadFailing
+        expr: increase(epp_server_cert_reload_errors_total[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} cannot reload its server certificate; it keeps serving the one it has"
+          runbook: "docs/epp/RUNBOOK.md#rotate-the-server-certificate"
+
+  - name: epp-registrars
+    rules:
+      - alert: EPPClientCertExpiresIn30Days
+        # Every node that saw the login reports it: one alert per login.
+        expr: min by (clid, login) (epp_client_cert_not_after_timestamp_seconds) - time() < 30 * 86400
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.clid }}'s certificate for login {{ $labels.login }} expires in {{ $value | humanizeDuration }}"
+          runbook: "docs/epp/RUNBOOK.md#a-registrar-certificate-is-expiring"
+
+      - alert: EPPClientCertExpiresIn7Days
+        expr: min by (clid, login) (epp_client_cert_not_after_timestamp_seconds) - time() < 7 * 86400
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.clid }}'s certificate for login {{ $labels.login }} expires in {{ $value | humanizeDuration }}"
+          runbook: "docs/epp/RUNBOOK.md#a-registrar-certificate-is-expiring"
+
+  - name: epp-stores
+    rules:
+      - alert: EPPPolicyStoreDegraded
+        expr: max by (instance, store) (epp_policy_store_degraded) == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} cannot reach Redis for {{ $labels.store }}; it is counting on its own"
+          runbook: "docs/epp/RUNBOOK.md#a-policy-store-is-degraded"
+
+      - alert: EPPCredentialsStale
+        expr: time() - epp_credentials_refreshed_timestamp_seconds > 300
+        # The gauge is 0 until a node's first load, a moment after it starts.
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} last loaded registrar credentials {{ $value | humanizeDuration }} ago"
+          runbook: "docs/epp/RUNBOOK.md#credentials-or-policies-are-stale"
+
+      - alert: EPPPoliciesStale
+        expr: time() - epp_policies_refreshed_timestamp_seconds > 300
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} last loaded EPP policies {{ $value | humanizeDuration }} ago"
+          runbook: "docs/epp/RUNBOOK.md#credentials-or-policies-are-stale"
+
+      - alert: EPPSessionRegistryRenewalsFailing
+        expr: increase(epp_session_registry_renewals_total{result="error"}[5m]) > 2
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} cannot renew its sessions in the registry"
+          runbook: "docs/epp/RUNBOOK.md#a-policy-store-is-degraded"
+
+      - alert: EPPAuditRecordsLost
+        expr: increase(epp_audit_errors_total{stage="lost"}[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} lost {{ $value }} EPP audit records"
+          runbook: "docs/epp/RUNBOOK.md#audit-records-are-failing"
+
+      - alert: EPPEventsLost
+        expr: sum by (instance, event) (increase(epp_events_lost_total[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} could not write {{ $value | humanize }} {{ $labels.event }} outbox events"
+          runbook: "docs/epp/RUNBOOK.md#audit-records-are-failing"
+
+      - alert: EPPAuditWritesRetrying
+        expr: increase(epp_audit_errors_total{stage=~"sync|batch"}[10m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} keeps failing to write EPP audit records and is retrying"
+          runbook: "docs/epp/RUNBOOK.md#audit-records-are-failing"
+
+  - name: epp-abuse
+    rules:
+      - alert: EPPLoginSuspended
+        expr: sum by (clid) (increase(epp_logins_suspended_total[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "A login of {{ $labels.clid }} was suspended for creating registered names past its failed-create budget"
+          runbook: "docs/epp/RUNBOOK.md#a-login-was-suspended"
+
+      - alert: EPPFailedCreateSpike
+        expr: sum by (clid) (rate(epp_commands_total{command="domain:create",code="2302"}[5m])) * 300 > 300
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.clid }} sent {{ $value | humanize }} creates of registered names in 5 minutes"
+          runbook: "docs/epp/RUNBOOK.md#a-login-was-suspended"
+
+      - alert: EPPLockoutStorm
+        expr: sum(increase(epp_logins_total{result="locked"}[5m])) > 20
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value | humanize }} logins refused for lockout in 5 minutes"
+          runbook: "docs/epp/RUNBOOK.md#a-lockout-storm"
+
+      - alert: EPPLoginFailureStorm
+        expr: sum(increase(epp_login_failures_total[5m])) > 200
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value | humanize }} failed EPP logins in 5 minutes"
+          runbook: "docs/epp/RUNBOOK.md#a-lockout-storm"
+
+  - name: epp-capacity
+    rules:
+      - alert: EPPNodeConnectionCapReached
+        expr: sum by (instance) (increase(epp_connections_total{outcome=~"rejected_node_cap|rejected_handshake_cap"}[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} refused {{ $value | humanize }} connections at its connection or handshake cap"
+          runbook: "docs/epp/RUNBOOK.md#a-cap-is-saturated"
+
+      - alert: EPPSessionCapsSaturated
+        expr: sum(increase(epp_logins_total{result="session_limit"}[15m])) > 20
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $value | humanize }} logins refused at a session cap in 15 minutes"
+          runbook: "docs/epp/RUNBOOK.md#a-cap-is-saturated"
+
+      - alert: EPPCreateQueueTimeouts
+        expr: sum by (instance) (increase(epp_create_queue_timeouts_total[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} refused {{ $value | humanize }} creates for want of a slot"
+          runbook: "docs/epp/RUNBOOK.md#a-cap-is-saturated"
+
+      - alert: EPPCheckLatencyHigh
+        expr: histogram_quantile(0.99, sum by (le) (rate(epp_command_duration_seconds_bucket{command="domain:check"}[5m]))) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 <domain:check> latency is {{ $value | humanizeDuration }}, over the 250ms target"
+          runbook: "docs/epp/RUNBOOK.md#commands-are-slow"
