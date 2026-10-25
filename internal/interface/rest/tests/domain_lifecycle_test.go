@@ -331,14 +331,39 @@ var _ = Describe("DomainLifecycle", Ordered, func() {
 		Expect(domain.Status.PendingDelete).To(BeTrue())
 	})
 
-	It("should restore the domain", func() {
+	It("should refuse a restore report before the request", func() {
+		resp := api.POST(fmt.Sprintf("/domains/%s/restore/report", domainName), restoreReport())
+		Expect(resp.Code).To(Equal(http.StatusConflict), resp.Body.String())
+	})
+
+	It("should request the domain's restore", func() {
 		resp := api.POSTNoBody(fmt.Sprintf("/domains/%s/restore", domainName))
-		Expect(resp.Code).To(Equal(http.StatusOK))
+		Expect(resp.Code).To(Equal(http.StatusOK), resp.Body.String())
 
 		var domain entities.Domain
 		Expect(DecodeJSON(resp, &domain)).To(Succeed())
-		// After restore, PendingDelete should be cleared
+		// RFC 3915: pendingRestore, and still pendingDelete until the report
+		Expect(domain.Status.PendingRestore).To(BeTrue())
+		Expect(domain.Status.PendingDelete).To(BeTrue())
+		Expect(domain.RGPStatus.PendingRestoreEnd).To(BeTemporally(">", time.Now()))
+	})
+
+	It("should refuse an incomplete restore report", func() {
+		report := restoreReport()
+		report.Statements = report.Statements[:1]
+		resp := api.POST(fmt.Sprintf("/domains/%s/restore/report", domainName), report)
+		Expect(resp.Code).To(Equal(http.StatusBadRequest), resp.Body.String())
+	})
+
+	It("should restore the domain with its report", func() {
+		resp := api.POST(fmt.Sprintf("/domains/%s/restore/report", domainName), restoreReport())
+		Expect(resp.Code).To(Equal(http.StatusOK), resp.Body.String())
+
+		var domain entities.Domain
+		Expect(DecodeJSON(resp, &domain)).To(Succeed())
+		Expect(domain.Status.PendingRestore).To(BeFalse())
 		Expect(domain.Status.PendingDelete).To(BeFalse())
+		Expect(domain.ExpiryDate).To(BeTemporally(">", time.Now()))
 	})
 
 	It("should verify domain is active after restore", func() {
@@ -420,3 +445,14 @@ var _ = Describe("DomainLifecycle", Ordered, func() {
 		api.DELETE(fmt.Sprintf("/registry-operators/%s", ryID))
 	})
 })
+
+// restoreReport is a complete restore report (RFC 3915 §4.2.5).
+func restoreReport() entities.RestoreReport {
+	now := time.Now().UTC()
+	return entities.RestoreReport{
+		PreData: "before", PostData: "after",
+		DelTime: now.Add(-48 * time.Hour), ResTime: now.Add(-time.Minute),
+		ResReason:  "Registrant error.",
+		Statements: []string{"Not restored to use or sell the name.", "This report is factual."},
+	}
+}

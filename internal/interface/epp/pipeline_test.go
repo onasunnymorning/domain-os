@@ -130,7 +130,7 @@ func TestDomainCheck(t *testing.T) {
 		"names reach the registry whitespace-collapsed, as the schema's token type defines them")
 
 	t.Run("more names than the cap is 2306, without asking the registry", func(t *testing.T) {
-		names := make([]string, testConfig().Commands.MaxCheckNames+1)
+		names := make([]string, entities.DefaultEPPPolicyLimits().CheckNames+1)
 		for i := range names {
 			names[i] = fmt.Sprintf("n%d.test", i)
 		}

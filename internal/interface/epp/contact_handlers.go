@@ -17,11 +17,8 @@ import (
 // (services.EPPContactService).
 
 // contactCheck answers <contact:check>: whether each ID is free, in the
-// order asked. More IDs than EPP_MAX_CHECK_NAMES is 2306.
+// order asked. More IDs than the registrar's policy allows is 2306.
 func (s *Server) contactCheck(ctx context.Context, cmd *command) {
-	if !s.checkSizeAllowed(cmd) {
-		return
-	}
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 	results, err := s.contacts.Check(ctx, cmd.objects)

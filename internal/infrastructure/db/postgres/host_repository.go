@@ -30,7 +30,7 @@ func (r *HostRepository) CreateHost(ctx context.Context, host *entities.Host) (*
 	// If we don't remove the addresses here, they will be present in the response, which could lead the user to believe they were created, while in fact we Omit them
 	host.Addresses = nil
 	gormHost := ToDBHost(host)
-	err := r.db.WithContext(ctx).Omit("Addresses").Create(gormHost).Error // We Omit addresses we want to manage these through the address repository
+	err := dbFrom(ctx, r.db).Omit("Addresses").Create(gormHost).Error // We Omit addresses we want to manage these through the address repository
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil, entities.ErrHostAlreadyExists
@@ -49,7 +49,7 @@ func (r *HostRepository) BulkCreate(ctx context.Context, hosts []*entities.Host)
 		dbHosts[i] = ToDBHost(h)
 	}
 
-	err := r.db.WithContext(ctx).Create(dbHosts).Error
+	err := dbFrom(ctx, r.db).Create(dbHosts).Error
 	if isUniqueViolation(err) {
 		return fmt.Errorf("%w: %w", entities.ErrHostAlreadyExists, err)
 	}
@@ -59,7 +59,7 @@ func (r *HostRepository) BulkCreate(ctx context.Context, hosts []*entities.Host)
 // GetHostByRoid gets a host by its roid
 func (r *HostRepository) GetHostByRoid(ctx context.Context, roid int64) (*entities.Host, error) {
 	var gormHost Host
-	err := r.db.WithContext(ctx).Preload("Addresses").First(&gormHost, roid).Error
+	err := dbFrom(ctx, r.db).Preload("Addresses").First(&gormHost, roid).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrHostNotFound
@@ -72,7 +72,7 @@ func (r *HostRepository) GetHostByRoid(ctx context.Context, roid int64) (*entiti
 // GetHostByNameAndClID gets a host by its name and clid
 func (r *HostRepository) GetHostByNameAndClID(ctx context.Context, name string, clid string) (*entities.Host, error) {
 	var gormHost Host
-	err := r.db.WithContext(ctx).Preload("Addresses").Where("name = ? AND cl_id = ?", name, clid).First(&gormHost).Error
+	err := dbFrom(ctx, r.db).Preload("Addresses").Where("name = ? AND cl_id = ?", name, clid).First(&gormHost).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrHostNotFound
@@ -87,7 +87,7 @@ func (r *HostRepository) UpdateHost(ctx context.Context, host *entities.Host) (*
 	// If we don't remove the addresses here, they will be present in the response, which could lead the user to believe they were updated, while in face we Omit them
 	host.Addresses = nil
 	gormHost := ToDBHost(host)
-	err := r.db.WithContext(ctx).Omit("Addresses").Save(gormHost).Error // We Omit addresses we don't want to manage these through this endpoint
+	err := dbFrom(ctx, r.db).Omit("Addresses").Save(gormHost).Error // We Omit addresses we don't want to manage these through this endpoint
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (r *HostRepository) UpdateHostAndAddresses(ctx context.Context, host *entit
 		keep[i] = a.Address
 	}
 	stored := &Host{}
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := dbFrom(ctx, r.db).Transaction(func(tx *gorm.DB) error {
 		if err := lockParent(tx, parent, gormHost.ClID); err != nil {
 			return err
 		}
@@ -157,7 +157,7 @@ func (r *HostRepository) DeleteHostIfUnchanged(ctx context.Context, h *entities.
 	if err != nil {
 		return err
 	}
-	q := r.db.WithContext(ctx).Where("ro_id = ? AND cl_id = ?", roid, h.ClID.String())
+	q := dbFrom(ctx, r.db).Where("ro_id = ? AND cl_id = ?", roid, h.ClID.String())
 	if err := written(updateIfAt(q, h.UpdatedAt).Delete(&Host{})); err != nil {
 		if errors.Is(err, errNotWritten) {
 			return r.notWritten(ctx, roid, entities.ErrHostChanged)
@@ -171,7 +171,7 @@ func (r *HostRepository) DeleteHostIfUnchanged(ctx context.Context, h *entities.
 // (ErrHostNotFound), or else changed (changed).
 func (r *HostRepository) notWritten(ctx context.Context, roid int64, changed error) error {
 	var n int64
-	if err := r.db.WithContext(ctx).Model(&Host{}).Where("ro_id = ?", roid).Count(&n).Error; err != nil {
+	if err := dbFrom(ctx, r.db).Model(&Host{}).Where("ro_id = ?", roid).Count(&n).Error; err != nil {
 		return err
 	}
 	if n == 0 {
@@ -187,7 +187,7 @@ func (r *HostRepository) notWritten(ctx context.Context, roid int64, changed err
 func (r *HostRepository) CreateHostUnder(ctx context.Context, host *entities.Host, parent string) (*entities.Host, error) {
 	gormHost := ToDBHost(host)
 	stored := &Host{}
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := dbFrom(ctx, r.db).Transaction(func(tx *gorm.DB) error {
 		if err := lockParent(tx, parent, gormHost.ClID); err != nil {
 			return err
 		}
@@ -235,7 +235,7 @@ func lockParent(tx *gorm.DB, parent, clid string) error {
 // sponsors them.
 func (r *HostRepository) CountHostsByName(ctx context.Context, name string) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&Host{}).Where("name = ?", name).Count(&count).Error
+	err := dbFrom(ctx, r.db).Model(&Host{}).Where("name = ?", name).Count(&count).Error
 	return count, err
 }
 
@@ -243,7 +243,7 @@ func (r *HostRepository) CountHostsByName(ctx context.Context, name string) (int
 // nameserver and that clid does not sponsor.
 func (r *HostRepository) CountHostLinksFromOtherSponsors(ctx context.Context, roid int64, clid string) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Raw(`SELECT COUNT(*) FROM domain_hosts dh
+	err := dbFrom(ctx, r.db).Raw(`SELECT COUNT(*) FROM domain_hosts dh
 		JOIN domains d ON d.ro_id = dh.domain_ro_id
 		WHERE dh.host_ro_id = ? AND d.cl_id <> ?`, roid, clid).Scan(&count).Error
 	return count, err
@@ -251,13 +251,13 @@ func (r *HostRepository) CountHostLinksFromOtherSponsors(ctx context.Context, ro
 
 // DeleteHostByRoid deletes a host by its roid
 func (r *HostRepository) DeleteHostByRoid(ctx context.Context, roid int64) error {
-	return r.db.WithContext(ctx).Delete(&Host{}, roid).Error
+	return dbFrom(ctx, r.db).Delete(&Host{}, roid).Error
 }
 
 // ListHosts lists hosts
 func (r *HostRepository) ListHosts(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Host, string, error) {
 	// Get a query object ordering by ro_id (PK used for cursor pagination)
-	dbQuery := r.db.WithContext(ctx).Order("ro_id ASC")
+	dbQuery := dbFrom(ctx, r.db).Order("ro_id ASC")
 
 	// Add cursor pagination if a cursor is provided
 	if params.PageCursor != "" {
@@ -316,7 +316,7 @@ func (r *HostRepository) ListHosts(ctx context.Context, params queries.ListItems
 func (r *HostRepository) Count(ctx context.Context, filter queries.ListHostsFilter) (int64, error) {
 	var count int64
 
-	dbQuery := r.db.WithContext(ctx).Model(&Host{})
+	dbQuery := dbFrom(ctx, r.db).Model(&Host{})
 
 	var err error
 	if dbQuery, err = setHostFilters(dbQuery, filter); err != nil {
@@ -354,7 +354,7 @@ func setHostFilters(dbQuery *gorm.DB, f queries.ListHostsFilter) (*gorm.DB, erro
 // GetHostAssociationCount returns the number of domains a host is associated with. This can be used to determine if a host needs the linked flag to be unset
 func (r *HostRepository) GetHostAssociationCount(ctx context.Context, roid int64) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Raw("SELECT COUNT(*) FROM domain_hosts WHERE host_ro_id = ?", roid).Scan(&count).Error
+	err := dbFrom(ctx, r.db).Raw("SELECT COUNT(*) FROM domain_hosts WHERE host_ro_id = ?", roid).Scan(&count).Error
 	if err != nil {
 		return 0, err
 	}

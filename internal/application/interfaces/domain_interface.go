@@ -48,8 +48,12 @@ type DomainService interface {
 	MarkDomainForDeletion(ctx context.Context, domainName string) (*entities.Domain, error)
 	// ExpireDomain expires a domain
 	ExpireDomain(ctx context.Context, domainName string) (*entities.Domain, error)
-	// RestoreDomain restores a domain as a registrar
+	// RestoreDomain requests a domain's restore for its sponsor (RFC 3915);
+	// a phase that requires no report restores it at once
 	RestoreDomain(ctx context.Context, domainName string) (*entities.Domain, error)
+	// ReportRestore sends a domain's restore report for its sponsor, which
+	// completes the restore
+	ReportRestore(ctx context.Context, domainName string, report entities.RestoreReport) (*entities.Domain, error)
 	// PurgeDomain purges a domain after it has reached it's purge date
 	PurgeDomain(ctx context.Context, scope entities.RegistryScope, domainName string) error
 

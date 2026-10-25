@@ -26,9 +26,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	epplib "gitlab.com/internetstiftelsen-oss/epp-lib"
 
+	"github.com/onasunnymorning/domain-os/internal/application/epppolicy"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/config"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
 
 // forceCloseGrace is how long Shutdown waits for sessions to unwind after it
@@ -61,6 +64,25 @@ type Options struct {
 	Contacts interfaces.EPPContactService
 	// Polls answers <poll>. Required.
 	Polls interfaces.EPPPollService
+	// Policies is where the registrars' EPP policies are read from, every
+	// credential refresh interval. Required.
+	Policies interfaces.EPPPolicySource
+	// Rates counts the registrars' and families' command rates and daily
+	// create quotas, across every node. Required.
+	Rates interfaces.EPPRateLimiter
+	// FailedCreates counts the registrars' and families' domain creates of
+	// registered names, and keeps the failed-create budget's strikes and
+	// login suspensions, across every node. Required.
+	FailedCreates interfaces.EPPFailedCreateTracker
+	// CreateOutcomes keeps each registrar's daily counts of creates that
+	// created a domain and that failed for a registered name. Required.
+	CreateOutcomes epppolicy.CreateOutcomes
+	// Events records what the server decides on its own, such as a login
+	// suspended for failed creates, in the outbox. Required.
+	Events repositories.EventPublisher
+	// Escalation, if set, replaces epppolicy.DefaultEscalation; tests
+	// shorten it.
+	Escalation *epppolicy.Escalation
 	// Audit records every command and response. Required.
 	Audit  interfaces.EPPAuditLog
 	Logger *slog.Logger
@@ -85,10 +107,18 @@ type Server struct {
 	polls    interfaces.EPPPollService
 	auditLog interfaces.EPPAuditLog
 	policy   commandPolicy
-	watch    credentialWatch
-	logger   *slog.Logger
-	newID    func() string
-	router   map[routeKey]route
+	enforcer *epppolicy.Enforcer
+	events   repositories.EventPublisher
+	// creates admits <domain:create>s, a fair share at a time.
+	creates *createGate
+	watch   credentialWatch
+	// policySource is read into policies every refresh; until the first
+	// read succeeds, policies holds the built-in policies' starting limits.
+	policySource interfaces.EPPPolicySource
+	policies     atomic.Pointer[entities.EPPPolicySet]
+	logger       *slog.Logger
+	newID        func() string
+	router       map[routeKey]route
 
 	serving   atomic.Bool
 	draining  atomic.Bool
@@ -125,6 +155,24 @@ func NewServer(opts Options) (*Server, error) {
 	if opts.Audit == nil {
 		return nil, errors.New("epp: Options.Audit is required")
 	}
+	if opts.Policies == nil {
+		return nil, errors.New("epp: Options.Policies is required")
+	}
+	if opts.Rates == nil {
+		return nil, errors.New("epp: Options.Rates is required")
+	}
+	if opts.FailedCreates == nil {
+		return nil, errors.New("epp: Options.FailedCreates is required")
+	}
+	if opts.CreateOutcomes == nil {
+		return nil, errors.New("epp: Options.CreateOutcomes is required")
+	}
+	if opts.Events == nil {
+		return nil, errors.New("epp: Options.Events is required")
+	}
+	if opts.Config.Commands.CreatesInFlight < 1 || opts.Config.Commands.CreateQueueWait <= 0 {
+		return nil, errors.New("epp: Config.Commands.CreatesInFlight and CreateQueueWait must be positive")
+	}
 	s := &Server{
 		cfg:      opts.Config,
 		sessions: newSessionRegistry(),
@@ -136,12 +184,21 @@ func NewServer(opts Options) (*Server, error) {
 		contacts: opts.Contacts,
 		polls:    opts.Polls,
 		auditLog: opts.Audit,
-		policy:   allowAll{},
 		logger:   opts.Logger,
 		newID:    opts.NewID,
 		served:   make(chan struct{}),
 	}
+	s.creates = newCreateGate(s.cfg.Commands.CreatesInFlight)
+	s.metrics.watchCreates(s.creates)
 	s.router = s.routes()
+	s.policySource = opts.Policies
+	s.policies.Store(entities.DefaultEPPPolicySet())
+	s.events = opts.Events
+	s.enforcer = epppolicy.NewEnforcer(opts.Rates, opts.FailedCreates, opts.CreateOutcomes)
+	if opts.Escalation != nil {
+		s.enforcer.WithEscalation(*opts.Escalation)
+	}
+	s.policy = registrarPolicies{s: s}
 
 	var err error
 	if s.cfg.TLS.SelfSigned {
@@ -261,6 +318,18 @@ func (s *Server) Ready() bool {
 // unreachable, for epp_policy_store_degraded{store="lockout"}.
 func (s *Server) ReportLockoutDegraded(degraded bool) {
 	s.reportStoreDegraded(storeLockout, degraded)
+}
+
+// ReportRatesDegraded records whether the shared command rate store is
+// unreachable, for epp_policy_store_degraded{store="rates"}.
+func (s *Server) ReportRatesDegraded(degraded bool) {
+	s.reportStoreDegraded(storeRates, degraded)
+}
+
+// ReportFailedCreatesDegraded records whether the shared failed-create
+// store is unreachable, for epp_policy_store_degraded{store="failed_creates"}.
+func (s *Server) ReportFailedCreatesDegraded(degraded bool) {
+	s.reportStoreDegraded(storeFailedCreates, degraded)
 }
 
 // ReportAuditError records a failure of the audit log's batch writer: a

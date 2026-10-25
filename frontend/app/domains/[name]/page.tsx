@@ -116,6 +116,7 @@ export default function DomainDetailPage() {
     if (inFuture(r.transferLockPeriodEnd)) labels.push(RGP_LABELS.transferLockPeriodEnd);
     if (inFuture(r.redemptionPeriodEnd)) labels.push(RGP_LABELS.redemptionPeriodEnd);
     if (inFuture(r.purgeDate)) labels.push(RGP_LABELS.purgeDate);
+    if (inFuture(r.pendingRestoreEnd)) labels.push(RGP_LABELS.pendingRestoreEnd);
     return labels;
   }, [domain?.RGPStatus]);
 

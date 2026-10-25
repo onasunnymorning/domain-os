@@ -70,7 +70,7 @@ func fromNNDN(n *entities.NNDN) *NNDN {
 
 func (r *GormNNDNRepository) CreateNNDN(ctx context.Context, nndn *entities.NNDN) (*entities.NNDN, error) {
 	gormNNDN := fromNNDN(nndn)
-	result := r.db.WithContext(ctx).Create(gormNNDN)
+	result := dbFrom(ctx, r.db).Create(gormNNDN)
 	if err := result.Error; err != nil {
 		var perr *pgconn.PgError
 		if errors.As(err, &perr) && perr.Code == "23505" {
@@ -83,7 +83,7 @@ func (r *GormNNDNRepository) CreateNNDN(ctx context.Context, nndn *entities.NNDN
 
 func (r *GormNNDNRepository) GetNNDN(ctx context.Context, name string) (*entities.NNDN, error) {
 	var gormNNDN NNDN
-	result := r.db.WithContext(ctx).Where("Name = ?", name).First(&gormNNDN)
+	result := dbFrom(ctx, r.db).Where("Name = ?", name).First(&gormNNDN)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrNNDNNotFound
@@ -105,7 +105,7 @@ func (r *GormNNDNRepository) GetNNDN(ctx context.Context, name string) (*entitie
 func (r *GormNNDNRepository) UpdateNNDN(ctx context.Context, nndn *entities.NNDN) (*entities.NNDN, error) {
 	gormNNDN := fromNNDN(nndn)
 	gormNNDN.UpdatedAt = time.Now().UTC() // Save() used to stamp this; see UpdateDomain
-	res := r.db.WithContext(ctx).
+	res := dbFrom(ctx, r.db).
 		Model(&NNDN{}).
 		Where("name = ? AND tld_name = ?", gormNNDN.Name, gormNNDN.TLDName).
 		Select("*").
@@ -122,7 +122,7 @@ func (r *GormNNDNRepository) UpdateNNDN(ctx context.Context, nndn *entities.NNDN
 // DeleteNNDN deletes an NNDN by its name, within scope. An NNDN that does not
 // exist, or that is in a TLD outside the scope, is ErrNNDNNotFound.
 func (r *GormNNDNRepository) DeleteNNDN(ctx context.Context, scope entities.RegistryScope, name string) error {
-	q, err := scopeToTLDs(r.db.WithContext(ctx).Where("name = ?", name), scope)
+	q, err := scopeToTLDs(dbFrom(ctx, r.db).Where("name = ?", name), scope)
 	if err != nil {
 		return err
 	}
@@ -130,7 +130,7 @@ func (r *GormNNDNRepository) DeleteNNDN(ctx context.Context, scope entities.Regi
 }
 
 func (r *GormNNDNRepository) Count(ctx context.Context, filter queries.ListNndnsFilter) (int64, error) {
-	dbQuery := r.db.WithContext(ctx).Model(&NNDN{})
+	dbQuery := dbFrom(ctx, r.db).Model(&NNDN{})
 	dbQuery, err := setNNDNFilters(dbQuery, filter)
 	if err != nil {
 		return 0, err
@@ -142,7 +142,7 @@ func (r *GormNNDNRepository) Count(ctx context.Context, filter queries.ListNndns
 
 func (r *GormNNDNRepository) ListNNDNs(ctx context.Context, params queries.ListItemsQuery) ([]*entities.NNDN, string, error) {
 	// Get a query object ordering by name (PK used for cursor pagination)
-	dbQuery := r.db.WithContext(ctx).Order("Name ASC")
+	dbQuery := dbFrom(ctx, r.db).Order("Name ASC")
 
 	// Add cursor pagination if a cursor is provided
 	if params.PageCursor != "" {

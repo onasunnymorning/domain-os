@@ -41,7 +41,9 @@ const (
 // still as it was read (else entities.ErrDomainChanged), with the transfer
 // and the losing registrar's poll message, and the request is recorded as
 // a domain.transfer_requested event.
-func (s *DomainService) RequestTransferAsRead(ctx context.Context, dom *entities.Domain, gaining entities.ClIDType, authInfo string, years int) (*entities.Domain, *entities.DomainTransfer, error) {
+func (s *DomainService) RequestTransferAsRead(ctx context.Context, dom *entities.Domain, gaining entities.ClIDType, authInfo string, years int) (_ *entities.Domain, _ *entities.DomainTransfer, err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	if s.transferRepo == nil {
 		return nil, nil, ErrTransfersNotConfigured
 	}
@@ -87,7 +89,9 @@ func (s *DomainService) RequestTransferAsRead(ctx context.Context, dom *entities
 // pendingTransfer. Every outcome queues poll messages for the registrars
 // that did not act. Written only if dom and tr are still as read (else
 // entities.ErrDomainChanged).
-func (s *DomainService) ResolveTransferAsRead(ctx context.Context, dom *entities.Domain, tr *entities.DomainTransfer, status entities.TransferStatus, actor entities.ClIDType) (*entities.Domain, *entities.DomainTransfer, error) {
+func (s *DomainService) ResolveTransferAsRead(ctx context.Context, dom *entities.Domain, tr *entities.DomainTransfer, status entities.TransferStatus, actor entities.ClIDType) (_ *entities.Domain, _ *entities.DomainTransfer, err error) {
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	if s.transferRepo == nil {
 		return nil, nil, ErrTransfersNotConfigured
 	}

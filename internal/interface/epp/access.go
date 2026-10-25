@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // credentialWatch is the node's periodically refreshed view of registrars'
@@ -61,13 +63,40 @@ func (s *Server) admitSource(a net.Addr) bool {
 func (s *Server) watchCredentials(ctx context.Context) {
 	ticker := time.NewTicker(s.cfg.Auth.RefreshInterval)
 	defer ticker.Stop()
+	var noted time.Time
 	for {
 		s.refreshCredentials(ctx)
+		s.refreshPolicies(ctx)
+		if time.Since(noted) >= certificateNoticeInterval {
+			noted = time.Now()
+			s.noteExpiringCertificates(ctx)
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
+	}
+}
+
+// certificateNoticeInterval is how often a node looks for pinned
+// certificates due an expiry notice. Every node looks; each notice is
+// given once.
+const certificateNoticeInterval = time.Hour
+
+// noteExpiringCertificates records the expiry notices due
+// (epp.certificate.expiring). A failure is logged and tried again at the
+// next interval.
+func (s *Server) noteExpiringCertificates(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, s.cfg.Auth.RefreshInterval)
+	defer cancel()
+	n, err := s.auth.NoteExpiringCertificates(ctx)
+	if err != nil {
+		s.logger.Warn("EPP certificate expiry notices not all recorded; retrying next interval", "recorded", n, "error", err)
+		return
+	}
+	if n > 0 {
+		s.logger.Info("EPP certificate expiry notices recorded", "count", n)
 	}
 }
 
@@ -98,6 +127,54 @@ func (s *Server) refreshCredentials(ctx context.Context) {
 		return
 	}
 	s.endCompromisedSessions(ids)
+}
+
+// refreshPolicies reloads the EPP policies, their assignments and the
+// registrar families. A failed load keeps the set last loaded, or the
+// built-in policies' starting limits before the first: enforcement fails
+// open to what the node knows, and the next refresh catches up.
+func (s *Server) refreshPolicies(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, s.cfg.Auth.RefreshInterval)
+	defer cancel()
+	set, err := s.policySource.PolicySet(ctx)
+	if err != nil {
+		s.metrics.policyRefreshErrors.Inc()
+		s.logger.Error("EPP policies not refreshed; keeping the previous set", "error", err)
+		return
+	}
+	s.policies.Store(set)
+	s.metrics.policiesRefreshed.SetToCurrentTime()
+	if s.reconcileFamilies(set) {
+		// Move the sessions' registry entries now, not at the next
+		// heartbeat, so a family's count is right at once.
+		if err := s.renewOnce(ctx); err != nil {
+			s.logger.Warn("EPP sessions not moved to their new families; the next heartbeat will", "error", err)
+		}
+	}
+}
+
+// reconcileFamilies attributes every logged-in session on this node to its
+// registrar's family in set: a registrar that joined a family counts
+// against it from now on, and one that left no longer does. Sessions stay
+// open whatever the new counts, as they do when a cap is lowered. It
+// reports whether any session moved.
+func (s *Server) reconcileFamilies(set *entities.EPPPolicySet) bool {
+	moved := false
+	for _, sess := range s.sessions.all() {
+		auth := sess.auth.Load()
+		if auth == nil {
+			continue
+		}
+		family := ""
+		if f := set.ForRegistrar(auth.ClID).Family; f != nil {
+			family = f.Name
+		}
+		if sess.familyName() != family {
+			sess.family.Store(&family)
+			moved = true
+		}
+	}
+	return moved
 }
 
 // endCompromisedSessions closes every session on this node that

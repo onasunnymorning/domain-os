@@ -43,5 +43,5 @@ func (p *PostgresEventPublisher) Publish(ctx context.Context, events ...entities
 			)
 		}
 	}
-	return p.db.WithContext(ctx).Create(&records).Error
+	return dbFrom(ctx, p.db).Create(&records).Error
 }

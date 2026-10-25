@@ -47,6 +47,12 @@ type command struct {
 	// attemptedLogin is the login ID a <login> presented, for the audit log
 	// of a login that did not succeed.
 	attemptedLogin string
+	// release gives back what the policy counted against a quota for this
+	// command, if it does not succeed.
+	release func(context.Context)
+	// recorded counts the command's outcome for the policy, once it has
+	// run.
+	recorded func(ctx context.Context, code int)
 }
 
 // respond sets the response to this command. msg may be empty for the
@@ -107,7 +113,7 @@ func (s *Server) routes() map[routeKey]route {
 		{command: "logout"}:                       {handler: s.logout, requiresLogin: true},
 		{command: "check", objectNS: nsDomain}:    {handler: s.domainCheck, requiresLogin: true},
 		{command: "info", objectNS: nsDomain}:     {handler: s.domainInfo, requiresLogin: true},
-		{command: "create", objectNS: nsDomain}:   {handler: s.domainCreate, requiresLogin: true},
+		{command: "create", objectNS: nsDomain}:   {handler: s.admitCreate(s.domainCreate), requiresLogin: true},
 		{command: "update", objectNS: nsDomain}:   {handler: s.domainUpdate, requiresLogin: true},
 		{command: "renew", objectNS: nsDomain}:    {handler: s.domainRenew, requiresLogin: true},
 		{command: "delete", objectNS: nsDomain}:   {handler: s.domainDelete, requiresLogin: true},
@@ -232,6 +238,7 @@ func (s *Server) dispatch(ctx context.Context, cmd *command, body []byte) {
 	}
 	cmd.handled = true
 	rt.handler(ctx, cmd)
+	s.afterHandler(ctx, cmd)
 }
 
 // servicesAllowed answers a command that uses an object or extension the

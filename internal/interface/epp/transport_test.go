@@ -120,7 +120,7 @@ func tlsOver(t *testing.T, conn net.Conn) *client {
 
 // clientTLSConfig presents the test client certificate, which the default
 // test credentials pin.
-func clientTLSConfig(t *testing.T) *tls.Config {
+func clientTLSConfig(t testing.TB) *tls.Config {
 	t.Helper()
 	return &tls.Config{
 		Certificates:       []tls.Certificate{testClientCertificate(t)},

@@ -53,4 +53,8 @@ type EPPAuthenticator interface {
 	AllowedNetworks(ctx context.Context) ([]netip.Prefix, error)
 	// CompromisedSince returns credentials retired as compromised since.
 	CompromisedSince(ctx context.Context, since time.Time) ([]uuid.UUID, error)
+	// NoteExpiringCertificates records an epp.certificate.expiring event
+	// for each pinned certificate due an expiry notice it has not had, and
+	// returns how many it recorded.
+	NoteExpiringCertificates(ctx context.Context) (int, error)
 }

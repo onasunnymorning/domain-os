@@ -71,6 +71,13 @@ type EPPDomainRegistrar interface {
 	// actor did (empty for the registry). An approval re-links dom's
 	// nameservers as entities.TransferResolution describes.
 	ResolveTransferAsRead(ctx context.Context, dom *entities.Domain, tr *entities.DomainTransfer, status entities.TransferStatus, actor entities.ClIDType) (*entities.Domain, *entities.DomainTransfer, error)
+	// RequestRestoreAsRead requests the restore of dom for actor, its
+	// sponsor (entities.Domain.RequestRestore); a phase that requires no
+	// report restores it at once.
+	RequestRestoreAsRead(ctx context.Context, dom *entities.Domain, actor entities.ClIDType) (*entities.Domain, error)
+	// CompleteRestoreAsRead restores dom, whose restore is pending, with
+	// its sponsor's report (entities.Domain.CompleteRestore).
+	CompleteRestoreAsRead(ctx context.Context, dom *entities.Domain, report entities.RestoreReport, actor entities.ClIDType) (*entities.Domain, error)
 }
 
 // EPPDomainServiceDeps are what EPPDomainService reads and writes through.

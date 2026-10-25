@@ -1,0 +1,40 @@
+# promtool unit tests for epp.rules.yml: `make alerts-check`.
+rule_files:
+  - ../rules/epp.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'epp_logins_suspended_total{instance="epp-1", clid="rar-a"}'
+        values: '0 0 1 1 1'
+      - series: 'epp_policy_store_degraded{instance="epp-1", store="rates"}'
+        values: '0 1 1 1 1'
+      - series: 'epp_server_cert_not_after_timestamp_seconds{instance="epp-1"}'
+        values: '432000+0x4' # 5 days after the epoch: under 7 and 30 days
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: EPPLoginSuspended
+        exp_alerts:
+          - exp_labels: { severity: warning, clid: rar-a }
+            exp_annotations:
+              summary: "A login of rar-a was suspended for creating registered names past its failed-create budget"
+              runbook: "docs/epp/RUNBOOK.md#a-login-was-suspended"
+      - eval_time: 1m
+        alertname: EPPPolicyStoreDegraded
+        exp_alerts: [] # not yet for 2 minutes
+      - eval_time: 4m
+        alertname: EPPPolicyStoreDegraded
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: epp-1, store: rates }
+            exp_annotations:
+              summary: "epp-1 cannot reach Redis for rates; it is counting on its own"
+              runbook: "docs/epp/RUNBOOK.md#a-policy-store-is-degraded"
+      - eval_time: 2m
+        alertname: EPPServerCertExpiresIn7Days
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: epp-1 }
+            exp_annotations:
+              summary: "The EPP server certificate on epp-1 expires in 4d 23h 58m 0s"
+              runbook: "docs/epp/RUNBOOK.md#rotate-the-server-certificate"

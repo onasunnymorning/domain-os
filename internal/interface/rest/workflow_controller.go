@@ -424,7 +424,11 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 		args = []interface{}{loopParams}
 
 	case "purge-loop":
-		var loopParams workflows.PurgeLoopParams
+		// A run launched by hand is an operator purging now: it waits no
+		// release offset unless it asks for a window. Scheduled runs keep
+		// the default window.
+		none := 0
+		loopParams := workflows.PurgeLoopParams{ReleaseWindowMinutes: &none}
 		if req.Params != nil {
 			if bs, ok := req.Params["batchSize"].(float64); ok && bs > 0 {
 				loopParams.BatchSize = int(bs)
@@ -436,6 +440,10 @@ func (c *WorkflowController) LaunchWorkflow(ctx *gin.Context) {
 				if parsedTime, err := time.Parse(time.RFC3339, rto); err == nil {
 					loopParams.ReferenceTimeOverride = &parsedTime
 				}
+			}
+			if rw, ok := req.Params["releaseWindowMinutes"].(float64); ok && rw >= 0 {
+				minutes := int(rw)
+				loopParams.ReleaseWindowMinutes = &minutes
 			}
 		}
 		wfID = fmt.Sprintf("purge-loop-%s", ts)

@@ -10,14 +10,15 @@ import (
 // EPPSessionTracker is what the EPP server asks of the cluster-wide session
 // registry (docs/epp/ARCHITECTURE.md §3).
 type EPPSessionTracker interface {
-	// Caps are the session caps in force.
+	// Caps are the session caps that are server settings (the source cap).
 	Caps() entities.EPPSessionCaps
 	// Open registers a session that has completed its TLS handshake, under
 	// its source address's cap.
 	Open(ctx context.Context, s *entities.EPPSession) error
-	// Authenticate records who s logged in as, under the registrar's and the
-	// login's caps. Over a cap it returns an *entities.EPPSessionLimitError.
-	Authenticate(ctx context.Context, s *entities.EPPSession, login *entities.EPPAuthenticatedLogin) error
+	// Authenticate records who s logged in as, under limits: its EPP
+	// policy's caps for the registrar, the login and its family. Over a cap
+	// it returns an *entities.EPPSessionLimitError.
+	Authenticate(ctx context.Context, s *entities.EPPSession, login *entities.EPPAuthenticatedLogin, limits entities.EPPSessionLimits) error
 	// Renew extends the leases of the node's sessions.
 	Renew(ctx context.Context, sessions []*entities.EPPSession) error
 	// Close removes a session.

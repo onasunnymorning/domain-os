@@ -22,8 +22,9 @@ type EPPSessionRegistry interface {
 	// its source address already holds perSource live sessions.
 	Open(ctx context.Context, s *entities.EPPSession, lease time.Duration, perSource int) error
 	// Authenticate records the login of an open session, unless its
-	// registrar already holds perRegistrar sessions or its login perLogin.
-	Authenticate(ctx context.Context, s *entities.EPPSession, lease time.Duration, perRegistrar, perLogin int) error
+	// registrar, its login or its family (s.Family, if any) already holds
+	// as many sessions as limits allows.
+	Authenticate(ctx context.Context, s *entities.EPPSession, lease time.Duration, limits entities.EPPSessionLimits) error
 	// Renew extends the leases of sessions and rewrites what they record. A
 	// session missing from the registry, for instance after an outage, is
 	// put back without a cap check.

@@ -664,9 +664,17 @@ func TestDomain_SetStatus(t *testing.T) {
 			wantErr:     nil,
 		},
 		{
-			name: "set Pending Restore with only OK",
+			name: "set Pending Restore with only OK: only a deleted domain is restored",
 			ds: DomainStatus{
 				OK: true,
+			},
+			StatusToSet: DomainStatusPendingRestore,
+			wantErr:     ErrInvalidDomainStatusCombination,
+		},
+		{
+			name: "set Pending Restore on a Pending Delete domain",
+			ds: DomainStatus{
+				PendingDelete: true,
 			},
 			StatusToSet: DomainStatusPendingRestore,
 			wantErr:     nil,
@@ -944,14 +952,6 @@ func TestDomain_UnSetStatus(t *testing.T) {
 				PendingUpdate: true,
 			},
 			StatusToUnSet: DomainStatusPendingUpdate,
-			wantErr:       nil,
-		},
-		{
-			name: "unset Pending Restore with only OK",
-			ds: DomainStatus{
-				PendingRestore: true,
-			},
-			StatusToUnSet: DomainStatusPendingRestore,
 			wantErr:       nil,
 		},
 		{
@@ -1521,119 +1521,6 @@ func TestDomain_Renew(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestDomain_CanBeRestored(t *testing.T) {
-	testcases := []struct {
-		name            string
-		DomainStatus    DomainStatus
-		DomainRGPStatus DomainRGPStatus
-		want            bool
-	}{
-		{
-			name:         "domain can be restored",
-			DomainStatus: DomainStatus{PendingDelete: true},
-			DomainRGPStatus: DomainRGPStatus{
-				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
-			},
-			want: true,
-		},
-		{
-			name:         "domain not in pendingDelete",
-			DomainStatus: DomainStatus{OK: true},
-			DomainRGPStatus: DomainRGPStatus{
-				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
-			},
-			want: false,
-		},
-		{
-			name:         "domain not in redemption period",
-			DomainStatus: DomainStatus{PendingDelete: true},
-			DomainRGPStatus: DomainRGPStatus{
-				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, -1),
-			},
-			want: false,
-		},
-	}
-
-	for _, tc := range testcases {
-		t.Run(tc.name, func(t *testing.T) {
-			d := &Domain{
-				Status:    tc.DomainStatus,
-				RGPStatus: tc.DomainRGPStatus,
-			}
-
-			assert.Equal(t, tc.want, d.CanBeRestored())
-		})
-	}
-}
-
-func TestDomain_Restore(t *testing.T) {
-	testcases := []struct {
-		name            string
-		DomainStatus    DomainStatus
-		DomainRGPStatus DomainRGPStatus
-		wantErr         error
-	}{
-		{
-			name:         "domain can be restored",
-			DomainStatus: DomainStatus{PendingDelete: true},
-			DomainRGPStatus: DomainRGPStatus{
-				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
-			},
-			wantErr: nil,
-		},
-		{
-			name:         "domain not in pendingDelete",
-			DomainStatus: DomainStatus{OK: true},
-			DomainRGPStatus: DomainRGPStatus{
-				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
-			},
-			wantErr: ErrDomainRestoreNotAllowed,
-		},
-		{
-			name:         "domain not in redemption period",
-			DomainStatus: DomainStatus{PendingDelete: true},
-			DomainRGPStatus: DomainRGPStatus{
-				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, -1),
-			},
-			wantErr: ErrDomainRestoreNotAllowed,
-		},
-		{
-			name:         "status prevents updates",
-			DomainStatus: DomainStatus{PendingDelete: true, ClientUpdateProhibited: true},
-			DomainRGPStatus: DomainRGPStatus{
-				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
-			},
-			wantErr: ErrDomainUpdateNotAllowed,
-		},
-		{
-			name:         "conflicting statusses",
-			DomainStatus: DomainStatus{PendingDelete: true, PendingTransfer: true},
-			DomainRGPStatus: DomainRGPStatus{
-				RedemptionPeriodEnd: time.Now().UTC().AddDate(0, 0, 1),
-			},
-			wantErr: ErrInvalidDomainStatusCombination,
-		},
-	}
-
-	for _, tc := range testcases {
-		t.Run(tc.name, func(t *testing.T) {
-			d := &Domain{
-				Status:    tc.DomainStatus,
-				RGPStatus: tc.DomainRGPStatus,
-			}
-
-			err := d.Restore()
-			require.ErrorIs(t, err, tc.wantErr)
-			if err == nil {
-				assert.False(t, d.Status.PendingDelete)
-				assert.True(t, d.Status.PendingRestore)
-				assert.False(t, d.Status.OK)
-			}
-		})
-	}
-
 }
 
 func TestDomain_MarkForDeletion(t *testing.T) {

@@ -40,14 +40,13 @@ func TestDomainRGPStatuses(t *testing.T) {
 	}
 }
 
-// restored is a domain as Restore leaves it: pendingRestore set and
-// pendingDelete cleared, still inside its redemption period.
+// restored is a domain whose restore was requested (RequestRestore): still
+// pendingDelete, and pendingRestore, inside its redemption period.
 func restored(t *testing.T, redemptionEnd time.Time) Domain {
 	t.Helper()
 	d := Domain{Status: DomainStatus{PendingDelete: true}, RGPStatus: DomainRGPStatus{RedemptionPeriodEnd: redemptionEnd}}
-	require.NoError(t, d.UnSetStatus(DomainStatusPendingDelete))
-	require.NoError(t, d.SetStatus(DomainStatusPendingRestore))
+	require.NoError(t, d.RequestRestore(&Phase{Policy: NewPhasePolicy()}, time.Now()))
 	require.True(t, d.Status.PendingRestore)
-	require.False(t, d.Status.PendingDelete)
+	require.True(t, d.Status.PendingDelete)
 	return d
 }

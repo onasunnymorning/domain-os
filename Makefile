@@ -219,6 +219,18 @@ test-unit: ## Run unit tests with coverage (no browser; see test-coverage for HT
 		fi; \
 		exit $$status
 
+.PHONY: fuzz-epp
+FUZZTIME ?= 1m
+fuzz-epp: ## Fuzz the EPP frame scanner and command pipeline, FUZZTIME each (default 1m)
+	@go test ./internal/interface/epp/ -run '^$$' -fuzz '^FuzzScanFrame$$' -fuzztime $(FUZZTIME)
+	@go test ./internal/interface/epp/ -run '^$$' -fuzz '^FuzzDispatch$$' -fuzztime $(FUZZTIME)
+	@go test ./internal/interface/epp/schema/ -run '^$$' -fuzz '^FuzzModelsAgreeWithXmllint$$' -fuzztime $(FUZZTIME)
+
+.PHONY: alerts-check
+alerts-check: ## Check the Prometheus config, alert rules and their unit tests with promtool (needs Docker)
+	@docker run --rm -v "$(CURDIR)/prometheus:/etc/prometheus" --entrypoint promtool prom/prometheus:v3.10.0 check config /etc/prometheus/prometheus.yaml
+	@docker run --rm -v "$(CURDIR)/prometheus:/etc/prometheus" -w /etc/prometheus/tests --entrypoint promtool prom/prometheus:v3.10.0 test rules epp.rules.test.yml
+
 test-integration: ## [LEGACY FALLBACK] Run Postman/Newman integration tests (requires Doppler + API keys)
 	@echo "Running integration tests with Postman/Newman..."
 	@echo "NOTE: This requires POSTMAN_COLLECTION_ID, POSTMAN_ENVIRONMENT_ID, and POSTMAN_API_KEY in Doppler"

@@ -118,22 +118,11 @@ var _ = Describe("DomainStatus", Ordered, func() {
 	//  Setting and unsetting pending statuses                             //
 	// ================================================================== //
 
-	It("should set status pendingRestore", func() {
+	It("should refuse pendingRestore on a domain that is not pendingDelete", func() {
+		// RFC 3915: only a deleted domain is restored, and it stays
+		// pendingDelete meanwhile.
 		resp := api.POSTNoBody(fmt.Sprintf("/domains/%s/status/pendingRestore", domainName))
-		Expect(resp.Code).To(Equal(http.StatusOK))
-
-		var domain entities.Domain
-		Expect(DecodeJSON(resp, &domain)).To(Succeed())
-		Expect(domain.Status.PendingRestore).To(BeTrue())
-	})
-
-	It("should unset status pendingRestore", func() {
-		resp := api.DELETE(fmt.Sprintf("/domains/%s/status/pendingRestore", domainName))
-		Expect(resp.Code).To(Equal(http.StatusOK))
-
-		var domain entities.Domain
-		Expect(DecodeJSON(resp, &domain)).To(Succeed())
-		Expect(domain.Status.PendingRestore).To(BeFalse())
+		Expect(resp.Code).To(Equal(http.StatusBadRequest))
 	})
 
 	It("should set status pendingDelete", func() {
@@ -152,6 +141,30 @@ var _ = Describe("DomainStatus", Ordered, func() {
 		var domain entities.Domain
 		Expect(DecodeJSON(resp, &domain)).To(Succeed())
 		Expect(domain.Status.PendingDelete).To(BeTrue())
+	})
+
+	It("should set status pendingRestore on a pendingDelete domain", func() {
+		resp := api.POSTNoBody(fmt.Sprintf("/domains/%s/status/pendingRestore", domainName))
+		Expect(resp.Code).To(Equal(http.StatusOK))
+
+		var domain entities.Domain
+		Expect(DecodeJSON(resp, &domain)).To(Succeed())
+		Expect(domain.Status.PendingRestore).To(BeTrue())
+		Expect(domain.Status.PendingDelete).To(BeTrue())
+	})
+
+	It("should refuse to unset pendingDelete while pendingRestore is set", func() {
+		resp := api.DELETE(fmt.Sprintf("/domains/%s/status/pendingDelete", domainName))
+		Expect(resp.Code).To(Equal(http.StatusBadRequest))
+	})
+
+	It("should unset status pendingRestore", func() {
+		resp := api.DELETE(fmt.Sprintf("/domains/%s/status/pendingRestore", domainName))
+		Expect(resp.Code).To(Equal(http.StatusOK))
+
+		var domain entities.Domain
+		Expect(DecodeJSON(resp, &domain)).To(Succeed())
+		Expect(domain.Status.PendingRestore).To(BeFalse())
 	})
 
 	It("should unset status pendingDelete", func() {

@@ -259,6 +259,8 @@ func main() {
 		activities.PurgeDomain,
 		activities.GetPurgeableDomainCount,
 		activities.ListPurgeableDomains,
+		activities.ReleaseOffset,
+		activities.ShuffleForRelease,
 		activities.ListRestoredDomains,
 		activities.GetDomain,
 		activities.RenewDomain,

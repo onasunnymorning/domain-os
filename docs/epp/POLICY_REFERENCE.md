@@ -7,7 +7,7 @@ Settings live in one of two places:
 | Kind | Lives in | How to change | Takes effect |
 |---|---|---|---|
 | **Server settings**: how a node listens, terminates TLS and times out | Environment variables, read once at start by `internal/config/epp.go` (INV-17). Each is registered in `internal/config/env_registry.go` and published in `deploy/contract.json` (`make generate-contract`) | Set the variable in the deployment's environment (Doppler for local and dev) | On restart. An unusable value stops the server at start rather than being silently replaced by a default |
-| **Policy limits**: what a registrar may do over its sessions | Database, versioned per tier with per-registrar overrides *(Phase 5)* | Admin API *(Phase 5)* | Within the policy reload interval, without a restart *(Phase 5)* |
+| **Policy limits**: what a registrar may do over its sessions | Database: named EPP policies, assigned to registrars and registrar families ([§ Policies](#policies)) | Admin API (`/epp/policies`, `/epp/families`, `/registrars/{clid}/epp/policy`) | Within `EPP_CREDENTIAL_REFRESH_INTERVAL`, without a restart |
 
 A value marked *(planned)* does not exist yet. The phase that introduces it is named in [ARCHITECTURE.md § Roadmap](ARCHITECTURE.md#roadmap).
 
@@ -94,8 +94,9 @@ A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always an
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `EPP_MAX_CHECK_NAMES` | `50` | Names one `<check>` may carry; more is answered 2306 without a lookup. Moves into the policy engine in Phase 5 |
 | `EPP_CHECK_PARALLELISM` | `8` | Availability lookups one `<check>` runs at once. Must be below `EPP_DB_MAX_OPEN_CONNS`, so one check cannot take every connection |
+| `EPP_MAX_CREATES_IN_FLIGHT` | `10` | `<domain:create>`s one node runs at once, let in fairly when they queue ([§ Create queue](#create-queue)). Must be below `EPP_DB_MAX_OPEN_CONNS`, so creates cannot take every connection |
+| `EPP_CREATE_QUEUE_WAIT` | `5s` | The longest a `<domain:create>` waits for a slot before it is refused with 2400 |
 
 **Audit log**
 
@@ -118,7 +119,7 @@ A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always an
 
 Fixed in code; the design is [ARCHITECTURE.md §4](ARCHITECTURE.md#4-frame--protocol-hygiene).
 
-**The pipeline.** Every frame passes, in order: the frame scanner (size, DTD, depth and element caps; 2001), parsing, routing (2000 for an unknown command, 2101 for an RFC 5730 command that is not bound), the session state (2002 before login, or for a second login), the services negotiated at login (below), schema validation (2001), a check that an object command's element is that command's (2001: `<delete><host:info>` passes the schema, whose wildcard takes any object element), a check that no extension element is given twice (2001: a handler reads one, so a second `<secDNS:update>` would be ignored), the policy (a pass-through until Phase 5; `epp_policy_decisions_total{rule,action}`), and the handler. Then the command is audited and its response sent.
+**The pipeline.** Every frame passes, in order: the frame scanner (size, DTD, depth and element caps; 2001), parsing, routing (2000 for an unknown command, 2101 for an RFC 5730 command that is not bound), the session state (2002 before login, or for a second login), the services negotiated at login (below), schema validation (2001), a check that an object command's element is that command's (2001: `<delete><host:info>` passes the schema, whose wildcard takes any object element), a check that no extension element is given twice (2001: a handler reads one, so a second `<secDNS:update>` would be ignored), the policy (the registrar's EPP policy, [§ Policies](#policies); `epp_policy_decisions_total{rule,action}`), and the handler. Then the command is audited and its response sent.
 
 **Schema validation** ([ADR 0016](../adr/0016-epp-schema-validation-in-go.md)). Every `<hello>` and every bound command is validated against Go models of the EPP schemas, which a differential test keeps in agreement with xmllint on the RST-pinned XSDs. A failure is 2001, with a message naming the element and the rule it broke (`Command syntax error; /epp/command/login/pw: must be 6 to 16 characters`), never the value. A malformed `<login>` is not a failed login. `epp_frames_rejected_total{reason="schema"}` counts them.
 
@@ -181,7 +182,7 @@ Availability is the same for every registrar. Names are looked up `EPP_CHECK_PAR
 
 Values are read as their schema types define them: identifiers whitespace-collapsed, and the password (a `normalizedString`) with tabs and line breaks as spaces, so the password stored is the one that was validated. Each refusal's message names the object or rule, after the standard text; anything else is 2400, with the detail only in the log. A phase that requires validation answers 1001 (`pendingCreate`). The ROID ends in the configured repository ID, `ROID_REPOSITORY_ID` (above, under Registry identity).
 
-**DNSSEC.** The registry takes DS data (RFC 5910's DS data interface) on `<domain:create>`, and returns it in `<secDNS:infData>` on `<domain:info>` to a session that logged in with `secDNS-1.1`. A `<secDNS:keyData>` inside a `<secDNS:dsData>` is accepted as supporting information and not kept. What it accepts from registrars, fixed in code (`services.AcceptedDSAlgorithms`, `AcceptedDSDigestTypes`, `MaxDSRecords`) until the policy engine (Phase 5):
+**DNSSEC.** The registry takes DS data (RFC 5910's DS data interface) on `<domain:create>`, and returns it in `<secDNS:infData>` on `<domain:info>` to a session that logged in with `secDNS-1.1`. A `<secDNS:keyData>` inside a `<secDNS:dsData>` is accepted as supporting information and not kept. What it accepts from registrars, fixed in code (`services.AcceptedDSAlgorithms`, `AcceptedDSDigestTypes`, `MaxDSRecords`): rules of the registry's data, the same for every registrar, so not in the EPP policies (ADR 0019):
 
 | | Accepted | Refused |
 |---|---|---|
@@ -218,7 +219,35 @@ A renewed domain is in its renew grace period (`renewPeriod`, RFC 3915) and the 
 1. A domain with a pending action, `clientDeleteProhibited` or `serverDeleteProhibited`: 2304. An update prohibition does not stop a delete: it stops updates only (RFC 5731 §2.3).
 2. A host object under the domain: 2305, naming the hosts. Delete or rename them first. The check is made again in the delete's own transaction, and a host create or rename into a domain locks the domain's row first and is refused (2304) once the domain is pendingDelete, so neither can slip past the other.
 
-Restoring a deleted domain (RFC 3915's restore request and report) is not offered yet.
+**Restore** (RFC 3915 §4.2.5; [`entities.Domain.RequestRestore`](../../pkg/domain/entities/restore.go) describes the process). The user guide is the admin UI's *Domain Restore* page (`frontend/lib/constants/domainRestoreDoc.ts`). A deleted domain is restored with a `<domain:update>` that changes nothing (`<domain:chg/>`) and carries `<rgp:update>`, for a session that logged in with RGP (2103 otherwise), in two steps, as .com does:
+
+| Step | `<rgp:restore op>` | Answer |
+|---|---|---|
+| Request | `request` | 1000, with `<rgp:upData><rgp:rgpStatus s="pendingRestore"/>` |
+| Report | `report`, with `<rgp:report>` | 1000, the domain restored |
+
+Both are answered only for the sponsor (2201 otherwise), and each is checked in this order:
+1. Any other change in the same update (an `<domain:add>`, `<domain:rem>` or `<domain:chg>` with content, or `<secDNS:update>`): 2306. Send it separately once the domain is restored.
+2. A request for a domain that is not `pendingDelete`, whose redemption period has ended, or whose restore is already pending: 2304. A report with no restore pending, or after the request lapsed: 2304.
+3. A report with a required part missing (2003): `op="report"` without `<rgp:report>`; an empty `preData`, `postData` or `resReason`; fewer than two non-empty `statement`s; or no `delTime` or `resTime` (over EPP the schema requires both, 2001 without; the admin API's JSON can leave one out). A report whose times are not possible (2004): a `delTime` not before `resTime`, a `resTime` in the future, or a time whose year in UTC is outside 1 to 9999 (the report is kept as JSON with its event, which cannot hold such a year; `-0004-02-29T00:00:00Z` and `9999-12-31T23:00:00-14:00` are valid `xs:dateTime`s refused here). Each is checked before anything is written.
+4. A restore the registry cannot price (its restore fee and the renewal): 2400.
+
+During `pendingRestore` the EPP status stays `pendingDelete` (RFC 3915 §4), so every other update, renew, delete and transfer is still 2304, and `<rgp:infData>` shows `pendingRestore`. The report restores the domain in the command, written over the domain as read: `pendingDelete` and `pendingRestore` are cleared with the redemption period and purge date; the expiry is extended by a year, and by further years while it would still be past; no renew grace period starts. The report is kept as sent (XML included) on the `domain.restored` event. A restore is two charges, two events: `domain.restored` with the restore fee quote, and `domain.renewed` with the renewal quote for the years added (ICANN's RGP terms: the restore fee is in addition to the renewal). The request is recorded as `domain.restore_requested`, with no years and no quote. When the fees are taken, and whether a lapsed request is refunded, is the billing system's to decide.
+
+A request whose report is not sent by its deadline (`pendingRestoreEnd`) lapses: the `Restore` workflow (schedule `restore-loop`, hourly at :45 on the `lifecycle` queue) returns the domain to `pendingDelete` as before the request, in its redemption period if that has not ended, with its original purge date, recorded as `domain.restore_reverted` without a charge. It re-checks each domain before reverting it, and pages with a (deadline, ROID) cursor, as the transfer approval sweep does. A domain with a restore pending is never purged, even past its purge date. The sponsor is told by a poll message queued in the same transaction as the revert: text alone (`<msg>` beginning `Restore lapsed:`, naming the domain, the deadline missed, and either the end of the redemption period, when a restore can be requested again, or the purge date), with no `<resData>`, since RFC 3915 defines no poll data.
+
+Restores requested before this model (pendingRestore without pendingDelete or a deadline, completed by the old `Restore` loop without a report) are moved to it by the `migrate` job: pendingDelete again, the report due 7 days after the job ran, the redemption end and purge date kept.
+
+A domain imported from an escrow deposit (RFC 9022) in its end of life keeps it ([`entities.Domain.ApplyDepositEndOfLife`](../../pkg/domain/entities/restore.go)). A deposit says which RGP period a domain is in, not when it ends, so the period starts in full at the import, under the TLD's current GA phase: `redemptionPeriod` is restorable for `redemptionGP`; `pendingRestore` keeps its restore, with the report due here after `pendingRestorePeriod` (and the redemption period started in full behind it, for if the report does not come); `pendingDelete` is purged after `pendingdeleteGP`. An EPP `pendingDelete` with none of these RGP statuses is read as `redemptionPeriod`, the longer reading of what is unknown. The bulk importer reads the phase; the admin-API import path uses the default periods.
+
+| Phase policy setting | Default | Meaning |
+|---|---|---|
+| `redemptionGP` | 30 days | How long a deleted domain can be restored (`redemptionPeriod`) |
+| `pendingdeleteGP` | 5 days | How long it then waits to be purged |
+| `pendingRestorePeriod` | 7 days | How long the registrar has to send the report after a request. A phase stored before this setting existed has 0, read as 7 |
+| `restoreReportRequired` | true | `false` restores a domain on its request alone, for registries (often ccTLDs) that do not require a report: the request answers 1000 with no `<rgp:upData>` and records the three events |
+
+Set on the phase's policy (`PUT /tlds/{tld}/phases/{phase}/policy`, or the admin UI's phase page); a change applies to restores requested after it. The admin API acts for the sponsor with the same rules: `POST /domains/{name}/restore` requests, `POST /domains/{name}/restore/report` reports (JSON `preData`, `postData`, `delTime`, `resTime`, `resReason`, `statements`, `other`); 409 for a state that does not allow the step, 400 for a refused report.
 
 **Transfer codes** (RFC 9154; [`entities.AuthInfoHash`](../../pkg/domain/entities/authInfoHash.go)). A domain's authorization information is its transfer code. The user guide is the admin UI's *Domain Transfers* page (`frontend/lib/constants/domainTransfersDoc.ts`).
 - **Unset is the normal state.** A domain is created with no code unless `<domain:create>` gives a non-empty `<domain:pw>`; the sponsor sets one with `<domain:update>` when the registrant asks to transfer, and clears it with an empty `<domain:pw/>` or `<domain:null/>`. Escrow imports create domains with no code. A completed transfer clears the code: a code works once.
@@ -269,7 +298,7 @@ All four are set on the phase's policy (`PUT /tlds/{tld}/phases/{phase}/policy`,
 - An address must be of the IP version its `ip` attribute names (`v4` when absent), and public unicast: loopback, unspecified, private, link-local, multicast and IPv4-mapped IPv6 addresses are refused. Addresses are stored, and shown, in canonical form. At most 10 per host (`entities.MAX_ADDRESSES_PER_HOST`).
 - A client sets only `clientDeleteProhibited` and `clientUpdateProhibited`. `linked` is reported by `<host:info>` from the domains that use the host now.
 
-**`<host:check>`.** Up to `EPP_MAX_CHECK_NAMES` names, each answered in order with whether the session's registrar can create it:
+**`<host:check>`.** Up to the registrar's policy's `check_names` names (50 by default), each answered in order with whether the session's registrar can create it:
 
 | Reason | When |
 |---|---|
@@ -363,7 +392,7 @@ A registrar's EPP logins, passwords, certificate pins and allowed networks are m
 
 Every change is written in one transaction with an outbox event (`epp.login.created`, `epp.password.added`, `epp.certificate_pin.retired`, and so on; subject: the registrar's ClID). Events never carry a password or a hash. Delivering them to the registrar's technical contact needs an outbox consumer that does not exist yet.
 
-These rules are fixed in code (`pkg/domain/entities/eppRegistrarAccess.go`) until the policy engine makes them per-tier (Phase 5):
+These rules are fixed in code (`pkg/domain/entities/eppRegistrarAccess.go`), the same for every registrar (ADR 0014):
 
 | Rule | Value |
 |---|---|
@@ -383,23 +412,64 @@ A credential is never deleted. A retired one stays as the record of when, and fr
 
 ---
 
-## Policy limits *(planned)*
+## Policies
 
-The defaults below form the `default` tier and will be seeded from code constants. A tier can be overridden per registrar. "Family" means a group of affiliated registrars capped together.
+The limits each registrar is held to are its **EPP policy**: data, changed through the admin API and reloaded by every node within `EPP_CREDENTIAL_REFRESH_INTERVAL`, without a restart ([ADR 0019](../adr/0019-epp-policies.md); [`entities.EPPPolicy`](../../pkg/domain/entities/eppPolicy.go)).
+
+- **A policy is a named set of limits.** Two are built in: `default`, for every registrar not assigned another, and `probation`, for new registrars. The `migrate` job stores them with their starting limits (below) if they are not stored yet. Their limits can be changed; they cannot be deleted. Any other policy is custom.
+- **A registrar is assigned one policy**, or none for `default`. There are no per-registrar overrides: a registrar that needs other limits gets a policy of its own.
+- **A registrar family** groups affiliated registrars, often the accreditations of one company, so limits apply to them together as well as to each. A registrar is in at most one family. A family is assigned a policy too: its `sessions_per_family` caps the family's sessions and its `family_rates` the family's commands, while each member's own policy caps the member.
+- **A login's own `session_cap`** ([Credentials](#credentials-admin-api)), when set, replaces its registrar's policy's `sessions_per_login`.
+
+| Limit | `default` | `probation` | Applies to | Over it |
+|---|---|---|---|---|
+| `sessions_per_registrar` | 10 | 10 | A registrar's logged-in sessions, across every node and login | `<login>` 2502, and the session closes |
+| `sessions_per_login` | 10 | 10 | One login's sessions, unless the login has its own cap | 2502, and the session closes |
+| `sessions_per_family` | 40 | 30 | A family's sessions, across its members, from the family's policy | 2502, and the session closes |
+| `check_names` | 50 | 50 | Names one `<domain:check>`, `<host:check>` or `<contact:check>` may carry | 2306, with no lookup |
+| `rates` | [Command rates](#command-rates) | [Command rates](#command-rates) | A registrar's commands, a token bucket per class | Held up to 1s, then 2306; 2502 and close after 10 refusals in 10s |
+| `family_rates` | 3× `rates` | 3× `rates` | A family's commands, across its members, from the family's policy | Held up to 1s, then 2306; 2502 and close after 10 refusals in 10s |
+| `creates_per_day` | 0 (no cap) | 100 | A registrar's successful domain creates per UTC day | 2308 |
+| `failed_creates` | 100 failures, 90% | 50 failures, 90% | A registrar's domain creates of registered names over 5 minutes | Held, then 2502, then the login suspended ([§ Failed creates](#failed-creates)) |
+| `family_failed_creates` | 300 failures, 90% | 150 failures, 90% | A family's, across its members, from the family's policy | The same, for the member sending the create |
+
+Every limit is at least 1, except `creates_per_day`, where 0 is no cap, and a `ratio_percent`, which is 1 to 100. A `check` burst, in `rates` and in `family_rates`, must be at least `check_names`, or a full check could never pass. The rules, in order, for each command of a logged-in session ([`epppolicy.Enforcer`](../../internal/application/epppolicy/enforcer.go)):
+
+1. **Role.** A login with the `readonly` role ([Credentials](#credentials-admin-api)) may check, read (`<info>`, `<transfer op="query">`), poll and log out. Anything that changes the registry (create, update, delete, renew, transfer request, approve, reject or cancel) is 2201, *"this login is read-only"*.
+2. **Check names.** A `<check>` naming more than `check_names` objects is 2306, *"at most N names per check"*, before any lookup. For a registrar in a family, the cap is also no more than the family's `check` burst, so a check the family's bucket could never pay for is refused for its size rather than as a rate it could never meet.
+3. **Command rates.** The command takes its tokens from the registrar's bucket for its class and, if the registrar is in a family, the family's ([§ Command rates](#command-rates)).
+4. **Failed creates.** A `<domain:create>` from a login suspended for failed creates, or while the registrar or its family is over its failed-create budget, is escalated ([§ Failed creates](#failed-creates)).
+5. **Create quota.** A `<domain:create>` counts against the registrar's `creates_per_day` ([§ Quotas](#quotas)).
+
+A command refused by one rule is not counted by the later ones. Session limits apply at `<login>`, in one atomic step in the session registry with the source cap's guarantees. `epp_policy_decisions_total{rule,action}` counts every decision by the rule that made it (`role`, `check_names`, `rate`, `family_rate`, `failed_creates`, `create_quota`, or `none` for a command allowed at once) and its action (`allow`, `delay`, `reject`, `close`).
+
+**Reloading.** Each node loads every policy, assignment and family when it starts and every `EPP_CREDENTIAL_REFRESH_INTERVAL` after (`epp_policies_refreshed_timestamp_seconds`). A failed load keeps the set last loaded (`epp_policy_refresh_errors_total`); before the first, the built-in policies' starting limits apply. A change applies to the next command and the next login; sessions already open stay open under a lowered session cap. A family change also moves the sessions already open: at the reload, a registrar that left a family stops counting against it, and one that joined counts from then on (its open sessions stay open, even over the family's cap).
+
+**Admin API** (permission `epp:policy:admin`; the static admin token holds it when Auth0 is off). Each change writes an outbox event (`epp.policy.saved`, `epp.policy.deleted`, `epp.policy.assigned`, `epp.family.saved`, `epp.family.deleted`) with the actor and the object before and after, in the same transaction. Policy changes are serialised by one database lock, and each reads what it replaces inside its transaction, so the before and after are exact under concurrent changes. Foreign keys tie assignments and family members to registrars: deleting a registrar deletes its assignment and its family membership.
+
+| Action | Request |
+|---|---|
+| List policies, the built-in ones included | `GET /epp/policies` |
+| One policy | `GET /epp/policies/{name}` |
+| Create or replace a policy (every limit given) | `PUT /epp/policies/{name}` with `{"description": "…", "limits": {"sessions_per_registrar": 20, "sessions_per_login": 10, "sessions_per_family": 60, "check_names": 50, "rates": {"check": {"per_second": 500, "burst": 2000}, "info": {"per_second": 40, "burst": 200}, "transform": {"per_second": 20, "burst": 100}, "poll": {"per_second": 10, "burst": 40}}, "family_rates": {…the same four…}, "creates_per_day": 0, "failed_creates": {"failures": 100, "ratio_percent": 90}, "family_failed_creates": {"failures": 300, "ratio_percent": 90}}}`. A name is 1 to 32 lower-case letters, digits and hyphens, starting with a letter. 400 for a limit below 1 (below 0 for `creates_per_day`), or a check burst below `check_names`; the error names each |
+| Delete a custom policy | `DELETE /epp/policies/{name}` → 204. 409 for a built-in policy, or one a registrar or family is assigned |
+| What applies to a registrar | `GET /registrars/{clid}/epp/policy`: its policy, and its family with the family's policy |
+| Assign a registrar its policy | `PUT /registrars/{clid}/epp/policy` with `{"policy": "gold"}`; `"default"` or `""` removes the assignment. 404 for an unknown registrar or policy |
+| List families | `GET /epp/families` |
+| One family | `GET /epp/families/{name}` |
+| Create or replace a family, its members included | `PUT /epp/families/{name}` with `{"description": "…", "policy": "gold", "members": ["clid1", "clid2"]}`. 409 for a member of another family; 404 for an unknown registrar or policy |
+| Delete a family | `DELETE /epp/families/{name}` → 204; its members belong to none |
 
 ### Sessions
 
-In place (Phase 3), as server settings; the policy engine (Phase 5) makes the caps per tier and adds the per-family cap.
+The session caps per registrar, login and family are the registrars' policies' ([§ Policies](#policies)). These are server settings:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `EPP_MAX_SESSIONS_PER_SOURCE_IP` | `20` | Live sessions from one source address, across every node. Over it, the connection closes before the greeting (`epp_connections_total{outcome="rejected_source_cap"}`) |
-| `EPP_MAX_SESSIONS_PER_REGISTRAR` | `10` | Logged-in sessions per registrar, across every node and login. Over it, `<login>` is answered 2502 and the session closes |
-| `EPP_MAX_SESSIONS_PER_LOGIN` | `10` | Logged-in sessions per login, across every node. A login's own `session_cap` ([Credentials](#credentials-admin-api)) overrides it. Over it, 2502 |
+| `EPP_MAX_SESSIONS_PER_SOURCE_IP` | `20` | Live sessions from one source address, across every node. Over it, the connection closes before the greeting (`epp_connections_total{outcome="rejected_source_cap"}`). It applies before anyone has logged in, so it is not a policy |
 | `EPP_SESSION_LEASE` | `90s` | How long a session stays in the registry without a renewal. A crashed node's sessions disappear after this. Lease times use Redis's clock, not the nodes', so clock skew between nodes does not matter. A closed session cannot be renewed back by a heartbeat that read it just before it closed |
 | `EPP_SESSION_HEARTBEAT` | `30s` | How often a node renews its sessions. At most half the lease, so one missed renewal never drops a live session. The registry's command count and last command time are this fresh |
 | `EPP_NODE_ID` | the hostname | The node's name in the registry |
-| Sessions per family | 40, *(Phase 5)* | Needs registrar families |
 
 **If Redis cannot answer** (each call is bounded to 500 ms), the node applies the same caps to its own sessions and sets `epp_policy_store_degraded{store="sessions"}`. A node's own count is a backstop, not the cluster's: with N nodes, up to N times a cap can be open until Redis returns. When it does, each node puts its sessions back within one heartbeat.
 
@@ -428,49 +498,139 @@ Every refusal is answered 2200 with the same text, so a client cannot tell which
 
 | Rule | Value | Where to change it |
 |---|---|---|
-| Failed logins per (login, source address) before lock | 5 within 15m. Failures that arrive while locked are not counted, so a burst cannot start the next, doubled lock | `lockout.DefaultPolicy` (code) until Phase 5 |
-| Lock duration | 15m, doubling on each further lock within 24h, up to 24h. A successful login clears it | `lockout.DefaultPolicy` (code) until Phase 5 |
-| While locked | 2501, and the session closes, even with the right password | |
+| Failed logins per (login, source address) before lock | 5 within 15m. Failures that arrive while locked are not counted, so a burst cannot start the next, doubled lock | `lockout.DefaultPolicy` (code) |
+| Lock duration | 15m, doubling on each further lock within 24h, up to 24h. A successful login clears it | `lockout.DefaultPolicy` (code) |
+| While locked | 2501, and the session closes, even with the right password. The attempt that starts a lock is recorded as an `epp.login.locked` event | |
+| Lifting a lockout | `GET /epp/lockouts?clid=` lists locked (login, source address) pairs with their registrar and end; `DELETE /registrars/{clid}/epp/logins/{login}/lockouts` clears the login's lockouts, failure counts and strikes from every source at once (permission `epp:credentials:admin`), recorded first as an `epp.login.lockout_lifted` event with the operator as actor. A lockout a node counted on its own while Redis was down is not reached, and ends on its own | |
 | Failed logins per session | 3, then 2501 and the session closes | `EPP_MAX_LOGIN_ATTEMPTS` |
 | Redis unavailable | Lockouts are counted on the node (fail-open, ADR 0013), with each Redis call bounded to 500 ms, and `epp_policy_store_degraded{store="lockout"}` is 1. The node-local count holds at most 100,000 (login, address) pairs and never drops a lock in force to make room. Redis being down at start is a warning, not a failure | |
 | Credential store unavailable | 2400; the session stays open and may retry. Open sessions are unaffected | |
 | Client certificate validity | Enforced at every login: no grace before `notBefore` or after `notAfter` | |
-| Certificate expiry alerts | 30 and 7 days before expiry, from `epp_client_cert_not_after_timestamp_seconds{clid,login}` (alert rules: Phase 7) | |
+| Certificate expiry notices | An `epp.certificate.expiring` event 30 and again 7 days before a pinned certificate's `notAfter`, once each: the pin records the notice it has had, written with its event under the registrar's lock. Every node looks hourly. `epp_client_cert_not_after_timestamp_seconds{clid,login}` drives the `EPPClientCertExpiresIn30Days` and `…In7Days` alerts ([RUNBOOK.md](RUNBOOK.md#a-registrar-certificate-is-expiring)) | |
 | `<newPW>` | Strict RFC 5730: the new password replaces the one used to log in, which stops working at once. It is applied only once the session has been admitted under its session caps, so a login refused with 2502 leaves the password unchanged. An unacceptable `<newPW>` is 2306 and the login does not happen. Overlap is done with add-then-retire through the admin API | |
 | Last used | Recorded for the password, pin and network of each successful login, written at most once a minute per node | |
 | Compromise retire | Every session that authenticated with the credential, or set it through `<newPW>`, is ended within `EPP_CREDENTIAL_REFRESH_INTERVAL`. An already retired credential, such as a password replaced by `<newPW>`, can still be retired as compromised | |
 
-### Command rates *(Phase 5)*
+### Command rates
 
-Token buckets per registrar. A family gets 3× the registrar rate.
+Every command of a logged-in session, other than `<login>`, `<logout>` and `<hello>`, takes tokens from **token buckets**: its registrar's bucket for the command's class and, if the registrar is in a family, the family's bucket for that class. The buckets are the policies' `rates` and `family_rates` ([§ Policies](#policies)). A bucket refills at `per_second` tokens a second and holds at most `burst`, so a quiet registrar can send a burst at once and then its rate.
 
-| Class | Rate | Burst | Cost |
-|---|---|---|---|
-| `check` | 250 names/s | 1000 names | One token **per name** |
-| `info` | 20/s | 100 | Per command |
-| transform (create, update, delete, renew, transfer) | 10/s | 50 | Per command |
-| `poll` | 5/s | 20 | Per command |
+| Class | Commands | Cost | `default` rate / burst | `probation` rate / burst |
+|---|---|---|---|---|
+| `check` | `<check>` | One token **per name** | 250 / 1000 | 100 / 500 |
+| `info` | `<info>`, `<transfer op="query">` | One per command | 20 / 100 | 10 / 50 |
+| `transform` | create, update, delete, renew, transfer request, approve, reject, cancel | One per command | 10 / 50 | 5 / 25 |
+| `poll` | `<poll>` (req and ack) | One per command | 5 / 20 | 5 / 20 |
 
-`check` is metered in names so that batch size does not change capacity. A higher-volume registrar gets a tier with a larger budget, not a larger batch.
+A family's starting rates are 3× its policy's registrar rates (`family_rates`). `check` is metered in names so that batch size does not change capacity: a higher-volume registrar gets a policy with a larger budget, not a larger batch.
 
-### Per-command object caps *(Phase 5)*
+**Over the rate.**
+
+| Wait for the tokens | Answer |
+|---|---|
+| None | The command runs |
+| Up to 1s (`epppolicy.MaxRateDelay`, code) | The command is **held** until its tokens are there, then runs (`action="delay"`, `epp_policy_delay_seconds`). Its tokens are taken when it is held, so it keeps its place. A session that sends one command at a time is slowed to its rate and nothing fails |
+| More than 1s | **2306**, *"Parameter value policy error; the registrar's check rate is exceeded, try again in 1.3s"* (or *"the registrar family's"*), with a machine-readable reason (below), and the session continues. No tokens are taken, so a refused command costs nothing. This happens to a client running many sessions at once past its rate |
+| The session's 10th refusal within 10s (`epppolicy.RefusalsBeforeClose`, `RefusalWindow`, code) | **2502**, *"Session limit exceeded; server closing connection; 10 command rate refusals within 10s"*, and the session closes (`action="close"`). Its client is not backing off; reconnecting costs a handshake and a login, under the session caps and the lockout |
+
+A rate refusal carries the reason in the result's `<extValue>` (RFC 5730 §2.6), so a client can tell it from any other 2306 and knows when to try again:
+
+```xml
+<result code="2306">
+  <msg>Parameter value policy error; the registrar's check rate is exceeded, try again in 1.3s</msg>
+  <extValue>
+    <value><undef/></value>
+    <reason>rate-limit; class=check; scope=registrar; retry-after-ms=1300</reason>
+  </extValue>
+</result>
+```
+
+`class` is `check`, `info`, `transform` or `poll`; `scope` is `registrar` or `family`. The 2502 that closes a session carries the same reason.
+
+There is no standard EPP result code for a rate limit. A 23xx code says the client broke a policy, which clients do not retry blindly, unlike 2400 (an internal server error, which they may); 2306 is the policy error the registry already uses for the names per check. 2502 alone, as some registries use, would close the session at the first refusal.
+
+**Where the buckets are kept.** In Redis, shared by every node, one key per bucket holding its GCRA *theoretical arrival time* (the time it would be full again), updated by one script for all of a command's buckets at once, on Redis's clock. A held command runs at one time for all its buckets, the earliest at which every one has its tokens, and each bucket is charged from that time, so a bucket that was not the one waited for cannot let a later command run first. **If Redis cannot answer** (each call is bounded to 200 ms), the node keeps buckets of its own and sets `epp_policy_store_degraded{store="rates"}`; for 5s after a failure, commands go straight to the node's buckets, so an unresponsive Redis does not slow every command. With N nodes, up to N times a rate can pass while Redis is down (fail-open, ADR 0013).
+
+### Per-command object caps
 
 | Cap | Default | On breach |
 |---|---|---|
-| Names per `domain:check`, `host:check`, `contact:check` | 50 | 2306. In place for all three as `EPP_MAX_CHECK_NAMES` |
-| Nameservers per domain | 10, fixed in the domain model (`entities.MaxHostsPerDomain`) | 2306. In place for `domain:create` |
-| DS records per domain | 8 | 2306. In place for `domain:create` (`services.MaxDSRecords`) |
+| Names per `domain:check`, `host:check`, `contact:check` | 50 | 2306. The policy's `check_names` ([§ Policies](#policies)) |
+| Nameservers per domain | 10, fixed in the domain model (`entities.MaxHostsPerDomain`) | 2306 |
+| DS records per domain | 8 (`services.MaxDSRecords`) | 2306 |
 
-### Quotas *(Phase 5)*
+The nameserver and DS caps are rules of the registry's data, the same for every registrar, so they are not in the policies (ADR 0019).
 
-| Quota | Default |
+### Quotas
+
+| Quota | `default` | `probation` | Over it |
+|---|---|---|---|
+| `creates_per_day`: successful `<domain:create>`s per registrar per UTC day | 0 (no cap) | 100 | 2308, *"Data management policy violation; the registrar may create 100 domains a day (UTC), and has"* |
+
+A create is counted when its policy check passes and given back if it does not succeed (any result of 2000 or more), so only domains created count; a refused or failed create does not. Each count is a reservation with its own ID, so a request to Redis retried after a lost reply neither takes a second slot nor gives back another create's. Host and contact creates do not count. The count is kept in Redis per registrar and UTC day; while Redis cannot answer it is kept on the node (`epp_policy_store_degraded{store="rates"}`), so a registrar can create up to N times its quota across N nodes. Creates of registered names are the failed-create budget's ([§ Failed creates](#failed-creates)).
+
+### Failed creates
+
+A dropcatcher sends creates for names that are about to be released, and most are refused because the name is still registered (2302). The **failed-create budget** ([§ Policies](#policies): `failed_creates`, and a family's `family_failed_creates`) is when that is a run rather than ordinary use.
+
+**Counting.** Every `<domain:create>` answered 1000 or 1001 (a domain created) or 2302 (the name is registered) is counted, per registrar and per family, over the **last 5 minutes** (the current minute and the four before it). Other answers are not counted. A registrar or family is **over budget** when it has at least `failures` creates answered 2302 **and** they are at least `ratio_percent` of its counted creates. Both must hold: a busy registrar with some failures, or a quiet one with a few, is within it.
+
+**Escalation.** While the registrar or its family is over budget, each `<domain:create>` the registrar sends is a **strike** against the one over budget (`epppolicy.DefaultEscalation`, code). A family's strikes are shared by its members, so a family over budget is escalated as one, however many accreditations send the creates. Strikes belong to the registrar or family, not the login: a login that carries a run on past the 20th strike is suspended at its first create.
+
+| Strike | Answer |
 |---|---|
-| Creates per day, `probation` tier | 100 |
+| 1st to 10th | The create is **held** 1s per strike (1s, 2s, … 10s), on top of any rate wait, then runs (`rule="failed_creates"`, `action="delay"`) |
+| 11th to 20th | **2502**, *"the registrar's creates of registered names are over their budget"* (or *"the registrar family's"*), and the session closes. `<extValue>` reason: `failed-creates; scope=registrar; suspended-for-ms=0` |
+| 21st | The **login is suspended for 15 minutes**: 2502 and the session closes, with reason `failed-creates; scope=…; suspended-for-ms=900000`. The node's other sessions of the login end (`epp_sessions_ended_total{reason="login_suspended"}`); on other nodes, the login's next domain create closes its session the same way. A login while suspended is refused with 2501, *"the login is suspended for … for creating registered names"* (`epp_logins_total{result="suspended"}`). `epp_logins_suspended_total{clid}` counts suspensions: alert on any. Each is recorded as an `epp.login.suspended` outbox event (actor `system`) with the registrar, login, scope, strikes, source address and end time; the suspension holds even if the event cannot be written (`epp_events_lost_total{event}`) |
 
-### Failed creates *(Phase 6)*
+Strikes expire 5 minutes after the last; they stop while the registrar and its family are back within budget. A suspension's reason names the scope (`registrar` or `family`) whose strikes caused it. A suspension ends on its own, or an operator lifts it early:
 
-| Setting | Default |
+| Action | Request (permission `epp:policy:admin`) |
 |---|---|
-| Trigger | At least 100 `domain:create` results of 2302 in 5 minutes **and** a failure ratio of at least 90% |
-| Escalation | Tarpit (+1s per command, rising) → 2502 → login suspended for 15m, with an alert |
-| Accounting | Daily failed-create count per registrar, kept as the basis for a future fee |
+| List suspended logins: registrar, login, `scope` (`registrar` or `family`, with the family's name) and `ends_at` | `GET /epp/suspensions?clid=` |
+| Lift one | `DELETE /registrars/{clid}/epp/logins/{login}/suspension` → 200 with the suspension lifted; 404 if the login is not the registrar's or not suspended |
+
+Lifting ends the suspension on every node at once and **clears the strikes that caused it** (the registrar's or the family's), so the login is not suspended again by its next create: if the registrar is still over budget, escalation starts again from the first strike. The budget's counts are kept. Each lift is recorded first as an `epp.login.suspension_lifted` outbox event with the operator as actor; if it cannot be written, nothing is lifted. A suspension a node made on its own while Redis was down is not reached by a lift, and ends with its 15 minutes.
+
+**Accounting.** Each registrar's creates per UTC day, created and refused 2302, are kept in `epp_create_outcomes` as the basis for a future fee. Each node writes its counts every minute and when it stops. They are read with `GET /registrars/{clid}/epp/create-outcomes?from=YYYY-MM-DD&to=YYYY-MM-DD` (permission `epp:policy:admin`; the last 30 days by default, at most 366), one row per day with any creates.
+
+**Where it is counted.** In Redis, shared by every node: per-minute counts per registrar and family, a registrar's strikes, and a login's suspension, all on Redis's clock. **If Redis cannot answer** (each call bounded to 200 ms, then skipped for 5s), the node counts on its own and sets `epp_policy_store_degraded{store="failed_creates"}`; a suspension made on the node holds after Redis returns.
+
+### Events
+
+What the EPP server decides on its own is recorded as an outbox event, once per change; every command is in the audit log, and rates and health are metrics. Events with actor `system` record what happened even if they cannot be written: a failed write is logged and counted (`epp_events_lost_total{event}`), not undone. An operator's action is recorded before it takes effect, and does not take effect without its event.
+
+| Event | When | Actor |
+|---|---|---|
+| `epp.login.locked` | The failed password that locks a (login, source address) pair | `system` |
+| `epp.login.lockout_lifted` | An operator lifts a login's lockouts | The operator |
+| `epp.login.suspended` | A login is suspended for failed creates | `system` |
+| `epp.login.suspension_lifted` | An operator lifts a suspension | The operator |
+| `epp.session.closed_by_policy` | The server ends a session for its client's behaviour: 10 rate refusals in 10s, or failed-create strikes 11 to 20 (not the close that suspends, which has its own event) | `system` |
+| `epp.quota.reached` | A registrar's first domain create refused for `creates_per_day`, once per UTC day across every node | `system` |
+| `epp.certificate.expiring` | A pinned certificate 30, then 7, days from expiry | `system` |
+| `epp.session.kill_requested` | An operator ends a session | The operator |
+| `epp.login.*`, `epp.password.*`, `epp.certificate_pin.*`, `epp.allowed_network.*`, `epp.policy.*`, `epp.family.*` | Credential and policy changes, including `<newPW>` (`epp.password.replaced`) | The operator, or the login |
+
+Changes to domains, hosts and contacts made over EPP are recorded by the application services as for the admin API (`domain.registered`, `domain.renewed`, …), with actor `epp:<login>`, source `domain-os/epp`, and the command's svTRID as correlation ID. A domain change and its event are written in one transaction: if the event cannot be written, the change is rolled back and the command fails.
+
+### Create queue
+
+Each node runs at most `EPP_MAX_CREATES_IN_FLIGHT` `<domain:create>`s at once ([§ Server settings](#server-settings-environment)), so a burst of creates, at a drop for instance, cannot take the database pool from checks, infos and the other commands. A create takes a slot after the policy has let it through (a create held for its rate or its failed-create strikes holds no slot while it waits) and gives it back when it has been answered.
+
+**When every slot is taken**, creates wait in a queue per **registrar family**, or per registrar for one in no family, and a freed slot goes to the next queue **in turn**, not to the next create in line. A registrar, or a family of accreditations, sending many creates at once waits behind itself; one sending a few is let in at its next turn. A family is one queue however many accreditations it has, so splitting creates across accreditations does not buy more turns.
+
+| Wait | Answer |
+|---|---|
+| A slot comes within `EPP_CREATE_QUEUE_WAIT` | The create runs (`epp_create_queue_wait_seconds`) |
+| None comes | **2400**, *"Command failed; the registry is busy with creates, try again"*, with `<extValue>` reason `create-queue; waited-ms=5000`, and the session continues (`epp_create_queue_timeouts_total`). The create quota gives the create back, and the failed-create budget does not count it; a strike it took because the registrar was over budget stands, since a strike counts creates sent |
+
+`epp_creates_in_flight` and `epp_creates_waiting` show the slots in use and the creates waiting. The queue is per node; across N nodes, up to N × `EPP_MAX_CREATES_IN_FLIGHT` creates run at once, and the database pool of each node bounds its share.
+
+### Release of deleted names
+
+A deleted domain is purged, and its name can be registered again, once its redemption and pending delete periods have ended (`<domain:delete>` under [§ Command handling](#command-handling)). The purge loop runs hourly; each scheduled run **waits a random offset within 45 minutes** before it purges, and **purges in a random order**, so the earliest purge date can be worked out from the periods but the moment a name is released cannot. A `<domain:create>` for a name not yet released is answered 2302, and counts towards the [failed-create budget](#failed-creates).
+
+| Setting | Default | Where to change it |
+|---|---|---|
+| Release window | 45 minutes for the scheduled runs, inside the hourly schedule | `releaseWindowMinutes` on the `purge-loop` workflow's parameters. A run launched by hand (the admin UI, or `POST /workflows/launch` with `{"workflowType": "purge-loop"}`) purges at once unless it passes a window. The offset is not shown, even to the workflow's progress query, until it has passed |

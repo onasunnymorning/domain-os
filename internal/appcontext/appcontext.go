@@ -10,7 +10,11 @@
 // See INV-15 in docs/INVARIANTS.md.
 package appcontext
 
-import "context"
+import (
+	"context"
+	"errors"
+	"sync"
+)
 
 // contextKey is unexported so no package outside this one can construct a key
 // that collides with these.
@@ -27,6 +31,14 @@ const (
 	keyConnectionID contextKey = "cid"
 	keyClientIP     contextKey = "clientIP"
 	keyRegistrarID  contextKey = "registrarID"
+
+	// keyEventSource names the process acting, for the outbox events a
+	// command writes.
+	keyEventSource contextKey = "event_source"
+	// keyTransaction carries the database transaction a Transactor opened.
+	keyTransaction contextKey = "db_transaction"
+	// keyEventFailures carries a transaction's EventFailures.
+	keyEventFailures contextKey = "event_failures"
 )
 
 // WithUserID returns a copy of ctx carrying the acting user's identity.
@@ -116,4 +128,62 @@ func WithRegistrarID(ctx context.Context, v string) context.Context {
 func RegistrarID(ctx context.Context) (string, bool) {
 	v, ok := ctx.Value(keyRegistrarID).(string)
 	return v, ok
+}
+
+// WithEventSource returns a copy of ctx naming the process acting, as the
+// source of the outbox events written on it (e.g. "domain-os/epp").
+func WithEventSource(ctx context.Context, v string) context.Context {
+	return context.WithValue(ctx, keyEventSource, v)
+}
+
+// EventSource reports the process acting, and whether one was set.
+func EventSource(ctx context.Context) (string, bool) {
+	v, ok := ctx.Value(keyEventSource).(string)
+	return v, ok
+}
+
+// WithTransaction returns a copy of ctx carrying a database transaction.
+// Only the repositories' Transactor sets it and only they read it; the
+// value's type is theirs.
+func WithTransaction(ctx context.Context, tx any) context.Context {
+	return context.WithValue(ctx, keyTransaction, tx)
+}
+
+// Transaction is the database transaction ctx carries, or nil.
+func Transaction(ctx context.Context) any {
+	return ctx.Value(keyTransaction)
+}
+
+// EventFailures collects the outbox events of a transaction that could not
+// be written, so the change they record can be rolled back with them.
+type EventFailures struct {
+	mu  sync.Mutex
+	err error
+}
+
+// Add records an event that could not be written.
+func (f *EventFailures) Add(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.err = errors.Join(f.err, err)
+}
+
+// Err is every event that could not be written, or nil.
+func (f *EventFailures) Err() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.err
+}
+
+// WithEventFailures returns a copy of ctx collecting its transaction's
+// event failures, and the collector.
+func WithEventFailures(ctx context.Context) (context.Context, *EventFailures) {
+	f := &EventFailures{}
+	return context.WithValue(ctx, keyEventFailures, f), f
+}
+
+// EventFailuresOf is the collector ctx carries, if it is in a transaction.
+func EventFailuresOf(ctx context.Context) (*EventFailures, bool) {
+	f, ok := ctx.Value(keyEventFailures).(*EventFailures)
+	return f, ok
 }

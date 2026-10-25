@@ -223,3 +223,39 @@ func (s *EPPCredentialSuite) TestUnknownRegistrar() {
 	_, err = repo.UpdateAccess(context.Background(), "no-such-rar", func(*entities.EPPRegistrarAccess) ([]entities.DomainEvent, error) { return nil, nil })
 	s.ErrorIs(err, entities.ErrRegistrarNotFound)
 }
+
+// A pin due an expiry notice is listed until it has had it, and the notice
+// is kept with the pin.
+func (s *EPPCredentialSuite) TestExpiringPins() {
+	tx := s.begin()
+	ctx := context.Background()
+	repo := NewEPPCredentialRepository(tx)
+	s.registrar(tx, "epp-exp-rar", 9131)
+	_, err := repo.UpdateAccess(ctx, "epp-exp-rar", func(a *entities.EPPRegistrarAccess) ([]entities.DomainEvent, error) {
+		_, err := a.AddCertificatePin(s.certPEM(), nil, "tester", s.now) // expires in a day
+		return nil, err
+	})
+	s.Require().NoError(err)
+
+	due, err := repo.ListRegistrarsWithExpiringPins(ctx, s.now)
+	s.Require().NoError(err)
+	s.Contains(due, "epp-exp-rar")
+	var events []entities.DomainEvent
+	_, err = repo.UpdateAccess(ctx, "epp-exp-rar", func(a *entities.EPPRegistrarAccess) ([]entities.DomainEvent, error) {
+		events = a.NoteExpiringPins(s.now, "test")
+		return events, nil
+	})
+	s.Require().NoError(err)
+	s.Require().Len(events, 1)
+	s.Equal(7, events[0].Data.(entities.EPPCertificateExpiringData).Days)
+
+	got, err := repo.GetAccess(ctx, "epp-exp-rar")
+	s.Require().NoError(err)
+	s.Equal(7, got.CertificatePins[0].ExpiryNotice)
+	due, err = repo.ListRegistrarsWithExpiringPins(ctx, s.now)
+	s.Require().NoError(err)
+	s.NotContains(due, "epp-exp-rar", "noticed")
+	var n int64
+	s.Require().NoError(tx.Table("domain_events").Where("type = ? AND subject = ?", entities.EventEPPCertificateExpiring, "epp-exp-rar").Count(&n).Error)
+	s.Equal(int64(1), n, "written with the notice")
+}

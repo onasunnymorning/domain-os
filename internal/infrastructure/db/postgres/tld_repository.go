@@ -31,9 +31,9 @@ func (repo *GormTLDRepository) GetByName(ctx context.Context, name string, prelo
 	var err error
 
 	if preloadAll {
-		err = repo.db.WithContext(ctx).Preload("Phases.Prices").Preload("Phases.Fees").Where("name = ?", name).First(dbtld).Error
+		err = dbFrom(ctx, repo.db).Preload("Phases.Prices").Preload("Phases.Fees").Where("name = ?", name).First(dbtld).Error
 	} else {
-		err = repo.db.WithContext(ctx).Preload("Phases").Where("name = ?", name).First(dbtld).Error
+		err = dbFrom(ctx, repo.db).Preload("Phases").Where("name = ?", name).First(dbtld).Error
 	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -47,10 +47,10 @@ func (repo *GormTLDRepository) GetByName(ctx context.Context, name string, prelo
 	// Count the registrars and domains
 	var registrarCount int64
 	var domainCount int64
-	if err := repo.db.WithContext(ctx).Table("accreditations").Where("tld_name = ?", name).Count(&registrarCount).Error; err != nil {
+	if err := dbFrom(ctx, repo.db).Table("accreditations").Where("tld_name = ?", name).Count(&registrarCount).Error; err != nil {
 		return nil, err
 	}
-	if err := repo.db.WithContext(ctx).Table("domains").Where("tld_name = ?", name).Count(&domainCount).Error; err != nil {
+	if err := dbFrom(ctx, repo.db).Table("domains").Where("tld_name = ?", name).Count(&domainCount).Error; err != nil {
 		return nil, err
 	}
 	tld.RegistrarCount = int(registrarCount)
@@ -64,7 +64,7 @@ func (repo *GormTLDRepository) Create(ctx context.Context, tld *entities.TLD) er
 	// Map the TLD to a DBTLD
 	dbtld := ToDBTLD(tld)
 
-	err := repo.db.WithContext(ctx).Create(dbtld).Error
+	err := dbFrom(ctx, repo.db).Create(dbtld).Error
 	if err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ type dbTLDListItem struct {
 
 func (repo *GormTLDRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.TLD, string, error) {
 	// Base query on tlds table
-	dbQuery := repo.db.WithContext(ctx).Table("tlds")
+	dbQuery := dbFrom(ctx, repo.db).Table("tlds")
 
 	// Select optimized query fields using correlated subqueries to avoid scanning/grouping the entire domains table
 	selectFields := "tlds.*, " +
@@ -162,7 +162,7 @@ func (repo *GormTLDRepository) DeleteByName(ctx context.Context, scope entities.
 	if err := scope.Validate(); err != nil {
 		return err
 	}
-	q := repo.db.WithContext(ctx).Where("name = ?", name)
+	q := dbFrom(ctx, repo.db).Where("name = ?", name)
 	if !scope.IsPlatform() {
 		q = q.Where("ry_id = ?", scope.Operator().String())
 	}
@@ -174,7 +174,7 @@ func (repo *GormTLDRepository) Update(ctx context.Context, tld *entities.TLD) er
 	// Map the TLD to a DBTLD
 	dbtld := ToDBTLD(tld)
 
-	err := repo.db.WithContext(ctx).Save(dbtld).Error
+	err := dbFrom(ctx, repo.db).Save(dbtld).Error
 	if err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func (repo *GormTLDRepository) Update(ctx context.Context, tld *entities.TLD) er
 func (repo *GormTLDRepository) Count(ctx context.Context, filter queries.ListTldsFilter) (int64, error) {
 	var count int64
 	// create query object
-	dbQuery := repo.db.WithContext(ctx).Model(&TLD{})
+	dbQuery := dbFrom(ctx, repo.db).Model(&TLD{})
 	// add filters if provided
 	dbQuery, err := setTldFilters(dbQuery, filter)
 	if err != nil {
@@ -236,7 +236,7 @@ func (repo *GormTLDRepository) GetByNameForOperator(ctx context.Context, scope e
 		return nil, err
 	}
 	dbtld := &TLD{}
-	err := repo.db.WithContext(ctx).
+	err := dbFrom(ctx, repo.db).
 		Preload("Phases").
 		Where("name = ? AND ry_id = ?", name, scope.String()).
 		First(dbtld).Error

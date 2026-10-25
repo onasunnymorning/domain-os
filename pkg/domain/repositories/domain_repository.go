@@ -23,8 +23,9 @@ type DomainRepository interface {
 	UpdateDomainIfUnchanged(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
 	// UpdateDomainColumnsIfUnchanged saves the domain's own columns, not
 	// its nameservers or DS records, on the same condition as
-	// UpdateDomainIfUnchanged.
-	UpdateDomainColumnsIfUnchanged(ctx context.Context, d *entities.Domain) (*entities.Domain, error)
+	// UpdateDomainIfUnchanged, and queues msgs, the poll messages the
+	// change causes, in the same transaction.
+	UpdateDomainColumnsIfUnchanged(ctx context.Context, d *entities.Domain, msgs ...*entities.PollMessage) (*entities.Domain, error)
 	// DeleteDomainByName deletes within scope; out of scope reads as not found.
 	DeleteDomainByName(ctx context.Context, scope entities.RegistryScope, name string) error
 	ListDomains(ctx context.Context, params queries.ListItemsQuery) ([]*entities.Domain, string, error)
@@ -42,6 +43,13 @@ type DomainRepository interface {
 	CountPurgeableDomains(ctx context.Context, before time.Time, clid, tld string) (int64, error)
 	ListRestoredDomains(ctx context.Context, pageSize int, clid, tld, cursor string) ([]*entities.Domain, error)
 	CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error)
+	// ListLapsedRestores returns up to limit domains whose restore lapsed by
+	// dueBy: pendingRestore, with a PendingRestoreEnd at or before dueBy, in
+	// (PendingRestoreEnd, ROID) order after the cursor (afterEnd, afterRoID;
+	// zero for the start). Only their name, ROID and PendingRestoreEnd are
+	// read. A sweep pages with the cursor, so a domain that cannot be
+	// reverted is passed over until the next sweep.
+	ListLapsedRestores(ctx context.Context, dueBy, afterEnd time.Time, afterRoID int64, limit int) ([]*entities.Domain, error)
 	BulkCreate(ctx context.Context, domains []*entities.Domain) error
 	GetDomainsByNames(ctx context.Context, names []string, preloadHosts bool) ([]*entities.Domain, error)
 	ListEventsByDomain(ctx context.Context, domainName string) ([]entities.DomainEvent, error)
@@ -66,7 +74,7 @@ func (m *MockDomainRepository) UpdateDomainIfUnchanged(ctx context.Context, d *e
 }
 
 // UpdateDomainColumnsIfUnchanged saves a domain's columns as read
-func (m *MockDomainRepository) UpdateDomainColumnsIfUnchanged(ctx context.Context, d *entities.Domain) (*entities.Domain, error) {
+func (m *MockDomainRepository) UpdateDomainColumnsIfUnchanged(ctx context.Context, d *entities.Domain, _ ...*entities.PollMessage) (*entities.Domain, error) {
 	args := m.Called(ctx, d)
 	return args.Get(0).(*entities.Domain), args.Error(1)
 }
@@ -180,6 +188,15 @@ func (m *MockDomainRepository) ListRestoredDomains(ctx context.Context, pageSize
 func (m *MockDomainRepository) CountRestoredDomains(ctx context.Context, clid, tld string) (int64, error) {
 	args := m.Called(ctx, clid, tld)
 	return args.Get(0).(int64), args.Error(1)
+}
+
+// ListLapsedRestores lists domains whose restore lapsed
+func (m *MockDomainRepository) ListLapsedRestores(ctx context.Context, dueBy, afterEnd time.Time, afterRoID int64, limit int) ([]*entities.Domain, error) {
+	args := m.Called(ctx, dueBy, afterEnd, afterRoID, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*entities.Domain), args.Error(1)
 }
 
 // ListEventsByDomain lists events by domain name

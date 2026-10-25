@@ -14,10 +14,14 @@ const (
 	// PendingTransferPeriod is how many days the losing registrar has to
 	// approve or reject a transfer before the registry approves it.
 	PendingTransferPeriod = 5
-	MaxHorizon            = 10
-	AllowAutoRenew        = true
-	RequiresValidation    = false
-	BaseCurrency          = "USD"
+	// PendingRestorePeriod is how many days a registrar has to send the
+	// restore report after requesting a restore (RFC 3915 pendingRestore;
+	// 7 days, as .com).
+	PendingRestorePeriod = 7
+	MaxHorizon           = 10
+	AllowAutoRenew       = true
+	RequiresValidation   = false
+	BaseCurrency         = "USD"
 )
 
 // PhasePolicy value object consists of all the settings of a TLD that can be changed in a phase roll.
@@ -29,6 +33,11 @@ const (
 // PendingTransferPeriod, the days the losing registrar has to answer a
 // transfer request, and TransferLockPeriod, the days after a registration or
 // a transfer in which the domain cannot be transferred.
+//
+// A deleted domain is restorable for RedemptionGP days, then purged
+// PendingDeleteGP days later. A restore (RFC 3915; see restore.go) waits
+// PendingRestorePeriod days for the registrar's restore report, unless
+// RestoreReportRequired is false.
 type PhasePolicy struct {
 	MinLabelLength int `json:"minLabelLength,omitempty" example:"2"`
 	MaxLabelLength int `json:"maxLabelLength,omitempty" example:"63"`
@@ -41,6 +50,13 @@ type PhasePolicy struct {
 	PendingTransferPeriod int `json:"pendingTransferPeriod,omitempty" example:"5"`
 	RedemptionGP          int `json:"redemptionGP,omitempty" example:"30"`
 	PendingDeleteGP       int `json:"pendingdeleteGP,omitempty" example:"5"`
+	// PendingRestorePeriod: see the type's comment. 0 is not a setting;
+	// the default applies. Read it with PendingRestoreDays.
+	PendingRestorePeriod int `json:"pendingRestorePeriod,omitempty" example:"7"`
+	// RestoreReportRequired: whether a restore waits for the registrar's
+	// restore report. nil is the default, true; false restores a domain on
+	// its request alone. Read it with RequiresRestoreReport.
+	RestoreReportRequired *bool `json:"restoreReportRequired,omitempty" example:"true"`
 	// TransferLockPeriod: see the type's comment. A pointer so that 0, no
 	// lock (an RST or OT&E TLD), can be set; nil is the default. Read it
 	// with TransferLockDays.
@@ -57,6 +73,7 @@ func NewPhasePolicy() PhasePolicy {
 	ar := AllowAutoRenew
 	rv := RequiresValidation
 	lock := TransferLockPeriod
+	report := true
 	return PhasePolicy{
 		MinLabelLength:        MinLabelLength,
 		MaxLabelLength:        MaxLabelLength,
@@ -67,6 +84,8 @@ func NewPhasePolicy() PhasePolicy {
 		PendingTransferPeriod: PendingTransferPeriod,
 		RedemptionGP:          RedemptionGP,
 		PendingDeleteGP:       PendingDeleteGP,
+		PendingRestorePeriod:  PendingRestorePeriod,
+		RestoreReportRequired: &report,
 		TransferLockPeriod:    &lock,
 		MaxHorizon:            MaxHorizon,
 		AllowAutoRenew:        &ar,
@@ -105,6 +124,21 @@ func (p *PhasePolicy) PendingTransferDays() int {
 	return p.PendingTransferPeriod
 }
 
+// PendingRestoreDays is the pending restore period in days: the setting,
+// or the default when none is set.
+func (p *PhasePolicy) PendingRestoreDays() int {
+	if p.PendingRestorePeriod <= 0 {
+		return PendingRestorePeriod
+	}
+	return p.PendingRestorePeriod
+}
+
+// RequiresRestoreReport reports whether a restore waits for the
+// registrar's restore report: the setting, or true when none is set.
+func (p *PhasePolicy) RequiresRestoreReport() bool {
+	return p.RestoreReportRequired == nil || *p.RestoreReportRequired
+}
+
 // DomainIsAllowed checks if a domain is allowed in the current phase.
 func (p *PhasePolicy) LabelIsAllowed(label string) bool {
 	return len(label) >= p.MinLabelLength && len(label) <= p.MaxLabelLength
@@ -138,6 +172,13 @@ func (p *PhasePolicy) UpdatePolicy(newPolicy *PhasePolicy) {
 	}
 	if newPolicy.PendingDeleteGP != 0 {
 		p.PendingDeleteGP = newPolicy.PendingDeleteGP
+	}
+	if newPolicy.PendingRestorePeriod != 0 {
+		p.PendingRestorePeriod = newPolicy.PendingRestorePeriod
+	}
+	if newPolicy.RestoreReportRequired != nil {
+		required := *newPolicy.RestoreReportRequired
+		p.RestoreReportRequired = &required
 	}
 	// Given, even as 0, the lock is set: 0 is no lock.
 	if newPolicy.TransferLockPeriod != nil {

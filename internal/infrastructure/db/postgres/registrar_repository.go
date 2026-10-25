@@ -42,9 +42,9 @@ func (r *GormRegistrarRepository) GetByClID(ctx context.Context, clid string, pr
 	var err error
 
 	if preloadTLDs {
-		err = r.db.WithContext(ctx).Preload("TLDs").Where("cl_id = ?", clid).First(dbRar).Error
+		err = dbFrom(ctx, r.db).Preload("TLDs").Where("cl_id = ?", clid).First(dbRar).Error
 	} else {
-		err = r.db.WithContext(ctx).Where("cl_id = ?", clid).First(dbRar).Error
+		err = dbFrom(ctx, r.db).Where("cl_id = ?", clid).First(dbRar).Error
 	}
 
 	if err != nil {
@@ -64,7 +64,7 @@ func (r *GormRegistrarRepository) GetByClID(ctx context.Context, clid string, pr
 func (r *GormRegistrarRepository) GetByGurID(ctx context.Context, gurID int) (*entities.Registrar, error) {
 	dbRar := &Registrar{}
 
-	err := r.db.WithContext(ctx).Where("gur_id = ?", gurID).First(dbRar).Error
+	err := dbFrom(ctx, r.db).Where("gur_id = ?", gurID).First(dbRar).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrRegistrarNotFound
@@ -82,7 +82,7 @@ func (r *GormRegistrarRepository) Create(ctx context.Context, rar *entities.Regi
 	// Map
 	dbRar := ToDBRegistrar(rar)
 
-	err := r.db.WithContext(ctx).Omit("TLDs").Create(dbRar).Error // We omit TLDs as we manage these through the Accreditation repository
+	err := dbFrom(ctx, r.db).Omit("TLDs").Create(dbRar).Error // We omit TLDs as we manage these through the Accreditation repository
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +115,7 @@ func (r *GormRegistrarRepository) BulkCreate(ctx context.Context, rars []*entiti
 	// input slice is not reliable: GORM pairs returned rows with input rows by
 	// position, which shifts as soon as one row is skipped.
 	// We omit TLDs as we manage these through the Accreditation repository.
-	stmt := r.db.WithContext(ctx).Session(&gorm.Session{DryRun: true}).Omit("TLDs").
+	stmt := dbFrom(ctx, r.db).Session(&gorm.Session{DryRun: true}).Omit("TLDs").
 		Clauses(
 			clause.OnConflict{DoNothing: true},
 			clause.Returning{Columns: []clause.Column{{Name: "cl_id"}}},
@@ -127,7 +127,7 @@ func (r *GormRegistrarRepository) BulkCreate(ctx context.Context, rars []*entiti
 
 	// Run the generated statement on the same connection pool (or open transaction)
 	// GORM would have used, exactly as its own create callback does.
-	rows, err := r.db.WithContext(ctx).Statement.ConnPool.QueryContext(ctx, stmt.Statement.SQL.String(), stmt.Statement.Vars...)
+	rows, err := dbFrom(ctx, r.db).Statement.ConnPool.QueryContext(ctx, stmt.Statement.SQL.String(), stmt.Statement.Vars...)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +152,7 @@ func (r *GormRegistrarRepository) Update(ctx context.Context, rar *entities.Regi
 	// map
 	dbRar := ToDBRegistrar(rar)
 
-	err := r.db.WithContext(ctx).Omit("TLDs").Save(dbRar).Error // We omit TLDs as we manage these through the Accreditation repository
+	err := dbFrom(ctx, r.db).Omit("TLDs").Save(dbRar).Error // We omit TLDs as we manage these through the Accreditation repository
 	if err != nil {
 		return nil, err
 	}
@@ -168,13 +168,13 @@ func (r *GormRegistrarRepository) Update(ctx context.Context, rar *entities.Regi
 
 // Delete Deletes a registrar from the repository
 func (r *GormRegistrarRepository) Delete(ctx context.Context, clid string) error {
-	return r.db.WithContext(ctx).Where("cl_id = ?", clid).Delete(&Registrar{}).Error
+	return dbFrom(ctx, r.db).Where("cl_id = ?", clid).Delete(&Registrar{}).Error
 }
 
 // List returns a list of registrars
 func (r *GormRegistrarRepository) List(ctx context.Context, params queries.ListItemsQuery) ([]*entities.RegistrarListItem, string, error) {
 	// Base query from table
-	dbQuery := r.db.WithContext(ctx).Table("registrars")
+	dbQuery := dbFrom(ctx, r.db).Table("registrars")
 
 	// Resolve the filter before building the joins: domain_count is scoped to
 	// filter.TLD when one is set, so the join depends on it.
@@ -311,7 +311,7 @@ func (r *GormRegistrarRepository) List(ctx context.Context, params queries.ListI
 // Count returns the total number of registrars in the repository
 func (r *GormRegistrarRepository) Count(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&Registrar{}).Count(&count).Error
+	err := dbFrom(ctx, r.db).Model(&Registrar{}).Count(&count).Error
 	if err != nil {
 		return 0, err
 	}
@@ -324,7 +324,7 @@ func (r *GormRegistrarRepository) Count(ctx context.Context) (int64, error) {
 // is confirmed, and false otherwise. Any query error is also returned.
 func (r *GormRegistrarRepository) IsRegistrarAccreditedForTLD(ctx context.Context, tldName, rarClID string) (bool, error) {
 	var rar string
-	err := r.db.WithContext(ctx).Raw("SELECT registrar_cl_id FROM accreditations WHERE registrar_cl_id = ? AND tld_name = ?", rarClID, tldName).Scan(&rar).Error
+	err := dbFrom(ctx, r.db).Raw("SELECT registrar_cl_id FROM accreditations WHERE registrar_cl_id = ? AND tld_name = ?", rarClID, tldName).Scan(&rar).Error
 	if err != nil {
 		return false, err
 	}

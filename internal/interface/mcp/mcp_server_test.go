@@ -114,6 +114,10 @@ func (m *mockDomainService) ExpireDomain(context.Context, string) (*entities.Dom
 func (m *mockDomainService) RestoreDomain(context.Context, string) (*entities.Domain, error) {
 	panic("not implemented")
 }
+
+func (m *mockDomainService) ReportRestore(context.Context, string, entities.RestoreReport) (*entities.Domain, error) {
+	return nil, nil
+}
 func (m *mockDomainService) PurgeDomain(context.Context, entities.RegistryScope, string) error {
 	panic("not implemented")
 }

@@ -1,131 +1,79 @@
-# Restore Workflow
+# Revert Lapsed Restores
 
 | Field | Value |
 |-------|-------|
 | **Status** | `ACTIVE` |
 | **Queue** | `lifecycle` |
 | **Category** | `lifecycle` |
-| **Tags** | `lifecycle`, `domains`, `restore` |
-| **Trigger** | `Schedule` / `REST` |
+| **Tags** | `lifecycle`, `restores` |
+| **Trigger** | `Schedule` (hourly, at :45) / `REST` |
 | **Human-in-the-Loop** | `No` |
 | **Launchpad Card** | `Read-only (scheduled)` |
 
 ## Overview
 
-The Restore Workflow is a scheduled workflow that runs every 4 hours to finalize domain restorations. It lists domains currently in the `PendingRestore` state and processes them in a single batch activity call (`BatchRestoreDomains`).
+A deleted domain is restored in two EPP steps (RFC 3915): the sponsor **requests** the restore, which makes the domain `pendingRestore` (its EPP status stays `pendingDelete`), then sends the **restore report**, which restores it in the same command. This workflow handles the third case: a request whose report never came.
 
-**Atomicity**: for each domain, unsetting `PendingRestore` and the forced 1-year renewal are applied to the entity in memory and persisted with **one** `UpdateDomain` write. The previous implementation issued two independent writes (status update, then renewal) with manual compensation — a crash between them could leave a domain half-restored. That state is no longer reachable.
+A request lapses at its `pendingRestoreEnd`: the end of the TLD phase's **pending restore period** (7 days by default, as for .com). Every hour the workflow lists the domains whose request has lapsed and reverts each one (`entities.Domain.RevertRestore`): `pendingRestore` is cleared and the domain is `pendingDelete` as it was before the request, in its redemption period if that has not ended, with its original purge date. The sponsor is told by a poll message, queued in the same transaction as the revert: `Restore lapsed: no restore report for <domain> by <deadline>`, then where the domain now stands. Nothing is charged; the revert is recorded as a `domain.restore_reverted` event carrying the workflow ID as correlation ID and the run ID as trace ID (INV-16). The registrar may request a restore again while the redemption period lasts.
 
-**Idempotency**: domains that are no longer `PendingRestore` (completed by an earlier retried attempt) are reported as `Skipped`, so activity retries can never double-renew or double-bill.
+Until it is reverted, a domain with a lapsed request is refused a report (2304) and is not purged, even past its purge date. So this workflow's hourly cadence decides only how soon `<domain:info>` stops showing `pendingRestore`.
 
-**Pagination**: the workflow processes one page (`BatchSize`, default 1,000) per run. When a full page is returned it continues-as-new to drain the remainder — guarded by a progress check and a continuation cap (`maxContinuationRuns`, 50) so a poison batch cannot hot-loop.
+It no longer completes restores: before Phase 4i-2 it finalised every `pendingRestore` domain, with no report and up to four hours late. The restore and its charges (the restore fee and the renewal) now happen in the command that sends the report. The full process is documented in `pkg/domain/entities/restore.go` and on the admin UI's *Domain Restore* page.
+
+**Idempotency.** The batch reads and checks every domain again before reverting it. A domain restored meanwhile, already reverted by an earlier attempt, or whose request has not lapsed is reported as `Skipped`. A domain changed while it is reverted is read and checked again, up to three times.
+
+**One sweep, a page per run.** A sweep lists the restores lapsed as of its start, a page (`BatchSize`, default 1,000) per run, in (`pendingRestoreEnd`, ROID) order, served by the `pending_restore_end` index. A full page continues-as-new from the page's last domain, carrying the sweep's time and that cursor, so a domain that cannot be reverted is passed over and cannot hold back the ones after it; the next sweep retries it. The continuation cap (`maxContinuationRuns`, 50) bounds a sweep.
 
 ## Flow Diagram
 
 ```mermaid
 graph TD
-    A["List Restored Domains (PendingRestore)"] --> B{"Any domains?"}
-    B -- No --> DONE1["✅ Return result (nothing to process)"]
-    B -- Yes --> C["Batch Restore Domains (atomic per-domain write)"]
-    C --> D["Aggregate results into RestoreLoopResult"]
-    D --> E{"Full page returned?"}
-    E -- No --> DONE2["✅ Return final structured result"]
-    E -- Yes --> F{"Progress made AND continuation cap not hit?"}
-    F -- Yes --> G["🔄 ContinueAsNew (drain remainder)"]
-    F -- No --> DONE3["✅ Return result with note — next scheduled run picks up remainder"]
-
-    style C fill:#f9e79f,stroke:#f1c40f,stroke-width:2px
-    style G fill:#fadbd8,stroke:#e74c3c,stroke-width:2px
+    A["List lapsed restores (pendingRestore, deadline ≤ sweep start, after the cursor)"] --> B{"Any?"}
+    B -- No --> DONE1["✅ Return (none lapsed)"]
+    B -- Yes --> C["Batch revert: back to redemption, one version-checked write per domain"]
+    C --> D["Aggregate into RestoreLoopResult"]
+    D --> E{"Full page?"}
+    E -- No --> DONE2["✅ Return result"]
+    E -- Yes --> F{"Continuation cap hit?"}
+    F -- No --> G["🔄 ContinueAsNew from the page's last domain"]
+    F -- Yes --> DONE3["✅ Return; the next scheduled sweep picks up the rest"]
 ```
 
 ## Input
 
 ```go
-func RestoreWorkflow(ctx workflow.Context, params RestoreLoopParams) (RestoreLoopResult, error)
-
 type RestoreLoopParams struct {
-    BatchSize         int `json:"batchSize,omitempty"`         // max domains listed/processed per run (default 1000)
-    ContinuationCount int `json:"continuationCount,omitempty"` // managed by the workflow
+    BatchSize         int       `json:"batchSize,omitempty"`         // default 1000
+    ContinuationCount int       `json:"continuationCount,omitempty"` // managed by the workflow
+    DueBy             time.Time `json:"dueBy,omitempty"`             // the sweep's time; managed
+    AfterRestoreEnd   time.Time `json:"afterRestoreEnd,omitempty"`   // the cursor; managed
+    AfterRoID         int64     `json:"afterRoid,omitempty"`         // the cursor; managed
 }
 ```
-
-The workflow tolerates being started without arguments (all zero values), so existing schedules and manual triggers remain compatible.
 
 ## Output
 
 ```go
 type RestoreLoopResult struct {
-    StartedAt      time.Time        `json:"startedAt"`
-    CompletedAt    time.Time        `json:"completedAt"`
-    TotalFound     int              `json:"totalFound"`
-    TotalProcessed int              `json:"totalProcessed"`
-    Restored       int              `json:"restored"`
-    Failed         int              `json:"failed"`
-    Skipped        int              `json:"skipped"`  // no-ops: restore already completed
-    Notes          []string         `json:"notes"`
-    Failures       []RestoreFailure `json:"failures,omitempty"`
-}
-
-type RestoreFailure struct {
-    DomainName string `json:"domainName"`
-    Error      string `json:"error"`
+    StartedAt, CompletedAt, DueBy time.Time
+    TotalFound, TotalProcessed    int
+    Reverted, Failed, Skipped     int
+    Notes                         []string
+    Failures                      []RestoreFailure // up to 50 samples
 }
 ```
 
 ## Query Handler
 
-The workflow exposes a `progress` query handler that returns the current `RestoreLoopResult` in real-time, allowing operators to monitor progress.
+`progress` returns the current `RestoreLoopResult`.
 
 ## Steps
 
-### 1. List Restored Domains
-- **Activity**: `activities.ListRestoredDomains`
-- **Timeout**: Start-to-close 1min
-- **Retry**: Max 3 attempts, initial interval 1s, backoff coefficient 2.0, max interval 10min
-- **Description**: Queries for domains with the `PendingRestore` status flag set (one page of up to `BatchSize`). Returns `DomainRestoredItem` structs containing the domain name and registrar client ID (`ClID`).
+| Step | Activity | What it does |
+|---|---|---|
+| List lapsed restores | `ListLapsedRestores` | Domains `pendingRestore` with `pendingRestoreEnd` at or before the sweep's start, in (deadline, ROID) order after the cursor |
+| Batch revert | `BatchRevertLapsedRestores` | `DomainService.BatchRevertLapsedRestores`: re-checks and reverts each |
 
-### 2. Batch Restore
-- **Activity**: `BatchRestoreDomains` (struct method on `LifecycleActivities`)
-- **Timeout**: 30 minutes (start-to-close), 2 minutes (heartbeat)
-- **Description**: For each domain: fetch quote (billing), unset `PendingRestore`, force-renew 1 year (`restoreRenewalYears`), persist with a single write, publish a `domain.renewed` event carrying the quote. Grouped by TLD with cached phase lookups. **Idempotent**: domains no longer `PendingRestore` are skipped. A quote failure leaves the domain untouched.
+## Settings
 
-### 3. Continue As New (Guarded)
-- **Description**: When a full page was processed, continues-as-new to drain remaining `PendingRestore` domains — only if progress was made, and at most `maxContinuationRuns` (50) times.
-
-## Failure Modes
-
-| Failure | Cause | Workflow Behavior | Manual Recovery |
-|---------|-------|-------------------|-----------------|
-| List query failure | DB/API connection issue | Workflow fails entirely | Check API health; next run will retry |
-| Batch restore failure (total) | Activity-level error | Workflow returns error | Check service health, retry run |
-| Individual domain failure | Quote/billing error, TLD phase missing | Recorded in `Failures`; domain remains `PendingRestore` and is retried next run | Review failures, manually restore via API |
-| Full page, no progress | Poison batch (all failing) | Completes with note — **no hot loop** | Investigate failures |
-| Activity retry after partial completion | Worker crash / timeout mid-batch | Completed domains are **skipped** on retry | None needed — idempotent |
-
-## Artifacts
-
-No persistent artifacts produced. Domain state changes are reflected directly in the database.
-
-## Operational Notes
-
-### Scheduling
-Runs every 4 hours (offset from Expiry Loop and Purge Loop to distribute load).
-
-### Invariants
-- Restore completion is a single DB write per domain — no half-restored state is reachable.
-- The forced renewal is always exactly 1 year (`restoreRenewalYears`) and emits one `domain.renewed` event with the quote attached.
-
-### Monitoring
-- Watch counts (`TotalFound`, `Failed`, `Restored`, `Skipped`) in the Temporal UI.
-- Use the `progress` query to check execution status in real-time.
-- Monitor for domains that repeatedly fail restoration across multiple runs — these may need manual intervention.
-
-### Manual Intervention
-- To force restore processing: trigger the workflow manually via API (`restore-workflow`, optional `batchSize` param).
-- For domains stuck in a failed state: manually renew via API and unset `PendingRestore`.
-- The workflow is idempotent — re-running processes any currently `PendingRestore` domains.
-
----
-
-> **Last updated**: 2026-07-16
-> **Updated by**: Agent — atomic single-write restore, idempotency, pagination with guarded continue-as-new (see ADR 0004)
+The pending restore period is set per TLD phase (`pendingRestorePeriod`, see `docs/epp/POLICY_REFERENCE.md`). It applies to restores requested after a change: a pending restore keeps its deadline. A phase with `restoreReportRequired` false restores on the request alone, so this workflow never sees its domains.

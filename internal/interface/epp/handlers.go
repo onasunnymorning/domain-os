@@ -3,6 +3,7 @@ package epp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -19,7 +20,10 @@ const (
 	loginSuccess = "success"
 	loginFailure = "failure"
 	loginLocked  = "locked"
-	loginError   = "error"
+	// loginSuspended is a login with good credentials refused because it
+	// is suspended for failed creates.
+	loginSuspended = "suspended"
+	loginError     = "error"
 	// loginSessionLimit is a login with good credentials refused because its
 	// registrar or login is at its session cap.
 	loginSessionLimit = "session_limit"
@@ -81,6 +85,12 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 		cmd.closeAfterResponse()
 		return
 	case errors.Is(err, entities.ErrEPPAuthentication):
+		var locked *entities.EPPLockStartedError
+		if errors.As(err, &locked) {
+			l := locked.Lockout
+			s.record(ctx, entities.NewDomainEvent(eventSource, entities.EventEPPLoginLocked, string(l.ClID),
+				fmt.Sprintf("EPP login %s locked out from %s after failed passwords", l.Login, l.ClientIP), l))
+		}
 		reason := loginFailureReason(err)
 		s.metrics.logins.WithLabelValues(loginFailure).Inc()
 		s.metrics.loginFailures.WithLabelValues(reason).Inc()
@@ -108,12 +118,23 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 		return
 	}
 
+	if left := s.enforcer.LoginSuspended(ctx, string(auth.LoginID)); left > 0 {
+		s.metrics.logins.WithLabelValues(loginSuspended).Inc()
+		s.logger.Warn("EPP login refused: suspended for failed creates", "connection_id", sess.id, "clid", auth.ClID, "login", auth.LoginID,
+			"client_ip", sess.clientIP, "suspended_for", left.Round(time.Second))
+		cmd.respond(epplib.StatusAuthenticationErrorClosingConnection,
+			fmt.Sprintf("Authentication error; server closing connection; the login is suspended for %s for creating registered names", left.Round(time.Second)), nil)
+		cmd.closeAfterResponse()
+		return
+	}
+
 	sess.loginTimer.Stop()
 	// The registry admits the login before the session records it: until
 	// then the heartbeat must renew the session as not logged in, or it
 	// would add it to the registrar's and login's indexes without a cap
 	// check.
-	if err := s.authenticateInRegistry(ctx, sess, auth); err != nil {
+	limits := s.policies.Load().ForRegistrar(auth.ClID).SessionLimits(auth.SessionCap)
+	if err := s.authenticateInRegistry(ctx, sess, auth, limits); err != nil {
 		s.metrics.logins.WithLabelValues(loginSessionLimit).Inc()
 		s.logger.Warn("EPP login refused: session limit", "connection_id", sess.id, "clid", auth.ClID, "login", auth.LoginID,
 			"client_ip", sess.clientIP, "error", err)
@@ -135,6 +156,7 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 	}
 	sess.objects, sess.extensions = objects, extensions
 	sess.authAt.Store(time.Now().UnixNano())
+	sess.family.Store(&limits.Family)
 	sess.auth.Store(auth)
 	if !sess.state.CompareAndSwap(int32(stateAwaitingLogin), int32(stateAuthenticated)) {
 		// The login timeout fired, or the session was ended, while this
@@ -192,12 +214,9 @@ func (s *Server) logout(_ context.Context, cmd *command) {
 }
 
 // domainCheck answers <domain:check>: whether each name is available, in
-// the order asked. More names than EPP_MAX_CHECK_NAMES is 2306; a registry
-// that cannot answer is 2400.
+// the order asked. More names than the registrar's policy allows is 2306,
+// from the policy engine; a registry that cannot answer is 2400.
 func (s *Server) domainCheck(ctx context.Context, cmd *command) {
-	if !s.checkSizeAllowed(cmd) {
-		return
-	}
 	names := cmd.objects // the <domain:name>s, read by describe
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()

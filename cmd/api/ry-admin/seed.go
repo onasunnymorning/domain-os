@@ -151,7 +151,7 @@ func runSeed(cfg *config.AdminApiConfig, repositoryID entities.RepositoryID, log
 	contactService := services.NewContactService(contactRepo, *roidService, eventPublisher)
 	hostService := services.NewHostService(hostRepo, hostAddressRepo, roidService, eventPublisher)
 	domainService := services.NewDomainService(domainRepo, hostRepo, *roidService, nndnRepo, tldRepo,
-		phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher)
+		phaseRepo, premiumLabelRepo, fxRepo, registrarRepo, eventPublisher, postgres.NewTransactor(gormDB))
 
 	s := &seeder{
 		logger:      logger,

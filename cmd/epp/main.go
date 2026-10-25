@@ -24,6 +24,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/lockout"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/ratelimit"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/sessionstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
@@ -97,12 +98,19 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		Addr:     cfg.Redis.Addr(),
 		Password: cfg.Redis.Password,
 		DB:       0,
+		// Every caller bounds its calls (the session registry and lockouts
+		// to 500ms, command rates to 200ms) and falls back to the node when
+		// Redis does not answer in time; without this the client ignores
+		// those deadlines on an open connection and waits out its own
+		// 3-second read timeout.
+		ContextTimeoutEnabled: true,
 	})
-	// Redis holds the session registry and lockouts, and the server fails
-	// open without it (ADR 0013), so an unreachable Redis is a warning, not a
-	// reason to stay down. epp_policy_store_degraded shows it.
+	// Redis holds the session registry, lockouts and command rates, and
+	// the server fails open without it (ADR 0013), so an unreachable Redis
+	// is a warning, not a reason to stay down. epp_policy_store_degraded
+	// shows it.
 	if err := redisClient.Ping(context.Background()).Err(); err != nil {
-		logger.Warn("Redis unreachable at start; session caps and lockouts apply per node until it answers", "addr", cfg.Redis.Addr(), "error", err)
+		logger.Warn("Redis unreachable at start; session caps, lockouts and command rates apply per node until it answers", "addr", cfg.Redis.Addr(), "error", err)
 	} else {
 		logger.Info("Connected to Redis", "addr", cfg.Redis.Addr())
 	}
@@ -127,8 +135,27 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		})
 	auth := services.NewEPPAuthenticationService(credentials, passwordhash.New(passwordhash.DefaultParams), lockouts, uses, cfg.Auth.MaxConcurrentVerify)
 
+	// Command rates and create quotas (ADR 0019), counted in Redis and on
+	// the node while Redis cannot answer.
+	rates := ratelimit.NewFailOpen(ratelimit.NewRedis(redisClient), ratelimit.NewMemory(), func(degraded bool) {
+		if srv != nil {
+			srv.ReportRatesDegraded(degraded)
+		}
+	})
+
+	// The failed-create budget (Phase 6a): counts, strikes and suspensions
+	// in Redis, on the node while it cannot answer; daily counts per
+	// registrar in the database, written every useFlushInterval.
+	failedCreates := ratelimit.NewFailOpenFailedCreates(ratelimit.NewRedis(redisClient), ratelimit.NewMemoryFailedCreates(), func(degraded bool) {
+		if srv != nil {
+			srv.ReportFailedCreatesDegraded(degraded)
+		}
+	})
+	outcomeRepo := postgres.NewEPPCreateOutcomeRepository(db)
+	outcomes := services.NewEPPCreateOutcomeRecorder(outcomeRepo)
+
 	sessions := services.NewEPPSessionService(sessionstore.NewRedis(redisClient), entities.EPPSessionCaps{
-		PerSource: cfg.Sessions.PerSource, PerRegistrar: cfg.Sessions.PerRegistrar, PerLogin: cfg.Sessions.PerLogin,
+		PerSource: cfg.Sessions.PerSource,
 	}, cfg.Sessions.Lease, nil)
 
 	domainRepo := postgres.NewDomainRepository(db, repositoryID)
@@ -142,7 +169,7 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 	// Registration goes through DomainService, as from the admin API: it
 	// prices the domain, assigns its ROID, stores it and writes its event.
 	registry := services.NewDomainService(domainRepo, hostRepo, *roids, nndnRepo, tldRepo, phaseRepo,
-		postgres.NewGORMPremiumLabelRepository(db), postgres.NewFXRepository(db), registrarRepo, events)
+		postgres.NewGORMPremiumLabelRepository(db), postgres.NewFXRepository(db), registrarRepo, events, postgres.NewTransactor(db))
 	// Transfers and the poll queue share a repository: a transfer's writes
 	// queue its messages in the same transaction.
 	transfers := postgres.NewDomainTransferRepository(db, repositoryID)
@@ -168,9 +195,16 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		Hosts:         hosts,
 		Contacts:      contacts,
 		Polls:         services.NewEPPPollService(transfers),
-		Audit:         audit,
-		Logger:        logger,
-		NewID:         func() string { return strconv.FormatInt(ids.GenerateID(), 10) },
+		// The registrars' EPP policies (ADR 0019), reloaded with the
+		// credentials.
+		Policies:       services.NewEPPPolicyService(postgres.NewEPPPolicyRepository(db), registrarRepo, outcomeRepo),
+		Rates:          rates,
+		FailedCreates:  failedCreates,
+		CreateOutcomes: outcomes,
+		Events:         events,
+		Audit:          audit,
+		Logger:         logger,
+		NewID:          func() string { return strconv.FormatInt(ids.GenerateID(), 10) },
 	})
 	if err != nil {
 		return err
@@ -181,7 +215,7 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 	flushed := make(chan struct{})
 	go func() {
 		defer close(flushed)
-		flushUses(flushCtx, uses, logger)
+		flushUses(flushCtx, uses, outcomes, logger)
 	}()
 
 	// The audit writer outlives the drain: commands finishing during it
@@ -250,9 +284,10 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 	return runErr
 }
 
-// flushUses writes last-used times every useFlushInterval, and once more
-// when ctx is done, so a drained node does not lose its last minute.
-func flushUses(ctx context.Context, uses *services.EPPCredentialUseRecorder, logger *slog.Logger) {
+// flushUses writes last-used times and the daily create counts every
+// useFlushInterval, and once more when ctx is done, so a drained node does
+// not lose its last minute.
+func flushUses(ctx context.Context, uses *services.EPPCredentialUseRecorder, outcomes *services.EPPCreateOutcomeRecorder, logger *slog.Logger) {
 	ticker := time.NewTicker(useFlushInterval)
 	defer ticker.Stop()
 	for {
@@ -260,15 +295,20 @@ func flushUses(ctx context.Context, uses *services.EPPCredentialUseRecorder, log
 		case <-ticker.C:
 		case <-ctx.Done():
 			final, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			err := uses.Flush(final)
-			cancel()
-			if err != nil {
+			if err := uses.Flush(final); err != nil {
 				logger.Warn("EPP credential last-used times not written at shutdown", "error", err)
 			}
+			if err := outcomes.Flush(final); err != nil {
+				logger.Warn("EPP daily create counts not written at shutdown", "error", err)
+			}
+			cancel()
 			return
 		}
 		if err := uses.Flush(ctx); err != nil {
 			logger.Warn("EPP credential last-used times not written; retrying next interval", "error", err)
+		}
+		if err := outcomes.Flush(ctx); err != nil {
+			logger.Warn("EPP daily create counts not written; retrying next interval", "error", err)
 		}
 	}
 }

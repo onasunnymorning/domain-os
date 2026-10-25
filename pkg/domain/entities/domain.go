@@ -272,7 +272,9 @@ func (d *Domain) Validate() error {
 
 // CanBePurged checks if the Domain can be purged (e.g. the PurgeDate is in the past)
 func (d *Domain) CanBePurged() bool {
-	return time.Now().UTC().After(d.RGPStatus.PurgeDate)
+	// A pending restore holds the purge, even past the purge date: see
+	// restore.go.
+	return !d.Status.PendingRestore && time.Now().UTC().After(d.RGPStatus.PurgeDate)
 }
 
 // CanBeDeleted checks if the Domain can be deleted (e.g. no delete prohibition is present in its status object: ClientDeleteProhibited or ServerDeleteProhibited). If the domain is alread in pending Delete status, it can't be deleted
@@ -297,11 +299,6 @@ func (d *Domain) CanBeTransferred() bool {
 // CanBeUpdated checks if the Domain can be updated (e.g. no update prohibition is present in its status object: ClientUpdateProhibited or ServerUpdateProhibited). If the domain is alread in pending Update status, it can't be updated
 func (d *Domain) CanBeUpdated() bool {
 	return !d.Status.ClientUpdateProhibited && !d.Status.ServerUpdateProhibited && !d.Status.PendingUpdate
-}
-
-// CanBeRestored checks if the Domain can be restored (if we are in the redemption grace period)
-func (d *Domain) CanBeRestored() bool {
-	return time.Now().UTC().Before(d.RGPStatus.RedemptionPeriodEnd) && d.Status.PendingDelete
 }
 
 // AddHost Adds a host to the domain and updates the Domain.Status.Inactive and Host.Satus.Linked flags if needed.
@@ -566,33 +563,6 @@ func (d *Domain) Expire(phase *Phase) error {
 	d.RGPStatus.RedemptionPeriodEnd = d.ExpiryDate.AddDate(0, 0, phase.Policy.RedemptionGP)
 	// Set the purge date based on the redemption period end date and the phase policy
 	d.RGPStatus.PurgeDate = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, phase.Policy.PendingDeleteGP)
-	return nil
-}
-
-// Restore transitions the domain from a pending delete status to a pending restore status.
-// It returns ErrDomainRestoreNotAllowed if the operation is not permitted or if any error
-// occurs while unsetting and setting the required statuses. The registrar responsible for
-// the restore is recorded in the UpRr field.
-func (d *Domain) Restore() error {
-	if !d.Status.PendingDelete {
-		return errors.Join(ErrDomainRestoreNotAllowed, fmt.Errorf("domain is not in %s status", DomainStatusPendingDelete))
-	}
-	if !d.CanBeRestored() {
-		return errors.Join(ErrDomainRestoreNotAllowed, fmt.Errorf("domain redemption grace period ended %s", d.RGPStatus.RedemptionPeriodEnd.Format(time.RFC3339)))
-	}
-
-	// Unset the pending delete status and set the pending restore status
-	err := d.UnSetStatus(DomainStatusPendingDelete)
-	if err != nil {
-		return errors.Join(ErrDomainRestoreNotAllowed, err)
-	}
-	err = d.SetStatus(DomainStatusPendingRestore)
-	if err != nil {
-		return errors.Join(ErrDomainRestoreNotAllowed, err)
-	}
-	// Set the registrar who made the update
-	d.UpRr = d.ClID
-
 	return nil
 }
 

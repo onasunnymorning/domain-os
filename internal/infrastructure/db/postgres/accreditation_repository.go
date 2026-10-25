@@ -19,19 +19,19 @@ func NewAccreditationRepository(db *gorm.DB) *AccreditationRepository {
 
 // CreateAccreditation creates a new accreditation
 func (r *AccreditationRepository) CreateAccreditation(ctx context.Context, tldName, rarClID string) error {
-	return r.db.WithContext(ctx).Model(&TLD{Name: tldName}).Association("Registrars").Append(&Registrar{ClID: rarClID})
+	return dbFrom(ctx, r.db).Model(&TLD{Name: tldName}).Association("Registrars").Append(&Registrar{ClID: rarClID})
 }
 
 // DeleteAccreditation deletes an accreditation
 func (r *AccreditationRepository) DeleteAccreditation(ctx context.Context, tldName, rarClID string) error {
-	return r.db.WithContext(ctx).Model(&TLD{Name: tldName}).Association("Registrars").Delete(&Registrar{ClID: rarClID})
+	return dbFrom(ctx, r.db).Model(&TLD{Name: tldName}).Association("Registrars").Delete(&Registrar{ClID: rarClID})
 }
 
 // ListTLDRegistrars lists registrars for a TLD
 func (r *AccreditationRepository) ListTLDRegistrars(ctx context.Context, pageSize int, cursor string, tldName string) ([]*entities.Registrar, error) {
 	dbRars := []*Registrar{}
 
-	err := r.db.WithContext(ctx).Order("cl_id ASC").Limit(pageSize).Model(&TLD{Name: tldName}).Association("Registrars").Find(&dbRars, "cl_id > ?", cursor)
+	err := dbFrom(ctx, r.db).Order("cl_id ASC").Limit(pageSize).Model(&TLD{Name: tldName}).Association("Registrars").Find(&dbRars, "cl_id > ?", cursor)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ type dbAccreditedTLDRow struct {
 func (r *AccreditationRepository) ListRegistrarTLDs(ctx context.Context, pageSize int, cursor string, rarClID string) ([]*entities.TLD, error) {
 	var rows []*dbAccreditedTLDRow
 
-	dbQuery := r.db.WithContext(ctx).Table("tlds").
+	dbQuery := dbFrom(ctx, r.db).Table("tlds").
 		Select("tlds.*, COALESCE(dc.domain_count, 0) as domain_count").
 		Joins("INNER JOIN accreditations a ON a.tld_name = tlds.name AND a.registrar_cl_id = ?", rarClID).
 		Joins("LEFT JOIN (SELECT tld_name AS dc_tld_name, COUNT(*) as domain_count FROM domains WHERE cl_id = ? GROUP BY tld_name) dc ON dc.dc_tld_name = tlds.name", rarClID).
