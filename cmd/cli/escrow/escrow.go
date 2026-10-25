@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
@@ -14,7 +13,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const APP_VERSION = "0.2.2"
+const APP_VERSION = "0.3.0"
 
 func main() {
 	start := time.Now()
@@ -55,30 +54,8 @@ func main() {
 				Action:  analyzeDeposit,
 				Flags: []cli.Flag{
 					&cli.BoolFlag{
-						Name:     "map-registrars",
-						Aliases:  []string{"map", "m"},
-						Usage:    "try to map registrar IDs to the target system",
-						Value:    false,
-						Required: false,
-					},
-					&cli.BoolFlag{
 						Name:  "streaming",
 						Usage: "Use optimized single-pass streaming analysis (recommended for large files)",
-					},
-				},
-			},
-			{
-				Name:    "import",
-				Aliases: []string{"imp"},
-				Usage:   "import an RDE escrow deposit file (XML)",
-				Action:  importDeposit,
-				Flags: []cli.Flag{
-					&cli.BoolFlag{
-						Name:     "ignore-errors-in-analysis",
-						Aliases:  []string{"i"},
-						Usage:    "if the analysis shows errors, ignore them and try to import the data anyway",
-						Value:    false,
-						Required: false,
 					},
 				},
 			},
@@ -131,7 +108,6 @@ func analyzeDeposit(c *cli.Context) error {
 	}
 
 	filename := c.Args().First()
-	mapRegistrars := c.Bool("map-registrars")
 	useStreaming := c.Bool("streaming")
 
 	if useStreaming {
@@ -141,7 +117,7 @@ func analyzeDeposit(c *cli.Context) error {
 			return err
 		}
 
-		return streamingController.AnalyzeStreaming(mapRegistrars)
+		return streamingController.AnalyzeStreaming()
 	} else {
 		// Use the original approach
 		escrowService, err := services.NewXMLEscrowService(filename)
@@ -150,31 +126,8 @@ func analyzeDeposit(c *cli.Context) error {
 		}
 
 		escrowController := escrow.NewEscrowAnalysisController(escrowService)
-		return escrowController.Analyze(mapRegistrars)
+		return escrowController.Analyze()
 	}
-}
-
-func importDeposit(c *cli.Context) error {
-	filename := c.Args().First()
-	if filename == "" {
-		return errors.New("please provide a filename")
-	}
-
-	// Set up the escrow service
-	escrowService, err := services.NewXMLEscrowService(filename)
-	if err != nil {
-		log.Fatal(err)
-	}
-	// Create the controller
-	importController := escrow.NewEscrowImportController(escrowService)
-
-	// Import the data
-	err = importController.Import(strings.TrimSuffix(filename, ".xml")+"-analysis.json", filename, c.Bool("ignore-errors-in-analysis"))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return nil
 }
 
 func generateDeposit(c *cli.Context) error {

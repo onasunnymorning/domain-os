@@ -2,11 +2,8 @@ package activities
 
 import (
 	"context"
-	"encoding/json"
-	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/log"
 )
@@ -55,30 +52,4 @@ func resumableCursor(logger log.Logger, phase services.ImportPhase, recorded ser
 	}
 	logger.Info("Resuming ingest", "phase", phase, "version", cursor.Version, "lastKey", cursor.LastKey, "lastClID", cursor.LastClID, "processed", cursor.Processed)
 	return cursor
-}
-
-// directImportCursor is where an *Direct activity resumes: the cursor it keeps
-// in S3 at cursorKey, held to services.ResumeCursor, or the zero cursor when
-// there is none or it cannot be read. It returns the heartbeat that records
-// the cursor there and on the activity.
-func directImportCursor(ctx context.Context, s3c *storage.S3Client, phase services.ImportPhase, cursorKey string) (services.ImportCursor, func(services.ImportCursor)) {
-	logger := activity.GetLogger(ctx)
-	var cursor services.ImportCursor
-	if content, err := s3c.DownloadToString(ctx, cursorKey); err == nil {
-		if recorded, err := services.ParseImportCursor(strings.TrimSpace(content)); err != nil {
-			logger.Warn("Ignoring unreadable import cursor; starting over", "key", cursorKey, "error", err)
-		} else {
-			cursor = resumableCursor(logger, phase, recorded)
-		}
-	}
-
-	heartbeat := func(c services.ImportCursor) {
-		activity.RecordHeartbeat(ctx, c)
-		data, err := json.Marshal(c)
-		if err != nil {
-			return
-		}
-		_ = s3c.UploadString(ctx, cursorKey, string(data))
-	}
-	return cursor, heartbeat
 }

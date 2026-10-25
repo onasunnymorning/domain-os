@@ -12,7 +12,7 @@ flowchart TB
     A -->|AssetKeys| B[BuildStagingDatabase]
     B -->|Ryde.db Key| C[ResolveRegistrars]
     C -->|Ryde.db Key| D[ApplyRegistrarMappings]
-    D -->|Staged.db Key| E[ExecuteImport]
+    D -->|Staged.db Key| E[Ingest* / LinkDomainHosts / AccreditRegistrars]
     E --> End((Done))
 ```
 
@@ -46,14 +46,17 @@ flowchart TB
     2. Performs SQL `UPDATE` operations to swap internal IDs (ClID, CrRr, UpRr) with mapped Registrar IDs using `registrar_mapping`.
     3. Uploads `staged.db`.
 
-### 5. ExecuteImport (Activity)
+### 5. Ingestion (Activities)
+*   **Activities**: `IngestContacts`, `IngestHosts`, `IngestDomains`, `IngestNNDNs`, `LinkDomainHosts`, `AccreditRegistrars`.
 *   **Input**: `staged.db` Key
 *   **Output**: Import Counts
 *   **Action**:
     1. Downloads `staged.db`.
     2. Instantiates `DirectDBImporter`.
-    3. Streams data from `staged.db` into Postgres using `DirectDBImporter` (Contacts, Hosts, Domains).
+    3. Streams data from `staged.db` straight into Postgres using `DirectDBImporter`.
     4. Uses "Identity Mapping" since IDs are already swapped in `staged.db`.
+
+Direct database ingestion is the only import path. The earlier variant that created each record through the admin API (`ImportFromSQLite` and the `escrow import` CLI command) has been removed.
 
 ## Verification
 *   **Build**: `go build` passed for workflows and activities.
@@ -69,7 +72,7 @@ The frontend has been updated to reflect the new 5-stage pipeline:
 2.  **New Artifact Links**:
     *   **Staged DB**: Link to the intermediate `staged.db` (Stage 4).
     *   **Events**: Link to `import-events.json` (Stage 5 result).
-3.  **Backend Support**: `ExecuteImport` now uploads the run report, and `ListImports` exposes the new artifacts.
+3.  **Backend Support**: `ListImports` exposes the new artifacts. (`import-events.json` was written by the removed admin-API import and now only exists on older runs.)
 
 ### Verification
 - **Backend Build**: Passed `go build -v ./internal/...`

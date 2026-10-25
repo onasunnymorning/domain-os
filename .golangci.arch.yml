@@ -143,14 +143,12 @@ linters:
       - linters: [forbidigo]
         path: _test\.go$
 
-      # INV-17 backlog, allowlisted as of 2026-10-03: 31 files, 152 call sites.
+      # INV-17 backlog, allowlisted as of 2026-10-03: 28 files, 143 call sites.
       # The rule guards every other file, so the backlog cannot grow outside
       # these. Migrate a file when you are already changing it: load the values
       # into a typed struct in internal/config at startup, inject it through the
       # constructor, then delete the file's line here. Most of the activities
       # rebuild the DB DSN from DB_* themselves; one shared loader replaces them.
-      - linters: [forbidigo]
-        path: internal/application/activities/escrow_import\.go                 # 7
       - linters: [forbidigo]
         path: internal/application/activities/escrow_keys\.go                   # 7
       - linters: [forbidigo]
@@ -184,8 +182,6 @@ linters:
       - linters: [forbidigo]
         path: internal/application/services/direct_db_importer\.go              # 2
       - linters: [forbidigo]
-        path: internal/application/services/escrow_service\.go                  # 1
-      - linters: [forbidigo]
         path: internal/infrastructure/auth/token_manager\.go                    # 2
       - linters: [forbidigo]
         path: internal/infrastructure/db/postgres/connection\.go                # 7
@@ -203,8 +199,6 @@ linters:
         path: internal/infrastructure/storage/s3\.go                            # 4
       - linters: [forbidigo]
         path: internal/infrastructure/temporal/config\.go                       # 5
-      - linters: [forbidigo]
-        path: internal/interface/cli/escrow/streamingEscrowAnalysis_controller\.go  # 1
       - linters: [forbidigo]
         path: internal/interface/rest/escrow_controller\.go                     # 5
       - linters: [forbidigo]

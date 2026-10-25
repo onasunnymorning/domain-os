@@ -140,7 +140,7 @@ func NewStreamingXMLEscrowServiceFromReader(reader io.Reader, outputDir, baseNam
 type HeartbeatFunc func(details ...interface{})
 
 // StreamAnalyze performs single-pass analysis of the XML file
-func (svc *StreamingXMLEscrowService) StreamAnalyze(mapRegistrars bool, token string, heartbeat HeartbeatFunc) error {
+func (svc *StreamingXMLEscrowService) StreamAnalyze(heartbeat HeartbeatFunc) error {
 
 	// Perform single-pass streaming
 	if err := svc.streamXML(heartbeat); err != nil {
@@ -151,14 +151,6 @@ func (svc *StreamingXMLEscrowService) StreamAnalyze(mapRegistrars bool, token st
 	svc.UnlinkedContactCheck()
 	if err := svc.LookForMissingContacts(); err != nil {
 		return err
-	}
-
-	// MapRegistrars logic has been moved to a separate activity (MapRegistrars)
-	// We no longer call it here inline.
-	// But we keep the argument for backward compatibility or if we want to restore it later
-	// (though the signature of MapRegistrars changed to require overrides, so we can't call it easily without them)
-	if mapRegistrars {
-		log.Println("⚠️ MapRegistrars argument is true, but inline mapping is deprecated/disabled in favor of MapRegistrars activity.")
 	}
 
 	// Save analysis results
