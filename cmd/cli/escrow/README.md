@@ -1,6 +1,6 @@
 # Escrow CLI Tool
 
-The Escrow CLI tool provides comprehensive functionality for analyzing, importing, and managing Registry Data Escrow (RDE) deposit files in XML format.
+The Escrow CLI tool provides comprehensive functionality for analyzing and converting Registry Data Escrow (RDE) deposit files in XML format.
 
 ## Features
 
@@ -8,7 +8,6 @@ The Escrow CLI tool provides comprehensive functionality for analyzing, importin
 - **Streaming Analysis**: High-performance single-pass XML processing for large files (8GB+)
 - **CSV Export**: Export analyzed data to CSV files for further processing
 - **SQLite Database**: Convert CSV files to optimized SQLite database for fast queries
-- **Registrar Mapping**: Map registrar IDs to target systems
 - **Data Validation**: Comprehensive validation of escrow data integrity
 
 ## Commands
@@ -22,7 +21,6 @@ escrow analyze [options] <escrow-file.xml>
 ```
 
 **Options:**
-- `--map-registrars, --map, -m`: Try to map registrar IDs to the target system (default: false)
 - `--streaming`: Use optimized single-pass streaming analysis (recommended for large files) (default: false)
 
 **Example:**
@@ -30,8 +28,8 @@ escrow analyze [options] <escrow-file.xml>
 # Basic analysis
 escrow analyze co_2025-09-29_full_S1_R0.xml
 
-# Streaming analysis with registrar mapping (recommended for large files)
-escrow analyze --streaming --map-registrars co_2025-09-29_full_S1_R0.xml
+# Streaming analysis (recommended for large files)
+escrow analyze --streaming co_2025-09-29_full_S1_R0.xml
 ```
 
 **Generated CSV Files:**
@@ -86,14 +84,6 @@ This will read all CSV files with the base name `co_2025-09-29_full_S1_R0` and c
 
 **Indexes:** Optimized indexes are created for fast lookups on common query patterns.
 
-### Import Command
-
-Import an RDE escrow deposit file into the system.
-
-```bash
-escrow import <escrow-file.xml>
-```
-
 ### Generate Command
 
 Export all relevant data from the database and create an XML escrow deposit file.
@@ -128,7 +118,7 @@ The tool includes two analysis modes:
 
 ```bash
 # 1. Analyze escrow file with streaming (fast for large files)
-escrow analyze --streaming --map-registrars co_2025-09-29_full_S1_R0.xml
+escrow analyze --streaming co_2025-09-29_full_S1_R0.xml
 
 # 2. Convert CSV files to SQLite database for fast queries
 escrow csv-to-sqlite co_2025-09-29_full_S1_R0
@@ -175,6 +165,10 @@ HAVING ip_count > 1;
 - Uses `modernc.org/sqlite` - Pure Go SQLite driver (no CGO required)
 - Compatible with standard SQLite features
 - Cross-platform support (Linux, macOS, Windows)
+
+## Importing a deposit
+
+This tool does not import deposits. Imports run through the `EscrowImportWorkflow` (launch it from the admin UI or `POST /escrow/imports`), which stages the deposit into SQLite and ingests it directly into the database. See `internal/application/workflows/escrowImport.doc.md`.
 
 ## Error Handling
 
