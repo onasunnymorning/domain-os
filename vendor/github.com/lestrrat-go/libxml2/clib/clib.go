@@ -1,5 +1,4 @@
 /*
-
 Package clib holds all of the dirty C interaction for go-libxml2.
 
 Although this package is visible to the outside world, the API in this
@@ -14,14 +13,13 @@ later... won't you?)
 
 Please DO NOT rely on this API and expect that it will keep backcompat.
 When the need arises, it WILL be changed, and if you are not ready
-for it, your code WILL break in horrible horrible ways. You have been
+for it, your code WILL break in horrible ways. You have been
 warned.
-
 */
 package clib
 
 /*
-#cgo pkg-config: libxml-2.0
+#include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -59,13 +57,13 @@ static inline void MY_xmlFree(void *p) {
 // Macro wrapper function. cgo cannot detect function-like macros,
 // so this is how we avoid it
 static inline xmlError* MY_xmlLastError() {
-	return xmlGetLastError();
+	return (xmlError*) xmlGetLastError();
 }
 
 // Macro wrapper function. cgo cannot detect function-like macros,
 // so this is how we avoid it
 static inline xmlError* MY_xmlCtxtLastError(void *ctx) {
-	return xmlCtxtGetLastError(ctx);
+	return (xmlError*) xmlCtxtGetLastError(ctx);
 }
 
 // Change xmlIndentTreeOutput global, return old value, so caller can
@@ -337,7 +335,6 @@ MY_setErrWarnAccumulator(xmlSchemaValidCtxtPtr ctxt, go_libxml2_errwarn_accumula
 import "C"
 import (
 	"fmt"
-	"reflect"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -455,7 +452,7 @@ func (i XMLNodeType) String() string {
 
 // ReportErrors *globally* changes the behavior of reporting errors.
 // By default libxml2 spews out lots of data to stderr. When you call
-// this function with a `false` value, all those messages are surpressed.
+// this function with a `false` value, all those messages are suppressed.
 // When you call this function a `true` value, the default behavior is
 // restored
 func ReportErrors(b bool) {
@@ -611,8 +608,8 @@ func isSafeName(name string) error {
 	for i := 0; i < len(name); i++ {
 		buf[i] = C.xmlChar(name[i])
 	}
-	bufptr := (uintptr)(unsafe.Pointer(&buf[0]))
-	if C.MY_test_node_name((*C.xmlChar)(unsafe.Pointer(bufptr))) == 0 {
+	bufptr := unsafe.Pointer(&buf[0])
+	if C.MY_test_node_name((*C.xmlChar)(bufptr)) == 0 {
 		return ErrInvalidNodeName
 	}
 	return nil
@@ -646,11 +643,11 @@ func XMLNewNode(ns PtrSource, name string) (uintptr, error) {
 	for i := 0; i < len(name); i++ {
 		cname[i] = C.xmlChar(name[i])
 	}
-	cnameptr := (uintptr)(unsafe.Pointer(&cname[0]))
+	cnameptr := unsafe.Pointer(&cname[0])
 
 	n := C.xmlNewNode(
 		(*C.xmlNs)(unsafe.Pointer(nsptr)),
-		(*C.xmlChar)(unsafe.Pointer(cnameptr)),
+		(*C.xmlChar)(cnameptr),
 	)
 	return uintptr(unsafe.Pointer(n)), nil
 }
@@ -675,17 +672,17 @@ func XMLNewDocProp(doc PtrSource, k, v string) (uintptr, error) {
 	}
 	// Taking the pointer as uintptr somehow fools the go compiler
 	// to not think this escapes to heap
-	kxptr := uintptr(unsafe.Pointer(&kx[0]))
+	kxptr := unsafe.Pointer(&kx[0])
 
 	ent, err := XMLEncodeEntitiesReentrant(docptr, v)
 	if err != nil {
 		return 0, err
 	}
-	attr := C.xmlNewDocProp(docptr, (*C.xmlChar)(unsafe.Pointer(kxptr)), ent)
+	attr := C.xmlNewDocProp(docptr, (*C.xmlChar)(kxptr), ent)
 	return uintptr(unsafe.Pointer(attr)), nil
 }
 
-func XMLSearchNsByHref(doc PtrSource, n PtrSource, uri string) (uintptr, error) {
+func XMLSearchNsByHref(doc PtrSource, _ PtrSource, uri string) (uintptr, error) {
 	docptr, err := validDocumentPtr(doc)
 	if err != nil {
 		return 0, err
@@ -704,12 +701,12 @@ func XMLSearchNsByHref(doc PtrSource, n PtrSource, uri string) (uintptr, error) 
 	for i := 0; i < len(uri); i++ {
 		xcuri[i] = C.xmlChar(uri[i])
 	}
-	xcuriptr := (uintptr)(unsafe.Pointer(&xcuri[0]))
+	xcuriptr := unsafe.Pointer(&xcuri[0])
 
 	ns := C.xmlSearchNsByHref(
 		(*C.xmlDoc)(unsafe.Pointer(docptr)),
 		(*C.xmlNode)(unsafe.Pointer(nptr)),
-		(*C.xmlChar)(unsafe.Pointer(xcuriptr)),
+		(*C.xmlChar)(xcuriptr),
 	)
 	if ns == nil {
 		return 0, ErrNamespaceNotFound{Target: uri}
@@ -1073,7 +1070,7 @@ func XMLTextContent(n PtrSource) string {
 	return xmlCharToString(C.xmlXPathCastNodeToString(nptr))
 }
 
-func XMLToString(n PtrSource, format int, docencoding bool) string {
+func XMLToString(n PtrSource, format int, _ bool) string {
 	nptr, err := validNodePtr(n)
 	if err != nil {
 		return ""
@@ -1249,6 +1246,7 @@ func addNsChain(n *C.xmlNs, ns *C.xmlNs) *C.xmlNs {
 
 func addNsDef(tree *C.xmlNode, ns *C.xmlNs) {
 	i := tree.nsDef
+	//nolint:revive
 	for ; i != nil && i != ns; i = i.next {
 	}
 
@@ -1359,12 +1357,12 @@ func XMLCreateAttributeNS(doc PtrSource, uri, k, v string) (uintptr, error) {
 	for i := 0; i < len(uri); i++ {
 		xcuri[i] = C.xmlChar(uri[i])
 	}
-	xcuriptr := (uintptr)(unsafe.Pointer(&xcuri[0]))
+	xcuriptr := unsafe.Pointer(&xcuri[0])
 
 	ns := C.xmlSearchNsByHref(
 		(*C.xmlDoc)(unsafe.Pointer(dptr)),
 		(*C.xmlNode)(unsafe.Pointer(rootptr)),
-		(*C.xmlChar)(unsafe.Pointer(xcuriptr)),
+		(*C.xmlChar)(xcuriptr),
 	)
 	if ns == nil {
 		if len(prefix) > MaxAttributeNameLength {
@@ -1374,12 +1372,12 @@ func XMLCreateAttributeNS(doc PtrSource, uri, k, v string) (uintptr, error) {
 		for i := 0; i < len(prefix); i++ {
 			xcprefix[i] = C.xmlChar(prefix[i])
 		}
-		xcprefixptr := (uintptr)(unsafe.Pointer(&xcprefix))
+		xcprefixptr := unsafe.Pointer(&xcprefix)
 
 		ns = C.xmlNewNs(
 			rootptr,
-			(*C.xmlChar)(unsafe.Pointer(xcuriptr)),
-			(*C.xmlChar)(unsafe.Pointer(xcprefixptr)),
+			(*C.xmlChar)(xcuriptr),
+			(*C.xmlChar)(xcprefixptr),
 		)
 		if ns == nil {
 			return 0, errors.New("failed to create namespace")
@@ -1417,9 +1415,9 @@ func XMLCreateElement(d PtrSource, name string) (uintptr, error) {
 	for i := 0; i < len(name); i++ {
 		xcname[i] = C.xmlChar(name[i])
 	}
-	xcnameptr := (uintptr)(unsafe.Pointer(&xcname[0]))
+	xcnameptr := unsafe.Pointer(&xcname[0])
 
-	nptr := C.MY_xmlCreateElement(dptr, (*C.xmlChar)(unsafe.Pointer(xcnameptr)))
+	nptr := C.MY_xmlCreateElement(dptr, (*C.xmlChar)(xcnameptr))
 	if nptr == nil {
 		return 0, errors.New("element creation failed")
 	}
@@ -1445,18 +1443,18 @@ func XMLCreateElementNS(doc PtrSource, nsuri, name string) (uintptr, error) {
 	for i := 0; i < len(nsuri); i++ {
 		xcnsuri[i] = C.xmlChar(nsuri[i])
 	}
-	xcnsuriptr := (uintptr)(unsafe.Pointer(&xcnsuri[0]))
+	xcnsuriptr := unsafe.Pointer(&xcnsuri[0])
 
 	var xcname [MaxElementNameLength]C.xmlChar
 	for i := 0; i < len(name); i++ {
 		xcname[i] = C.xmlChar(name[i])
 	}
-	xcnameptr := (uintptr)(unsafe.Pointer(&xcname[0]))
+	xcnameptr := unsafe.Pointer(&xcname[0])
 
 	nptr := C.MY_xmlCreateElementNS(
 		dptr,
-		(*C.xmlChar)(unsafe.Pointer(xcnsuriptr)),
-		(*C.xmlChar)(unsafe.Pointer(xcnameptr)),
+		(*C.xmlChar)(xcnsuriptr),
+		(*C.xmlChar)(xcnameptr),
 	)
 	if nptr == nil {
 		return 0, errors.New("failed to create element")
@@ -1541,11 +1539,12 @@ func XMLDocumentString(doc PtrSource, encoding string, format bool) string {
 	for i := 0; i < len(encoding); i++ {
 		xcencoding[i] = C.char(encoding[i])
 	}
-	xcencodingptr := (uintptr)(unsafe.Pointer(&xcencoding[0]))
+	xcencodingptr := unsafe.Pointer(&xcencoding[0])
 
 	var i C.int
 	var xc *C.xmlChar
-	C.xmlDocDumpFormatMemoryEnc(dptr, &xc, &i, (*C.char)(unsafe.Pointer(xcencodingptr)), intformat)
+
+	C.xmlDocDumpFormatMemoryEnc(dptr, &xc, &i, (*C.char)(xcencodingptr), intformat)
 
 	defer C.MY_xmlFree(unsafe.Pointer(xc))
 	return xmlCharToString(xc)
@@ -1629,7 +1628,7 @@ func XMLSetProp(n PtrSource, name, value string) error {
 	for i := 0; i < len(name); i++ {
 		xcname[i] = C.xmlChar(name[i])
 	}
-	xcnameptr := (uintptr)(unsafe.Pointer(&xcname[0]))
+	xcnameptr := unsafe.Pointer(&xcname[0])
 
 	if len(value) > MaxValueBufferSize {
 		return ErrValueTooLong
@@ -1638,12 +1637,12 @@ func XMLSetProp(n PtrSource, name, value string) error {
 	for i := 0; i < len(value); i++ {
 		xcvalue[i] = C.xmlChar(value[i])
 	}
-	xcvalueptr := (uintptr)(unsafe.Pointer(&xcvalue[0]))
+	xcvalueptr := unsafe.Pointer(&xcvalue[0])
 
 	C.xmlSetProp(
 		nptr,
-		(*C.xmlChar)(unsafe.Pointer(xcnameptr)),
-		(*C.xmlChar)(unsafe.Pointer(xcvalueptr)),
+		(*C.xmlChar)(xcnameptr),
+		(*C.xmlChar)(xcvalueptr),
 	)
 	return nil
 }
@@ -1724,7 +1723,6 @@ func XMLElementGetAttributeNode(n PtrSource, name string) (uintptr, error) {
 
 				prop = C.xmlHasNsProp(nptr, clocal, ns.href)
 			}
-
 		}
 	}
 
@@ -1931,9 +1929,9 @@ func XMLXPathCompile(s string) (uintptr, error) {
 	for i := 0; i < len(s); i++ {
 		xcs[i] = C.xmlChar(s[i])
 	}
-	xcsptr := (uintptr)(unsafe.Pointer(&xcs[0]))
+	xcsptr := unsafe.Pointer(&xcs[0])
 
-	if p := C.xmlXPathCompile((*C.xmlChar)(unsafe.Pointer(xcsptr))); p != nil {
+	if p := C.xmlXPathCompile((*C.xmlChar)(xcsptr)); p != nil {
 		return uintptr(unsafe.Pointer(p)), nil
 	}
 	return 0, ErrXPathCompileFailure
@@ -1986,7 +1984,7 @@ func XMLXPathRegisterNS(x PtrSource, prefix, nsuri string) error {
 	for i := 0; i < len(prefix); i++ {
 		cprefix[i] = C.xmlChar(prefix[i])
 	}
-	cprefixptr := (uintptr)(unsafe.Pointer(&cprefix[0]))
+	cprefixptr := unsafe.Pointer(&cprefix[0])
 
 	if len(nsuri) > MaxNamespaceURILength {
 		return ErrNamespaceURITooLong
@@ -1995,9 +1993,9 @@ func XMLXPathRegisterNS(x PtrSource, prefix, nsuri string) error {
 	for i := 0; i < len(nsuri); i++ {
 		cnsuri[i] = C.xmlChar(nsuri[i])
 	}
-	cnsuriptr := (uintptr)(unsafe.Pointer(&cnsuri[0]))
+	cnsuriptr := unsafe.Pointer(&cnsuri[0])
 
-	if res := C.xmlXPathRegisterNs(xptr, (*C.xmlChar)(unsafe.Pointer(cprefixptr)), (*C.xmlChar)(unsafe.Pointer(cnsuriptr))); res == -1 {
+	if res := C.xmlXPathRegisterNs(xptr, (*C.xmlChar)(cprefixptr), (*C.xmlChar)(cnsuriptr)); res == -1 {
 		return ErrXPathNamespaceRegisterFailure
 	}
 	return nil
@@ -2022,8 +2020,8 @@ func XMLEvalXPath(x PtrSource, expr PtrSource) (uintptr, error) {
 
 	if xptr.doc == nil {
 		var xcv [3]C.xmlChar = [3]C.xmlChar{'1', '.', '0'}
-		xcvptr := (uintptr)(unsafe.Pointer(&xcv[0]))
-		xptr.doc = C.xmlNewDoc((*C.xmlChar)(unsafe.Pointer(xcvptr)))
+		xcvptr := unsafe.Pointer(&xcv[0])
+		xptr.doc = C.xmlNewDoc((*C.xmlChar)(xcvptr))
 
 		defer C.xmlFreeDoc(xptr.doc)
 	}
@@ -2083,7 +2081,7 @@ func XMLXPathObjectBool(x PtrSource) bool {
 		return false
 	}
 
-	return C.int(xptr.boolval) == 1
+	return xptr.boolval == 1
 }
 
 func XMLXPathObjectNodeList(x PtrSource) ([]uintptr, error) {
@@ -2102,12 +2100,7 @@ func XMLXPathObjectNodeList(x PtrSource) ([]uintptr, error) {
 		return nil, errors.Wrap(ErrInvalidNode, "failed to get valid node for XMLXPathObjectNodeList")
 	}
 
-	hdr := reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(nodeset.nodeTab)),
-		Len:  int(nodeset.nodeNr),
-		Cap:  int(nodeset.nodeNr),
-	}
-	nodes := *(*[]*C.xmlNode)(unsafe.Pointer(&hdr))
+	nodes := unsafe.Slice(nodeset.nodeTab, nodeset.nodeNr)
 
 	ret := make([]uintptr, nodeset.nodeNr)
 	for i := 0; i < int(nodeset.nodeNr); i++ {
@@ -2129,6 +2122,7 @@ func XMLSchemaParse(buf []byte, options ...option.Interface) (uintptr, error) {
 	var uri string
 	var encoding string
 	var coptions int
+	//nolint:forcetypeassert
 	for _, opt := range options {
 		switch opt.Name() {
 		case option.OptKeyWithURI:

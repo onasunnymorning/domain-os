@@ -14,7 +14,7 @@ test: test-unit ## Run all tests
 test-unit: ## Run unit tests
 	@echo "Running unit tests..."
 	go test ./cmd/epp/... ./internal/interface/epp/... -v -race -short
-	go test ./cmd/cli/epp/... -v -race -short
+	go test -tags eppcli ./cmd/cli/epp/... -v -race -short
 
 test-integration: ## Run integration tests
 	@echo "Running integration tests..."
@@ -41,7 +41,7 @@ build-server: ## Build EPP server
 
 build-client: ## Build EPP client
 	@echo "Building EPP client..."
-	go build -o bin/epp-client ./cmd/cli/epp/
+	go build -tags eppcli -o bin/epp-client ./cmd/cli/epp/
 
 build: build-server build-client ## Build both server and client
 
@@ -75,7 +75,7 @@ dev-server: ## Run server in development mode with auto-reload
 
 dev-client: ## Run client in development mode
 	@echo "Starting client in dev mode..."
-	go run ./cmd/cli/epp/eppCliClient.go -h localhost -p 700
+	go run -tags eppcli ./cmd/cli/epp/eppCliClient.go -h localhost -p 700
 
 # Testing infrastructure setup
 setup-test-env: ## Set up test environment

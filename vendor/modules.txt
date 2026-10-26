@@ -481,8 +481,8 @@ github.com/klauspost/cpuid/v2
 ## explicit; go 1.18
 github.com/leodido/go-urn
 github.com/leodido/go-urn/scim/schema
-# github.com/lestrrat-go/libxml2 v0.0.0-20201123224832-e6d9de61b80d
-## explicit
+# github.com/lestrrat-go/libxml2 v0.0.0-20260709020957-3f0f7bd60b63
+## explicit; go 1.21
 github.com/lestrrat-go/libxml2
 github.com/lestrrat-go/libxml2/clib
 github.com/lestrrat-go/libxml2/dom

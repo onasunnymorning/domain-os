@@ -20,3 +20,11 @@ func (n *Namespace) Free() {
 	n.ptr = 0
 }
 
+// String returns the stringified Namespace
+func (n *Namespace) String() string {
+	prefix := n.Prefix()
+	if prefix != "" {
+		prefix = ":" + prefix
+	}
+	return "xmlns" + prefix + `="` + n.URI() + `"`
+}
