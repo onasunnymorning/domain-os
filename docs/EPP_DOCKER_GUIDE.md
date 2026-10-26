@@ -216,7 +216,8 @@ The EPP server runs on the `dos` Docker network and can communicate with:
 
 ```bash
 # Using the EPP client
-go run cmd/cli/epp/eppCliClient.go
+# Built only with -tags eppcli; needs a system libxml2 older than 2.15 (macOS is fine)
+go run -tags eppcli cmd/cli/epp/eppCliClient.go
 
 # Using openssl
 openssl s_client -connect localhost:700
