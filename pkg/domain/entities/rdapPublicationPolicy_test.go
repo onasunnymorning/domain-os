@@ -49,6 +49,7 @@ func TestNewRDAPPublicationPolicyRejects(t *testing.T) {
 		{"replacing a non-email", "p", with(RDAPFieldName, RDAPFieldRule{Rule: RDAPWithhold, Method: RDAPReplacementValue}), "", "only an email"},
 		{"handle if disclosed", "p", with(RDAPFieldHandle, RDAPFieldRule{Rule: RDAPPublishIfDisclosed}), "", "disclose flag"},
 		{"handle emptied", "p", with(RDAPFieldHandle, RDAPFieldRule{Rule: RDAPWithhold, Method: RDAPEmptyValue}), "", "removed"},
+		{"phone emptied", "p", with(RDAPFieldVoice, RDAPFieldRule{Rule: RDAPWithhold, Method: RDAPEmptyValue}), "", "phone or fax is removed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := NewRDAPPublicationPolicy(tc.pname, "", tc.roles, tc.uri)

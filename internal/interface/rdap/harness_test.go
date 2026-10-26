@@ -54,7 +54,7 @@ func (f *fakeLookups) Domain(_ context.Context, name string) (*interfaces.RDAPDo
 // minimalDomain is a registered domain with nothing but its name.
 func minimalDomain(name, tld string) *interfaces.RDAPDomain {
 	return &interfaces.RDAPDomain{
-		Domain:      &entities.Domain{Name: entities.DomainName(name), TLDName: entities.DomainName(tld), RoID: "1_DOM-TEST"},
+		Domain:      &entities.Domain{Name: entities.DomainName(name), TLDName: entities.DomainName(tld), RoID: "1_DOM-ICANNRST"},
 		TLDType:     entities.TLDTypeGTLD,
 		Publication: rdappolicy.GTLDRegistrationDataPolicy2024(),
 	}
@@ -101,7 +101,8 @@ func testRegistrar() *entities.Registrar {
 	return &entities.Registrar{
 		ClID: "rar-1", Name: "Example Registrar, Inc.", GurID: 9995,
 		Voice: "+1.5555550000", Email: "abuse@registrar.example", URL: "https://registrar.example",
-		PostalInfo: [2]*entities.RegistrarPostalInfo{{Type: "int", Address: &entities.Address{Street1: "1 Registrar Way", City: "Los Angeles", StateProvince: "CA", PostalCode: "90001", CountryCode: "US"}}},
+		RdapBaseURL: "https://rdap.registrar.example/",
+		PostalInfo:  [2]*entities.RegistrarPostalInfo{{Type: "int", Address: &entities.Address{Street1: "1 Registrar Way", City: "Los Angeles", StateProvince: "CA", PostalCode: "90001", CountryCode: "US"}}},
 	}
 }
 
@@ -109,7 +110,7 @@ func testRegistrar() *entities.Registrar {
 func testNameserver(name string) *interfaces.RDAPNameserver {
 	return &interfaces.RDAPNameserver{
 		Host: &entities.Host{
-			RoID: "200_HOST-TEST", Name: entities.DomainName(name), ClID: "rar-1",
+			RoID: "200_HOST-ICANNRST", Name: entities.DomainName(name), ClID: "rar-1",
 			Addresses: []netip.Addr{netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("2001:db8::1")},
 			Status:    entities.HostStatus{Linked: true, OK: true},
 		},

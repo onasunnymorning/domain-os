@@ -6,7 +6,7 @@
     "redacted"
   ],
   "objectClassName": "domain",
-  "handle": "100_DOM-TEST",
+  "handle": "100_DOM-ICANNRST",
   "ldhName": "xn--bcher-kva.example",
   "unicodeName": "bücher.example",
   "status": [
@@ -107,6 +107,7 @@
       ],
       "links": [
         {
+          "value": "https://rdap.registrar.example/",
           "rel": "about",
           "href": "https://registrar.example",
           "type": "text/html"
@@ -148,14 +149,6 @@
               "",
               ""
             ]
-          ],
-          [
-            "tel",
-            {
-              "type": "voice"
-            },
-            "uri",
-            ""
           ]
         ]
       ]
@@ -179,14 +172,6 @@
             {},
             "text",
             ""
-          ],
-          [
-            "tel",
-            {
-              "type": "voice"
-            },
-            "uri",
-            ""
           ]
         ]
       ]
@@ -195,7 +180,7 @@
   "nameservers": [
     {
       "objectClassName": "nameserver",
-      "handle": "200_HOST-TEST",
+      "handle": "200_HOST-ICANNRST",
       "ldhName": "ns1.xn--bcher-kva.example",
       "ipAddresses": {
         "v4": [
@@ -216,7 +201,7 @@
     },
     {
       "objectClassName": "nameserver",
-      "handle": "201_HOST-TEST",
+      "handle": "201_HOST-ICANNRST",
       "ldhName": "ns.dns.example.net",
       "links": [
         {
@@ -368,9 +353,9 @@
       "name": {
         "type": "Registrant Phone"
       },
-      "postPath": "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[1].type=='voice')][3]",
+      "prePath": "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[1].type=='voice')][3]",
       "pathLang": "jsonpath",
-      "method": "emptyValue",
+      "method": "removal",
       "reason": {
         "type": "Server policy"
       }
@@ -434,9 +419,9 @@
       "name": {
         "type": "Tech Phone"
       },
-      "postPath": "$.entities[?(@.roles[0]=='technical')].vcardArray[1][?(@[1].type=='voice')][3]",
+      "prePath": "$.entities[?(@.roles[0]=='technical')].vcardArray[1][?(@[1].type=='voice')][3]",
       "pathLang": "jsonpath",
-      "method": "emptyValue",
+      "method": "removal",
       "reason": {
         "type": "Server policy"
       }

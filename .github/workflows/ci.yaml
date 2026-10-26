@@ -159,6 +159,24 @@ jobs:
         # real Redis, and fails in CI rather than skipping without one.
         run: docker run --rm -d --name testredis -p 6379:6379 redis:7-alpine
 
+      - name: Set up Java (RDAP Conformance Tool)
+        # internal/interface/rdap grades rdap-01 to rdap-04 with ICANN's
+        # RDAP Conformance Tool, and fails in CI rather than skipping
+        # without it.
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Cache the RDAP Conformance Tool and its datasets
+        uses: actions/cache@v4
+        with:
+          path: .cache/rdapct
+          key: rdapct-3.1.0
+
+      - name: Install the RDAP Conformance Tool
+        run: make rdapct
+
       - name: Run All Tests
         run: |
           go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...

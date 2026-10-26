@@ -6,7 +6,7 @@
     "redacted"
   ],
   "objectClassName": "domain",
-  "handle": "100_DOM-TEST",
+  "handle": "100_DOM-ICANNRST",
   "ldhName": "moved.example",
   "status": [
     "client transfer prohibited",
@@ -106,6 +106,7 @@
       ],
       "links": [
         {
+          "value": "https://rdap.registrar.example/",
           "rel": "about",
           "href": "https://registrar.example",
           "type": "text/html"
@@ -116,7 +117,7 @@
   "nameservers": [
     {
       "objectClassName": "nameserver",
-      "handle": "200_HOST-TEST",
+      "handle": "200_HOST-ICANNRST",
       "ldhName": "ns1.xn--bcher-kva.example",
       "ipAddresses": {
         "v4": [
@@ -137,7 +138,7 @@
     },
     {
       "objectClassName": "nameserver",
-      "handle": "201_HOST-TEST",
+      "handle": "201_HOST-ICANNRST",
       "ldhName": "ns.dns.example.net",
       "links": [
         {

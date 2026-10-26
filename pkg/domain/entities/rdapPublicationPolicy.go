@@ -202,6 +202,11 @@ func (r RDAPFieldRule) validate(f RDAPField) error {
 		if f == RDAPFieldHandle && r.Method != RDAPRemoval {
 			return errors.New("a withheld handle is removed")
 		}
+		// An empty tel is not a valid jCard property, and the gTLD profile
+		// requires withheld phones to be removed.
+		if (f == RDAPFieldVoice || f == RDAPFieldFax) && r.Method != RDAPRemoval {
+			return errors.New("a withheld phone or fax is removed")
+		}
 	default:
 		return fmt.Errorf("rule %q is not publish, publish-if-disclosed or withhold", r.Rule)
 	}
@@ -249,7 +254,7 @@ func BuiltInRDAPPublicationPolicies() []*RDAPPublicationPolicy {
 				RDAPFieldSP:     publish,
 				RDAPFieldPC:     rdapWithhold(RDAPEmptyValue),
 				RDAPFieldCC:     publish,
-				RDAPFieldVoice:  rdapWithhold(RDAPEmptyValue),
+				RDAPFieldVoice:  rdapWithhold(RDAPRemoval),
 				RDAPFieldFax:    rdapWithhold(RDAPRemoval),
 				RDAPFieldEmail:  rdapWithhold(RDAPReplacementValue),
 			},
@@ -262,7 +267,7 @@ func BuiltInRDAPPublicationPolicies() []*RDAPPublicationPolicy {
 				RDAPFieldSP:     rdapWithhold(RDAPRemoval),
 				RDAPFieldPC:     rdapWithhold(RDAPRemoval),
 				RDAPFieldCC:     rdapWithhold(RDAPRemoval),
-				RDAPFieldVoice:  rdapWithhold(RDAPEmptyValue),
+				RDAPFieldVoice:  rdapWithhold(RDAPRemoval),
 				RDAPFieldFax:    rdapWithhold(RDAPRemoval),
 				RDAPFieldEmail:  rdapWithhold(RDAPReplacementValue),
 			},
