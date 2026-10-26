@@ -35,7 +35,7 @@ What to do when an RDAP alert fires, and how to carry out the routine operations
 *(Phase 4.)* Do this for ICANN's SLA probes, and for RST's `rdap.clientACL` before a test run.
 
 ### Change what a TLD publishes
-*(Phase 3.)* See [PUBLICATION_REFERENCE.md](PUBLICATION_REFERENCE.md).
+Needs `rdap:policy:admin`. Read what applies with `GET $API/tlds/$TLD/rdap/publication-policy`. Either change that policy (`PUT $API/rdap/publication-policies/$NAME`, with every field of every published role), or create one and assign it (`PUT $API/tlds/$TLD/rdap/publication-policy` with `{"policy": "$NAME"}`). Every node applies it within `RDAP_POLICY_REFRESH_INTERVAL`; confirm with `rdap_policies_refreshed_timestamp_seconds`. Record the policy owner's sign-off in [PUBLICATION_REFERENCE.md](PUBLICATION_REFERENCE.md) for a policy that serves a live TLD.
 
 ### Rotate the certificate
 Replace the files at `RDAP_TLS_CERT_PATH` and `RDAP_TLS_KEY_PATH` (key first, then certificate). Each node picks them up within `RDAP_TLS_RELOAD_INTERVAL`, for new connections only. A certificate that is expired, not yet valid or does not cover `RDAP_SERVER_NAME` is refused: the node keeps the current one, logs the reason, and counts it in `rdap_server_cert_reload_errors_total`. Check `rdap_server_cert_not_after_timestamp_seconds` on every node to confirm the new expiry.

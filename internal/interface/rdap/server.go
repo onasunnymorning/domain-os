@@ -142,6 +142,7 @@ func (s *Server) Serve(l net.Listener) error {
 	s.stopWatch = stop
 	defer stop()
 	go s.certs.Watch(watchCtx)
+	go s.watchPolicies(watchCtx)
 
 	s.logger.Info("RDAP server listening",
 		"addr", l.Addr().String(),
@@ -192,4 +193,33 @@ func (s *Server) OpsHandler() http.Handler {
 	})
 	mux.Handle("/metrics", promhttp.HandlerFor(s.metrics.registry, promhttp.HandlerOpts{}))
 	return mux
+}
+
+// watchPolicies reloads the TLDs' publication policies now and every
+// PolicyRefresh, until ctx is done. A failed load keeps the set last loaded
+// (ADR 0021): before the first, every TLD has the built-in for its type.
+func (s *Server) watchPolicies(ctx context.Context) {
+	interval := s.cfg.PolicyRefresh
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		loadCtx, cancel := context.WithTimeout(ctx, interval)
+		err := s.lookups.RefreshPublicationPolicies(loadCtx)
+		cancel()
+		switch {
+		case err == nil:
+			s.metrics.policiesRefreshed.Set(float64(s.now().Unix()))
+		case ctx.Err() == nil:
+			s.metrics.policyRefreshErrors.Inc()
+			s.logger.Warn("RDAP publication policies not refreshed; keeping the previous set", "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }

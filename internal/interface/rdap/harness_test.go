@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +28,10 @@ type fakeLookups struct {
 	nameservers map[string]*interfaces.RDAPNameserver
 	registrars  map[int]*entities.Registrar
 	err         error // returned by every lookup when set
+
+	mu         sync.Mutex
+	refreshes  int
+	refreshErr error
 }
 
 func (f *fakeLookups) Domain(_ context.Context, name string) (*interfaces.RDAPDomain, error) {
@@ -69,6 +74,13 @@ func (f *fakeLookups) Registrar(_ context.Context, ianaID int) (*entities.Regist
 		return nil, entities.ErrRegistrarNotFound
 	}
 	return rr, nil
+}
+
+func (f *fakeLookups) RefreshPublicationPolicies(context.Context) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.refreshes++
+	return f.refreshErr
 }
 
 // testRegistrar is an accredited registrar with every contact field.

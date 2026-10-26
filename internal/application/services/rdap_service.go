@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/rdappolicy"
@@ -14,6 +15,9 @@ import (
 
 // RDAPService reads what the RDAP server serves (ADR 0020). It never writes.
 type RDAPService struct {
+	publication *RDAPPublicationPolicyService
+	set         atomic.Pointer[entities.RDAPPublicationSet]
+
 	domains    repositories.DomainRepository
 	hosts      repositories.HostRepository
 	registrars repositories.RegistrarRepository
@@ -28,11 +32,31 @@ type RDAPServiceDeps struct {
 	Registrars repositories.RegistrarRepository
 	TLDs       repositories.TLDRepository
 	Contacts   repositories.ContactRepository
+	// Publication is where the publication policies are read from. Nil
+	// keeps the built-ins for every TLD.
+	Publication *RDAPPublicationPolicyService
 }
 
-// NewRDAPService returns an RDAPService reading from deps.
+// NewRDAPService returns an RDAPService reading from deps. Until the first
+// RefreshPublicationPolicies, every TLD has the built-in for its type.
 func NewRDAPService(deps RDAPServiceDeps) *RDAPService {
-	return &RDAPService{domains: deps.Domains, hosts: deps.Hosts, registrars: deps.Registrars, tlds: deps.TLDs, contacts: deps.Contacts}
+	s := &RDAPService{domains: deps.Domains, hosts: deps.Hosts, registrars: deps.Registrars, tlds: deps.TLDs, contacts: deps.Contacts, publication: deps.Publication}
+	s.set.Store(entities.DefaultRDAPPublicationSet())
+	return s
+}
+
+// RefreshPublicationPolicies reloads the publication policies and their
+// assignments. A failed load keeps the set last loaded.
+func (s *RDAPService) RefreshPublicationPolicies(ctx context.Context) error {
+	if s.publication == nil {
+		return nil
+	}
+	set, err := s.publication.PublicationSet(ctx)
+	if err != nil {
+		return err
+	}
+	s.set.Store(set)
+	return nil
 }
 
 // Domain returns what a domain response is built from, or
@@ -58,7 +82,7 @@ func (s *RDAPService) Domain(ctx context.Context, name string) (*interfaces.RDAP
 		return nil, fmt.Errorf("TLD of %s: %w", d.Name, err)
 	}
 	out.TLDType = tld.Type
-	out.Publication = rdappolicy.BuiltInFor(tld.Type)
+	out.Publication = *s.set.Load().ForTLD(tld.Name, tld.Type)
 	if phase, err := tld.GetCurrentGAPhase(); err == nil {
 		cdp := phase.Policy.ContactDataPolicy
 		out.ContactPolicy = &cdp

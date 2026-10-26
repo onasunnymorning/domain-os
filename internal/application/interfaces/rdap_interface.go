@@ -20,6 +20,9 @@ type RDAPLookups interface {
 	// Registrar returns the registrar with IANA ID ianaID, or
 	// entities.ErrRegistrarNotFound.
 	Registrar(ctx context.Context, ianaID int) (*entities.Registrar, error)
+	// RefreshPublicationPolicies reloads the TLDs' publication policies. A
+	// failed load keeps the set last loaded.
+	RefreshPublicationPolicies(ctx context.Context) error
 }
 
 // RDAPDomain is everything a domain response is built from.

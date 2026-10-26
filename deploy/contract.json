@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-26T20:12:07Z",
+  "generated": "2026-10-26T21:08:28Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -821,7 +821,12 @@
           },
           {
             "name": "RDAP_TERMS_OF_SERVICE_URL",
-            "description": "The registry's RDAP terms of use, linked from the gTLD profile's Terms of Use notice. Unset leaves that notice out, which a gTLD may not do. Moves into each TLD's publication policy in Phase 3"
+            "description": "The RDAP service's terms of use, linked from the gTLD profile's Terms of Use notice in every response. Unset leaves that notice out, which a gTLD may not do"
+          },
+          {
+            "name": "RDAP_POLICY_REFRESH_INTERVAL",
+            "default": "30s",
+            "description": "How often an RDAP node reloads the TLDs' publication policies. A failed reload keeps the set last loaded"
           },
           {
             "name": "RDAP_DB_MAX_OPEN_CONNS",

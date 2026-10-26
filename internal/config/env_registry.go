@@ -214,7 +214,8 @@ var Registry = []EnvVar{
 	{Name: "RDAP_WRITE_TIMEOUT", Services: []Service{ServiceRDAP}, Default: "10s", Description: "Time to write one response"},
 	{Name: "RDAP_IDLE_TIMEOUT", Services: []Service{ServiceRDAP}, Default: "60s", Description: "Time a keep-alive connection may wait for its next request"},
 	{Name: "RDAP_DRAIN_TIMEOUT", Services: []Service{ServiceRDAP}, Default: "20s", Description: "On SIGTERM, time allowed for requests in flight after readiness turns 503"},
-	{Name: "RDAP_TERMS_OF_SERVICE_URL", Services: []Service{ServiceRDAP}, Description: "The registry's RDAP terms of use, linked from the gTLD profile's Terms of Use notice. Unset leaves that notice out, which a gTLD may not do. Moves into each TLD's publication policy in Phase 3"},
+	{Name: "RDAP_TERMS_OF_SERVICE_URL", Services: []Service{ServiceRDAP}, Description: "The RDAP service's terms of use, linked from the gTLD profile's Terms of Use notice in every response. Unset leaves that notice out, which a gTLD may not do"},
+	{Name: "RDAP_POLICY_REFRESH_INTERVAL", Services: []Service{ServiceRDAP}, Default: "30s", Description: "How often an RDAP node reloads the TLDs' publication policies. A failed reload keeps the set last loaded"},
 	{Name: "RDAP_DB_MAX_OPEN_CONNS", Services: []Service{ServiceRDAP}, Default: "20", Description: "Database connections one RDAP node may open"},
 
 	// ═══════════════════════════════════════════

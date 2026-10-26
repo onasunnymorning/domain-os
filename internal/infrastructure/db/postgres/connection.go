@@ -64,6 +64,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&RegistrarFamilyRecord{},
 		&RegistrarFamilyMemberRecord{},
 		&EPPCreateOutcomeRecord{},
+		&RDAPPublicationPolicyRecord{},
+		&RDAPPublicationAssignmentRecord{},
 		&InstallationSetting{},
 	)
 	if err != nil {
@@ -83,6 +85,12 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 	if err := ensureEPPPolicyForeignKeys(db); err != nil {
+		return err
+	}
+	if err := seedRDAPPublicationPolicies(db); err != nil {
+		return err
+	}
+	if err := ensureRDAPPublicationForeignKeys(db); err != nil {
 		return err
 	}
 

@@ -180,3 +180,30 @@ func TestOpsAndMetrics(t *testing.T) {
 		assert.Contains(t, opsGet(ts.Server, "/metrics").Body.String(), "rdap_draining 1")
 	})
 }
+
+func TestPublicationPoliciesAreReloaded(t *testing.T) {
+	cfg := testConfig("https://rdap.example.test/")
+	cfg.PolicyRefresh = 20 * time.Millisecond
+
+	t.Run("on start and every interval", func(t *testing.T) {
+		lookups := registry()
+		ts := startServer(t, cfg, lookups)
+		require.Eventually(t, func() bool {
+			lookups.mu.Lock()
+			defer lookups.mu.Unlock()
+			return lookups.refreshes >= 2
+		}, 2*time.Second, 5*time.Millisecond)
+		assert.NotContains(t, opsGet(ts.Server, "/metrics").Body.String(), "rdap_policies_refreshed_timestamp_seconds 0")
+	})
+
+	t.Run("a failed reload is counted and the server keeps serving", func(t *testing.T) {
+		lookups := registry()
+		lookups.refreshErr = errors.New("database unavailable")
+		ts := startServer(t, cfg, lookups)
+		require.Eventually(t, func() bool {
+			return strings.Contains(opsGet(ts.Server, "/metrics").Body.String(), "rdap_policy_refresh_errors_total 2")
+		}, 2*time.Second, 5*time.Millisecond)
+		resp, _ := ts.do(t, http.MethodGet, "domain/example.tld")
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+}
