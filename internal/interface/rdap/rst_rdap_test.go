@@ -246,13 +246,13 @@ func TestRST_rdap91_TLS(t *testing.T) {
 		assert.Error(t, dial(&tls.Config{MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS11}))
 	})
 	t.Run("rdap-91/3 certificate issued by a trusted CA", func(t *testing.T) {
-		rstOperational(t, "the certificate installed for RDAP_SERVER_NAME is from a CA browsers trust")
+		rstOperational(t, "the certificate installed for RDAP_SERVER_NAME is from a CA browsers trust (cmd/tools/rdapcheck)")
 	})
 	t.Run("rdap-91/4 certificate not expired, chain presented", func(t *testing.T) {
 		// An expired certificate is refused at start and on reload
 		// (tlsconfig); whether the deployed file holds its chain is not
 		// something this code can know.
-		rstOperational(t, "the certificate file holds the leaf and every intermediate")
+		rstOperational(t, "the certificate file holds the leaf and every intermediate (cmd/tools/rdapcheck)")
 	})
 	t.Run("rdap-91/5 a certificate not covering the server name is refused", func(t *testing.T) {
 		cert, err := tlsconfig.SelfSigned("other.example.test")
@@ -283,12 +283,25 @@ func TestRST_rdap91_TLS(t *testing.T) {
 	})
 }
 
+// --- rdap-92: Service port consistency check ------------------------------
+
+func TestRST_rdap92_ServicePortConsistency(t *testing.T) {
+	t.Run("rdap-92 an IPv4 and an IPv6 service port", func(t *testing.T) {
+		rstOperational(t, "A and AAAA records for the RDAP host name (cmd/tools/rdapcheck)")
+	})
+	t.Run("rdap-92 the same answers on every service port", func(t *testing.T) {
+		// Nodes keep no per-node state in a response: what differs between
+		// two answers is only the "last update of RDAP database" event,
+		// which rdap-92 leaves out. Whether every address reaches a node
+		// running the same build and policies is the deployment's.
+		rstOperational(t, "every address serves the same build and policies (cmd/tools/rdapcheck)")
+	})
+}
+
 // rstPendingCases are the StandardRDAP cases with no implementation to test
 // yet, each with the phase that delivers it. TestRST_RDAPCatalogueIsComplete
 // keeps this list and the pinned spec in step.
-var rstPendingCases = map[string]string{
-	"rdap-92": "Phase 7, identical responses over IPv4 and IPv6 (per deployment)",
-}
+var rstPendingCases = map[string]string{}
 
 func TestRST_RDAPPendingCases(t *testing.T) {
 	ids := make([]string, 0, len(rstPendingCases))
@@ -302,7 +315,7 @@ func TestRST_RDAPPendingCases(t *testing.T) {
 }
 
 // rstImplementedCases have their own TestRST_ function in this file.
-var rstImplementedCases = []string{"rdap-01", "rdap-02", "rdap-03", "rdap-04", "rdap-05", "rdap-06", "rdap-07", "rdap-08", "rdap-09", "rdap-10", "rdap-91"}
+var rstImplementedCases = []string{"rdap-01", "rdap-02", "rdap-03", "rdap-04", "rdap-05", "rdap-06", "rdap-07", "rdap-92", "rdap-08", "rdap-09", "rdap-10", "rdap-91"}
 
 // TestRST_RDAPCatalogueIsComplete fails when the pinned spec and this file
 // disagree: a case in the spec that is neither implemented nor pending, or a
