@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -99,14 +100,45 @@ func TestCorpusIsValid(t *testing.T) {
 	}
 }
 
-// mutant is one mutation of a corpus frame.
+// mutant is one mutation of a corpus frame. value is the mutation value
+// written into it, for mutations that replace a text or attribute value.
 type mutant struct {
 	name  string
 	frame []byte
+	value string
+}
+
+// signedUnsigned matches the signed lexical forms of the unsigned types:
+// "+" on any number, "-" on a zero. XSD allows them (they inherit
+// xs:nonNegativeInteger's lexical space) and libxml2 2.15 accepts them, but
+// libxml2 2.9, the xmllint macOS ships, refuses them.
+var signedUnsigned = regexp.MustCompile(`^(\+[0-9]+|-0+)$`)
+
+// xmllintAcceptsSignedUnsigned reports whether bin follows XSD on signed
+// unsigned values, by validating a corpus frame whose xs:unsignedShort
+// <secDNS:keyTag> is "+1".
+func xmllintAcceptsSignedUnsigned(t testing.TB, bin string) bool {
+	t.Helper()
+	doc := etree.NewDocument()
+	require.NoError(t, doc.ReadFromFile("testdata/frames/domain-create-secdns.xml"))
+	keyTag := doc.FindElement("//secDNS:keyTag")
+	require.NotNil(t, keyTag, "the probe frame has a <secDNS:keyTag>")
+	keyTag.SetText("+1")
+	b, err := doc.WriteToBytes()
+	require.NoError(t, err)
+	ok, _, _ := xmllintVerdict(t, bin, b)
+	return ok
 }
 
 func TestModelsAgreeWithXmllint(t *testing.T) {
 	bin := requireXmllint(t)
+	// An old xmllint refuses signed unsigned values the models (rightly)
+	// accept. Excuse exactly that disagreement there, and nothing else; a
+	// current xmllint, as in CI, gets no excuse.
+	legacySigns := !xmllintAcceptsSignedUnsigned(t, bin)
+	if legacySigns {
+		t.Logf("this xmllint refuses signed unsigned values, as libxml2 2.9 does; excusing that disagreement only")
+	}
 	var mutants []mutant
 	for name, frame := range loadCorpus(t) {
 		mutants = append(mutants, mutate(t, name, frame)...)
@@ -121,6 +153,7 @@ func TestModelsAgreeWithXmllint(t *testing.T) {
 		mu       sync.Mutex
 		failures []disagreement
 		invalid  int
+		excused  int
 		wg       sync.WaitGroup
 		next     = make(chan mutant)
 	)
@@ -138,7 +171,9 @@ func TestModelsAgreeWithXmllint(t *testing.T) {
 				if !theirs {
 					invalid++
 				}
-				if (err == nil) != theirs {
+				if legacySigns && err == nil && !theirs && signedUnsigned.MatchString(m.value) {
+					excused++
+				} else if (err == nil) != theirs {
 					why := "accepted"
 					if err != nil {
 						why = err.Error()
@@ -155,7 +190,7 @@ func TestModelsAgreeWithXmllint(t *testing.T) {
 	close(next)
 	wg.Wait()
 
-	t.Logf("%d mutants, %d invalid per xmllint", len(mutants), invalid)
+	t.Logf("%d mutants, %d invalid per xmllint, %d excused as signed unsigned values", len(mutants), invalid, excused)
 	require.Greater(t, invalid, len(mutants)/3, "many mutations should break a frame; the mutator has stopped mutating")
 	for i, f := range failures {
 		if i == 20 {
@@ -253,22 +288,23 @@ func mutate(t testing.TB, name string, frame []byte) []mutant {
 	require.NoError(t, base.ReadFromBytes(frame))
 
 	var out []mutant
-	emit := func(what string, doc *etree.Document) {
+	emit := func(what, value string, doc *etree.Document) {
 		b, err := doc.WriteToBytes()
 		require.NoError(t, err)
-		out = append(out, mutant{name: name + ": " + what, frame: b})
+		out = append(out, mutant{name: name + ": " + what, frame: b, value: value})
 	}
 	// Each mutation works on a fresh copy, addressing the element by its
 	// position in a depth-first walk.
 	count := len(walk(base.Root()))
 	for i := range count {
-		with := func(fn func(doc *etree.Document, el *etree.Element) string) {
+		withValue := func(value string, fn func(doc *etree.Document, el *etree.Element) string) {
 			doc := base.Copy()
 			el := walk(doc.Root())[i]
 			if what := fn(doc, el); what != "" {
-				emit(fmt.Sprintf("#%d <%s> %s", i, el.Tag, what), doc)
+				emit(fmt.Sprintf("#%d <%s> %s", i, el.Tag, what), value, doc)
 			}
 		}
+		with := func(fn func(doc *etree.Document, el *etree.Element) string) { withValue("", fn) }
 		with(func(_ *etree.Document, el *etree.Element) string {
 			if isRoot(el) {
 				return ""
@@ -340,7 +376,7 @@ func mutate(t testing.TB, name string, frame []byte) []mutant {
 				return "lost attribute " + a.Key
 			})
 			for vi, v := range mutationValues {
-				with(func(_ *etree.Document, el *etree.Element) string {
+				withValue(v, func(_ *etree.Document, el *etree.Element) string {
 					el.Attr[ai].Value = v
 					return fmt.Sprintf("attribute %s set to value #%d", a.Key, vi)
 				})
@@ -348,7 +384,7 @@ func mutate(t testing.TB, name string, frame []byte) []mutant {
 		}
 		if len(walk(base.Root())[i].ChildElements()) == 0 {
 			for vi, v := range mutationValues {
-				with(func(_ *etree.Document, el *etree.Element) string {
+				withValue(v, func(_ *etree.Document, el *etree.Element) string {
 					el.SetText(v)
 					return fmt.Sprintf("text set to value #%d", vi)
 				})

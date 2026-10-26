@@ -472,8 +472,9 @@ services:
       start_period: 10s
     ports:
       - 8443:8443
-      # Ops port: /healthz, /readyz, /metrics. Local only; never publish it in a deployment.
-      - 9701:9701
+      # Ops port: /healthz, /readyz, /metrics. Loopback only, so the
+      # unauthenticated endpoint is not reachable from other machines.
+      - 127.0.0.1:9701:9701
     networks:
       - dos
     environment:

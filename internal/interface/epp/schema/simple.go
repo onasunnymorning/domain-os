@@ -53,9 +53,10 @@ type Simple struct {
 
 var (
 	languagePattern = regexp.MustCompile(`^[a-zA-Z]{1,8}(-[a-zA-Z0-9]{1,8})*$`)
-	// libxml2 refuses a leading "+" on unsigned types, though XSD allows
-	// it; the models follow libxml2 (ADR 0016).
-	unsignedPattern = regexp.MustCompile(`^[0-9]+$`)
+	// Unsigned types inherit xs:nonNegativeInteger's lexical space: an
+	// optional "+", or a "-" only on a zero ("-0"). Older libxml2 (2.9)
+	// refused any sign; 2.15 follows XSD, and so do the models (ADR 0016).
+	unsignedPattern = regexp.MustCompile(`^(\+?[0-9]+|-0+)$`)
 	schemePattern   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*$`)
 	intPattern      = regexp.MustCompile(`^[+-]?[0-9]+$`)
 	hexPattern      = regexp.MustCompile(`^[0-9A-Fa-f]*$`)
@@ -176,7 +177,7 @@ func (t *Simple) validate(raw string) error {
 		if t.Base == UnsignedByte {
 			bits = 8
 		}
-		n, err := strconv.ParseUint(v, 10, bits)
+		n, err := strconv.ParseUint(strings.TrimLeft(v, "+-"), 10, bits)
 		if err != nil {
 			return fmt.Errorf("out of range for %d bits", bits)
 		}

@@ -313,7 +313,7 @@ test-api-coverage: ## Generate API integration test coverage report (HTML)
 test-epp: ## Run EPP-specific tests
 	@echo "Running EPP tests..."
 	@go test ./cmd/epp/... ./internal/interface/epp/... -v -race -short
-	@go test ./cmd/cli/epp/... -v -race -short
+	@go test -tags eppcli ./cmd/cli/epp/... -v -race -short
 
 test-rdap: ## Run RDAP-specific tests
 	@go test ./cmd/rdap/... ./internal/interface/rdap/... ./internal/infrastructure/tlsconfig/... -v -race -short
