@@ -34,7 +34,7 @@ type fakeServer struct {
 	tries        map[string]int
 	taken        map[string]bool
 	logins       int
-	closeEvery   int // end a session after this many commands (0: never)
+	closeEvery   int // answer every closeEvery-th command with 2502 and close (0: never)
 }
 
 func selfSigned(t *testing.T) tls.Certificate {
@@ -103,6 +103,14 @@ func (f *fakeServer) serve(c net.Conn) {
 			return
 		}
 		n++
+		// Ending a session answers the command with 2502 and then closes,
+		// as a server does (RFC 5730). Answering it normally and sending
+		// 2502 after it raced: the client's next write could reach the
+		// closed socket, and the reset discarded the unread 2502.
+		if f.closeEvery > 0 && n%f.closeEvery == 0 && !strings.Contains(in, "<login>") {
+			writeFrame(c, respond(2502, "closing", ""))
+			return
+		}
 		switch {
 		case strings.Contains(in, "<login>"):
 			f.mu.Lock()
@@ -143,10 +151,6 @@ func (f *fakeServer) serve(c net.Conn) {
 			}
 		default:
 			writeFrame(c, respond(2000, "unknown", ""))
-		}
-		if f.closeEvery > 0 && n%f.closeEvery == 0 {
-			writeFrame(c, respond(2502, "closing", ""))
-			return
 		}
 	}
 }
