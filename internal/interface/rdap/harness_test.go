@@ -157,7 +157,7 @@ func startServerWith(t *testing.T, opts Options) *testServer {
 	require.Eventually(t, srv.Ready, 2*time.Second, 5*time.Millisecond)
 	return &testServer{
 		Server: srv,
-		url:    "https://" + l.Addr().String() + srv.basePath,
+		url:    "https://" + l.Addr().String() + srv.escapedBasePath,
 		client: &http.Client{
 			Timeout: 5 * time.Second,
 			Transport: &http.Transport{

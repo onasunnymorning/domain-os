@@ -48,14 +48,15 @@ type Server struct {
 	// inFlight holds a slot per request being served.
 	inFlight chan struct{}
 
-	// baseURL is the public base, ending in "/"; basePath is its path.
-	baseURL, basePath string
-	termsOfService    string
+	// baseURL is the public base, ending in "/". basePath is its path,
+	// decoded, which requests are routed by; escapedBasePath is the same
+	// path as it appears in a URL, which links are built from.
+	baseURL, basePath, escapedBasePath string
+	termsOfService                     string
 
 	startOnce sync.Once
 	serving   atomic.Bool
 	draining  atomic.Bool
-	stopWatch context.CancelFunc
 }
 
 // NewServer builds a server. It loads the certificate, so a missing or
@@ -72,23 +73,23 @@ func NewServer(opts Options) (*Server, error) {
 		return nil, fmt.Errorf("rdap base URL: %w", err)
 	}
 	s := &Server{
-		cfg:            opts.Config,
-		lookups:        opts.Lookups,
-		logger:         opts.Logger,
-		metrics:        newMetrics(),
-		baseURL:        opts.Config.BaseURL,
-		basePath:       base.EscapedPath(),
-		termsOfService: opts.Config.Notices.TermsOfServiceURL,
-		stopWatch:      func() {},
-		now:            opts.Now,
-		limiter:        opts.Limiter,
-		inFlight:       make(chan struct{}, max(opts.Config.Limits.MaxInFlight, 1)),
+		cfg:             opts.Config,
+		lookups:         opts.Lookups,
+		logger:          opts.Logger,
+		metrics:         newMetrics(),
+		baseURL:         opts.Config.BaseURL,
+		basePath:        base.Path,
+		escapedBasePath: base.EscapedPath(),
+		termsOfService:  opts.Config.Notices.TermsOfServiceURL,
+		now:             opts.Now,
+		limiter:         opts.Limiter,
+		inFlight:        make(chan struct{}, max(opts.Config.Limits.MaxInFlight, 1)),
 	}
 	if s.now == nil {
 		s.now = time.Now
 	}
 	if s.basePath == "" {
-		s.basePath = "/"
+		s.basePath, s.escapedBasePath = "/", "/"
 	}
 
 	hooks := tlsconfig.Hooks{
@@ -150,8 +151,9 @@ func (s *Server) Serve(l net.Listener) error {
 		l = newConnLimitListener(l, s.cfg.Limits.MaxConnections, s.metrics.shed.WithLabelValues(shedConnections).Inc)
 	}
 
+	// The certificate watch lives as long as Serve: shutting the HTTP
+	// server down returns ServeTLS, which stops it.
 	watchCtx, stop := context.WithCancel(context.Background())
-	s.stopWatch = stop
 	defer stop()
 	go s.certs.Watch(watchCtx)
 	go s.watchPolicies(watchCtx)
@@ -184,7 +186,6 @@ func (s *Server) Serve(l net.Listener) error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.draining.Store(true)
 	s.metrics.draining.Set(1)
-	defer s.stopWatch()
 	return s.http.Shutdown(ctx)
 }
 
