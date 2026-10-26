@@ -108,8 +108,12 @@ import { POSTHOG_ANALYTICS_DOC_MARKDOWN } from '../constants/posthogAnalyticsDoc
 import { WORKER_QUEUE_ARCHITECTURE_DOC_MARKDOWN } from '../constants/workerQueueArchitectureDoc';
 import { AGENT_ALPACA_DOC_MARKDOWN } from '../constants/agentAlpacaDoc';
 import { BUCKET_STORAGE_DOC_MARKDOWN } from '../constants/bucketStorageDoc';
+import { DOMAIN_RESTORE_DOC_MARKDOWN } from '../constants/domainRestoreDoc';
+import { DOMAIN_TRANSFERS_DOC_MARKDOWN } from '../constants/domainTransfersDoc';
 
-const STATIC_DOCS: WorkflowMeta[] = [
+// Every page under app/docs needs an entry here to be found from command K;
+// lib/api/__tests__/search-docs.test.ts checks it.
+export const STATIC_DOCS: WorkflowMeta[] = [
   {
     key: 'contact-data-policy',
     name: 'Contact Data Policy',
@@ -169,6 +173,30 @@ const STATIC_DOCS: WorkflowMeta[] = [
     scheduled: false,
     steps: [],
     docMarkdown: POSTHOG_ANALYTICS_DOC_MARKDOWN,
+  },
+  {
+    key: 'domain-restore',
+    name: 'Domain Restore',
+    description: 'Bringing back a deleted domain under RFC 3915: the redemption period, the restore request and report, and the charges',
+    queue: '',
+    category: 'lifecycle',
+    tags: ['domain', 'restore', 'rgp', 'redemption', 'pendingRestore', 'pendingDelete', 'restore report', 'rfc 3915', 'lifecycle'],
+    hasSignal: false,
+    scheduled: false,
+    steps: [],
+    docMarkdown: DOMAIN_RESTORE_DOC_MARKDOWN,
+  },
+  {
+    key: 'domain-transfers',
+    name: 'Domain Transfers',
+    description: 'Transfer codes under RFC 9154: how they are set, kept as hashes, checked, and cleared',
+    queue: '',
+    category: 'lifecycle',
+    tags: ['domain', 'transfer', 'authinfo', 'auth code', 'transfer code', 'rfc 9154', 'lifecycle'],
+    hasSignal: false,
+    scheduled: false,
+    steps: [],
+    docMarkdown: DOMAIN_TRANSFERS_DOC_MARKDOWN,
   },
   {
     key: 'domain-archival',

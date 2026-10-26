@@ -12,13 +12,15 @@
 
 ## Overview
 
+> This page covers one workflow. For the whole restore process (the redemption period, the request, the report, the charges and the settings), see [Domain Restore](/docs/domain-restore).
+
 A deleted domain is restored in two EPP steps (RFC 3915): the sponsor **requests** the restore, which makes the domain `pendingRestore` (its EPP status stays `pendingDelete`), then sends the **restore report**, which restores it in the same command. This workflow handles the third case: a request whose report never came.
 
 A request lapses at its `pendingRestoreEnd`: the end of the TLD phase's **pending restore period** (7 days by default, as for .com). Every hour the workflow lists the domains whose request has lapsed and reverts each one (`entities.Domain.RevertRestore`): `pendingRestore` is cleared and the domain is `pendingDelete` as it was before the request, in its redemption period if that has not ended, with its original purge date. The sponsor is told by a poll message, queued in the same transaction as the revert: `Restore lapsed: no restore report for <domain> by <deadline>`, then where the domain now stands. Nothing is charged; the revert is recorded as a `domain.restore_reverted` event carrying the workflow ID as correlation ID and the run ID as trace ID (INV-16). The registrar may request a restore again while the redemption period lasts.
 
 Until it is reverted, a domain with a lapsed request is refused a report (2304) and is not purged, even past its purge date. So this workflow's hourly cadence decides only how soon `<domain:info>` stops showing `pendingRestore`.
 
-It no longer completes restores: before Phase 4i-2 it finalised every `pendingRestore` domain, with no report and up to four hours late. The restore and its charges (the restore fee and the renewal) now happen in the command that sends the report. The full process is documented in `pkg/domain/entities/restore.go` and on the admin UI's *Domain Restore* page.
+It no longer completes restores: before Phase 4i-2 it finalised every `pendingRestore` domain, with no report and up to four hours late. The restore and its charges (the restore fee and the renewal) now happen in the command that sends the report. The full process is documented in `pkg/domain/entities/restore.go` and on the [Domain Restore](/docs/domain-restore) page.
 
 **Idempotency.** The batch reads and checks every domain again before reverting it. A domain restored meanwhile, already reverted by an earlier attempt, or whose request has not lapsed is reported as `Skipped`. A domain changed while it is reverted is read and checked again, up to three times.
 
