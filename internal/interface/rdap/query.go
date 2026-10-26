@@ -2,6 +2,7 @@ package rdap
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -64,33 +65,80 @@ var pathWords = map[string]queryKind{
 }
 
 // maxNameLength is the longest DNS name (RFC 1035 §3.1), and the longest
-// argument accepted; an entity handle is far shorter in practice.
+// entity handle accepted; a handle is far shorter in practice.
 const maxNameLength = 253
+
+// maxLabelLength is the longest DNS label.
+const maxLabelLength = 63
+
+// maxRawNameLength bounds a name before IDNA conversion. A U-label is at
+// most a few times longer in UTF-8 than its A-label.
+const maxRawNameLength = 1024
 
 // parseQuery reads path, which has had the base path removed: either the
 // query itself (domain/example.tld) or the query under a TLD's base URL
 // (tld/domain/example.tld).
+//
+// A TLD can be named like a query keyword (.help, .domains), so a path is
+// read as TLD-prefixed whenever its second segment starts a query that fits
+// the rest of the path: /help/help is help under .help, /domains/help help
+// under .domains. Only otherwise is a first segment that is a keyword the
+// registry-wide query.
 func parseQuery(path string) query {
 	segments := strings.Split(path, "/")
-	q := query{}
-	if len(segments) > 0 {
-		if _, isWord := pathWords[segments[0]]; !isWord && segments[0] != "" {
-			tld, err := normalizeName(segments[0])
-			if err != nil || strings.Contains(tld, ".") {
-				return query{problem: "the path names neither an RDAP query nor a TLD"}
+	if len(segments) >= 2 && fitsQuery(segments[1:]) {
+		if tld, err := normalizeName(segments[0]); err == nil {
+			q := parseSegments(segments[1:])
+			if q.kind != queryInvalid {
+				q.tld = tld
+				return q
 			}
-			q.tld = tld
-			segments = segments[1:]
 		}
 	}
-	if len(segments) == 0 {
+	if _, isWord := pathWords[segments[0]]; isWord {
+		return parseSegments(segments)
+	}
+	if segments[0] == "" {
+		return query{problem: "no query in the path"}
+	}
+	tld, err := normalizeName(segments[0])
+	if err != nil {
+		return query{problem: "the path names neither an RDAP query nor a TLD"}
+	}
+	q := parseSegments(segments[1:])
+	if q.kind != queryInvalid {
+		q.tld = tld
+	}
+	return q
+}
+
+// fitsQuery reports whether segments have the shape of a query: a keyword
+// and the number of arguments it takes.
+func fitsQuery(segments []string) bool {
+	kind, ok := pathWords[segments[0]]
+	if !ok {
+		return false
+	}
+	switch kind {
+	case queryHelp:
+		return len(segments) == 1
+	case querySearch:
+		return true
+	default:
+		return len(segments) == 2 && segments[1] != ""
+	}
+}
+
+// parseSegments reads a query without a TLD prefix.
+func parseSegments(segments []string) query {
+	if len(segments) == 0 || segments[0] == "" {
 		return query{problem: "no query in the path"}
 	}
 	kind, ok := pathWords[segments[0]]
 	if !ok {
 		return query{problem: "unknown query " + strconv.Quote(segments[0])}
 	}
-	q.kind = kind
+	q := query{kind: kind}
 	switch kind {
 	case queryHelp:
 		if len(segments) != 1 {
@@ -121,17 +169,29 @@ func parseQuery(path string) query {
 
 // normalizeName returns the A-label form of a domain or host name given as
 // A-labels or U-labels (RFC 9082 §3.1.3), lower-cased and without a trailing
-// dot.
+// dot. DNS's limits (RFC 1035 §2.3.4) apply to the A-label form, so they are
+// checked after conversion: a Unicode name longer than 253 bytes can still
+// be a valid name.
 func normalizeName(raw string) (string, error) {
 	name := strings.TrimSuffix(raw, ".")
-	if name == "" || len(name) > maxNameLength {
-		return "", errors.New("empty or longer than 253 characters")
+	// Bounds the work on a hostile path; any real name is far shorter.
+	if name == "" || len(name) > maxRawNameLength {
+		return "", errors.New("empty or far too long")
 	}
 	ascii, err := idna.Lookup.ToASCII(name)
 	if err != nil {
 		return "", err
 	}
-	return strings.ToLower(ascii), nil
+	ascii = strings.ToLower(ascii)
+	if len(ascii) > maxNameLength {
+		return "", fmt.Errorf("longer than %d characters as A-labels", maxNameLength)
+	}
+	for _, label := range strings.Split(ascii, ".") {
+		if label == "" || len(label) > maxLabelLength {
+			return "", fmt.Errorf("a label is empty or longer than %d characters", maxLabelLength)
+		}
+	}
+	return ascii, nil
 }
 
 // registrarHandle reads an entity handle as a registrar's IANA ID, the

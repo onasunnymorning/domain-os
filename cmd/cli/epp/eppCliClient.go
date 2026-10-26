@@ -1,3 +1,14 @@
+//go:build eppcli
+
+// The EPP CLI is built only with -tags eppcli. Its interactive prompt
+// (github.com/dotse/epp-client/pkg/prompt) needs the cgo binding
+// github.com/lestrrat-go/libxml2, which is unmaintained and does not compile
+// against libxml2 2.15 (Ubuntu 26.04, the CI runners' image). Without the tag
+// every CI job would fail to build ./... there. It still builds where the
+// system libxml2 is older, such as macOS. The tag goes when the CLI stops
+// using the dotse prompt, for example by validating with
+// internal/interface/epp/schema instead (ADR 0016).
+
 package main
 
 import (

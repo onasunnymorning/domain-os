@@ -116,7 +116,7 @@ func (s *Server) notices(r *http.Request) []notice {
 // requestURL is the public URL of r, the context of every link in its
 // response.
 func (s *Server) requestURL(r *http.Request) string {
-	return s.baseURL + strings.TrimPrefix(r.URL.EscapedPath(), s.basePath)
+	return s.baseURL + strings.TrimPrefix(r.URL.EscapedPath(), s.escapedBasePath)
 }
 
 // statusRecorder keeps the status a handler wrote, for metrics.
