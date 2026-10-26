@@ -23,9 +23,15 @@ type fakeLookups struct {
 	nameservers map[string]bool
 	registrars  map[int]bool
 	err         error // returned by every lookup when set
+	// stall makes Domain wait until its context is done.
+	stall bool
 }
 
-func (f *fakeLookups) Domain(_ context.Context, name string) (*entities.Domain, error) {
+func (f *fakeLookups) Domain(ctx context.Context, name string) (*entities.Domain, error) {
+	if f.stall {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	if f.err != nil {
 		return nil, f.err
 	}

@@ -68,7 +68,9 @@ func run(cfg config.RDAP, repositoryID entities.RepositoryID, logger *slog.Logge
 	if err := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), schemaLog); err != nil {
 		return err
 	}
-	if err := postgres.CheckRepositoryID(context.Background(), db, repositoryID); err != nil {
+	// Read-only (ADR 0020): verify the recorded repository ID, never
+	// record it, so the server runs on SELECT-only credentials.
+	if err := postgres.VerifyRepositoryID(context.Background(), db, repositoryID); err != nil {
 		return err
 	}
 	logger.Info("Connected to the database", "host", cfg.DB.Host, "name", cfg.DB.Name)

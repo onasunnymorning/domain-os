@@ -42,6 +42,10 @@ var (
 	// the one the installation's ROIDs were issued with. Only the number of a
 	// ROID is stored, so running with it would rename every object.
 	ErrRepositoryIDChanged = errors.New("repository ID differs from the one this installation's ROIDs were issued with")
+	// ErrRepositoryIDNotRecorded is an installation whose repository ID no
+	// process has recorded yet, met by a read-only process that may not
+	// record it itself.
+	ErrRepositoryIDNotRecorded = errors.New("no repository ID is recorded for this installation yet")
 )
 
 // RepositoryID is the EPP repository identifier this registry mints ROIDs

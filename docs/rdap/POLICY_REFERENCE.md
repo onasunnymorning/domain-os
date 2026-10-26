@@ -19,7 +19,7 @@ Durations use Go syntax (`30s`, `10m`). Every value is checked at start. A bad v
 
 | Variable | Default | Meaning | Phase |
 |---|---|---|---|
-| `ROID_REPOSITORY_ID` | *(required)* | The repository ID appended to every handle. See the EPP reference and [ADR 0017](../adr/0017-roid-repository-id.md) | 1 |
+| `ROID_REPOSITORY_ID` | *(required)* | The repository ID appended to every handle. See the EPP reference and [ADR 0017](../adr/0017-roid-repository-id.md). The RDAP server only verifies it against the recorded one, never records it, so it runs on read-only database credentials; the migrate job or the admin API must have started first | 1 |
 | `RDAP_PORT` | `443` | HTTPS listen port. RST requires base URLs on 443. The local stack uses `8443` because the image runs as a non-root user | 1 |
 | `RDAP_OPS_PORT` | `9701` | Plain-HTTP ops port: `/healthz`, `/readyz`, `/metrics`. Never expose it publicly | 1 |
 | `RDAP_SERVER_NAME` | *(set in every deployment)* | The RDAP hostname. A certificate from file that does not cover it is refused at start and on reload (rdap-91) | 1 |

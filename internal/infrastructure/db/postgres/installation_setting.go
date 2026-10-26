@@ -52,3 +52,26 @@ func CheckRepositoryID(ctx context.Context, db *gorm.DB, repository entities.Rep
 	}
 	return nil
 }
+
+// VerifyRepositoryID is CheckRepositoryID for a read-only process, such as
+// the RDAP server (ADR 0020): it only reads the recorded ID, so it runs on
+// SELECT-only credentials and never initialises the installation. An ID not
+// recorded yet is entities.ErrRepositoryIDNotRecorded: a process that may
+// write (the migrate job, the admin API) must start first.
+func VerifyRepositoryID(ctx context.Context, db *gorm.DB, repository entities.RepositoryID) error {
+	if err := repository.Validate(); err != nil {
+		return err
+	}
+	var recorded []InstallationSetting
+	if err := db.WithContext(ctx).Where("key = ?", roidRepositoryIDKey).Limit(1).Find(&recorded).Error; err != nil {
+		return fmt.Errorf("read the ROID repository ID: %w", err)
+	}
+	if len(recorded) == 0 {
+		return fmt.Errorf("%w: start the migrate job or the admin API first, which record it", entities.ErrRepositoryIDNotRecorded)
+	}
+	if recorded[0].Value != repository.String() {
+		return fmt.Errorf("%w: configured %q, recorded %q on %s", entities.ErrRepositoryIDChanged,
+			repository, recorded[0].Value, recorded[0].CreatedAt.UTC().Format(time.DateOnly))
+	}
+	return nil
+}
