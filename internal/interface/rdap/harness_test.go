@@ -86,7 +86,7 @@ func startServer(t *testing.T, cfg config.RDAP, lookups *fakeLookups) *testServe
 	require.Eventually(t, srv.Ready, 2*time.Second, 5*time.Millisecond)
 	return &testServer{
 		Server: srv,
-		url:    "https://" + l.Addr().String() + srv.basePath,
+		url:    "https://" + l.Addr().String() + srv.escapedBasePath,
 		client: &http.Client{
 			Timeout: 5 * time.Second,
 			Transport: &http.Transport{

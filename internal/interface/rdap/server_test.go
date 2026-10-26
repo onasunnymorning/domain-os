@@ -48,13 +48,22 @@ func TestParseQuery(t *testing.T) {
 		{"domain/a/b", queryInvalid, "", ""},
 		{"domain/under_score.tld", queryInvalid, "", ""},
 		{"help/me", queryInvalid, "", ""},
-		{"a.b/domain/example.tld", queryInvalid, "", ""},
+		{"co.uk/help", queryHelp, "co.uk", ""},
+		{"co.uk/domain/example.co.uk", queryDomain, "co.uk", "example.co.uk"},
+		{"help/help", queryHelp, "help", ""},
+		{"domains/help", queryHelp, "domains", ""},
+		{"domain/domain/a.domain", queryDomain, "domain", "a.domain"},
+		{"domain/a..tld", queryInvalid, "", ""},
+		{"domain/" + strings.Repeat("a", 64) + ".tld", queryInvalid, "", ""},
+		{"domain/" + strings.Repeat("é", 50) + "." + strings.Repeat("é", 50) + "." + strings.Repeat("é", 50) + ".tld", queryDomain, "", ""},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			q := parseQuery(tc.path)
 			assert.Equal(t, tc.kind, q.kind)
 			assert.Equal(t, tc.tld, q.tld)
-			assert.Equal(t, tc.arg, q.arg)
+			if tc.arg != "" || tc.kind != queryDomain {
+				assert.Equal(t, tc.arg, q.arg)
+			}
 			if tc.kind == queryInvalid {
 				assert.NotEmpty(t, q.problem)
 			}
@@ -143,6 +152,15 @@ func TestBasePath(t *testing.T) {
 	require.NoError(t, err)
 	_ = resp.Body.Close()
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode, "nothing is served outside the base path")
+}
+
+func TestEscapedBasePath(t *testing.T) {
+	ts := startServer(t, testConfig("https://rdap.example.test/rdap%20v1/"), registry())
+	resp, body := ts.do(t, http.MethodGet, "tld/help")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "routed by the decoded base path")
+	var help helpResponse
+	require.NoError(t, json.Unmarshal(body, &help))
+	assert.Equal(t, "https://rdap.example.test/rdap%20v1/tld/help", help.Notices[0].Links[0].Value, "links keep the escaped base")
 }
 
 func TestLookupFailureIs500(t *testing.T) {
