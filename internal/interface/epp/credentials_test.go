@@ -16,7 +16,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/lockout"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/ratelimit"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/ratelimit"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/memstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"

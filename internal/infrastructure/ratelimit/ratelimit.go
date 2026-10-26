@@ -1,6 +1,9 @@
-// Package ratelimit keeps the EPP command rate buckets, daily create
-// quotas and the failed-create budget's counts (docs/epp/ARCHITECTURE.md
-// §5, docs/epp/POLICY_REFERENCE.md § Command rates and § Failed creates).
+// Package ratelimit is the registry's rate limiter: GCRA token buckets
+// shared by every node in Redis, with a node-local fallback. The EPP server
+// keeps its command rates, daily create quotas and failed-create budget here
+// (docs/epp/ARCHITECTURE.md §5); the RDAP server its per-network request
+// rates (ADR 0022, docs/rdap/ARCHITECTURE.md §4). Each service's keys carry
+// its own prefix, so their buckets never meet.
 //
 // Buckets are GCRA (the generic cell rate algorithm): each bucket is one
 // number, its theoretical arrival time (TAT), the time at which it would be
@@ -68,13 +71,24 @@ func take(now int64, tats []int64, buckets []entities.EPPRateBucket, cost int, m
 // Redis keeps buckets and quotas in Redis, shared by every node. The
 // scripts touch several keys at once, so it needs a single Redis, not a
 // cluster, like the session registry.
-type Redis struct{ client *redis.Client }
+type Redis struct {
+	client *redis.Client
+	// prefix starts every key: "epp", "rdap".
+	prefix string
+}
 
-// NewRedis returns a limiter in client's Redis.
-func NewRedis(client *redis.Client) *Redis { return &Redis{client: client} }
+// NewRedis returns the EPP server's limiter in client's Redis: its keys
+// start "epp:".
+func NewRedis(client *redis.Client) *Redis { return NewRedisFor(client, "epp") }
 
-func bucketKey(k string) string { return "epp:rate:" + k }
-func quotaKey(k string) string  { return "epp:quota:" + k }
+// NewRedisFor returns a limiter in client's Redis whose keys start with
+// service and a colon, so services sharing a Redis keep separate buckets.
+func NewRedisFor(client *redis.Client, service string) *Redis {
+	return &Redis{client: client, prefix: service}
+}
+
+func (r *Redis) bucketKey(k string) string { return r.prefix + ":rate:" + k }
+func (r *Redis) quotaKey(k string) string  { return r.prefix + ":quota:" + k }
 
 // takeScript is take, in Redis. The TATs are stored as whole microseconds
 // (formatted with %.0f: Lua's default formatting of a number this large
@@ -110,7 +124,7 @@ func (r *Redis) Take(ctx context.Context, buckets []entities.EPPRateBucket, cost
 	keys := make([]string, len(buckets))
 	args := []any{cost, maxWait.Microseconds()}
 	for i, b := range buckets {
-		keys[i] = bucketKey(b.Key)
+		keys[i] = r.bucketKey(b.Key)
 		args = append(args, interval(b.Rate), b.Rate.Burst)
 	}
 	v, err := takeScript.Run(ctx, r.client, keys, args...).Int64Slice()
@@ -150,7 +164,7 @@ func (r *Redis) ReserveQuota(ctx context.Context, key string, limit int, ttl tim
 
 // reserve reserves id against key.
 func (r *Redis) reserve(ctx context.Context, key, id string, limit int, ttl time.Duration) (func(context.Context), bool, error) {
-	k := quotaKey(key)
+	k := r.quotaKey(key)
 	n, err := reserveScript.Run(ctx, r.client, []string{k}, id, limit, ttl.Milliseconds()).Int64()
 	if err != nil {
 		return nil, false, fmt.Errorf("reserve quota: %w", err)
@@ -163,7 +177,7 @@ func (r *Redis) reserve(ctx context.Context, key, id string, limit int, ttl time
 
 // MarkQuotaReached implements interfaces.EPPRateLimiter.
 func (r *Redis) MarkQuotaReached(ctx context.Context, key string, ttl time.Duration) (bool, error) {
-	first, err := r.client.SetNX(ctx, "epp:quota-reached:"+key, "1", ttl).Result()
+	first, err := r.client.SetNX(ctx, r.prefix+":quota-reached:"+key, "1", ttl).Result()
 	if err != nil {
 		return false, fmt.Errorf("mark quota reached: %w", err)
 	}
@@ -172,7 +186,7 @@ func (r *Redis) MarkQuotaReached(ctx context.Context, key string, ttl time.Durat
 
 // QuotaCount is how much of a quota is used, for tests and diagnostics.
 func (r *Redis) QuotaCount(ctx context.Context, key string) (int, error) {
-	n, err := r.client.SCard(ctx, quotaKey(key)).Result()
+	n, err := r.client.SCard(ctx, r.quotaKey(key)).Result()
 	return int(n), err
 }
 

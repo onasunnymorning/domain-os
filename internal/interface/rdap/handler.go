@@ -3,6 +3,7 @@ package rdap
 import (
 	"errors"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,23 @@ func (s *Server) handler() http.Handler {
 			s.metrics.requestDuration.WithLabelValues(route).Observe(time.Since(start).Seconds())
 		}()
 
+		select {
+		case s.inFlight <- struct{}{}:
+			defer func() { <-s.inFlight }()
+		default:
+			// The node is full. A 503 is an outage to the SLA monitors,
+			// so this is alerted on; it is not how clients are limited.
+			s.metrics.shed.WithLabelValues(shedInFlight).Inc()
+			rec.Header().Set("Retry-After", "1")
+			writeError(rec, http.StatusServiceUnavailable, "the server is busy; retry shortly")
+			return
+		}
+
+		charge, admitted := s.admit(rec, r)
+		if !admitted {
+			return
+		}
+
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			rec.Header().Set("Allow", "GET, HEAD")
 			writeError(rec, http.StatusMethodNotAllowed, "RDAP is read-only: only GET and HEAD are served")
@@ -38,6 +56,12 @@ func (s *Server) handler() http.Handler {
 		q := parseQuery(path)
 		route = q.kind.route()
 		s.serve(rec, r, q)
+		// A lookup that found nothing costs more, to slow enumeration.
+		if rec.status == http.StatusNotFound && (q.kind == queryDomain || q.kind == queryNameserver || q.kind == queryEntity) {
+			if p := s.lookups.AccessPolicy(clientAddrOrZero(r)); p.Limits.NotFoundCost > 1 {
+				charge(p.Limits.NotFoundCost - 1)
+			}
+		}
 	})
 }
 
@@ -128,4 +152,9 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(status int) {
 	r.status = status
 	r.ResponseWriter.WriteHeader(status)
+}
+
+func clientAddrOrZero(r *http.Request) netip.Addr {
+	a, _ := clientAddr(r)
+	return a
 }

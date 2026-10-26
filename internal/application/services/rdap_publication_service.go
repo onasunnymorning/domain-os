@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/onasunnymorning/domain-os/internal/appcontext"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
@@ -72,7 +71,7 @@ func (s *RDAPPublicationPolicyService) SavePolicy(ctx context.Context, name stri
 	}
 	p.UpdatedAt, p.UpdatedBy = s.now().UTC(), actorOf(ctx)
 	err = s.repo.SavePolicy(ctx, p, func(before *entities.RDAPPublicationPolicy) []entities.DomainEvent {
-		return []entities.DomainEvent{s.event(ctx, entities.EventRDAPPublicationPolicySaved, name, fmt.Sprintf("RDAP publication policy %s saved", name), p, before, p)}
+		return []entities.DomainEvent{rdapPolicyEvent(ctx, entities.EventRDAPPublicationPolicySaved, name, fmt.Sprintf("RDAP publication policy %s saved", name), p, before, p)}
 	})
 	if err != nil {
 		return nil, err
@@ -87,7 +86,7 @@ func (s *RDAPPublicationPolicyService) DeletePolicy(ctx context.Context, name st
 		return fmt.Errorf("%w: %s", entities.ErrRDAPPublicationPolicyBuiltIn, name)
 	}
 	return s.repo.DeletePolicy(ctx, name, func(before *entities.RDAPPublicationPolicy) []entities.DomainEvent {
-		return []entities.DomainEvent{s.event(ctx, entities.EventRDAPPublicationPolicyDeleted, name, fmt.Sprintf("RDAP publication policy %s deleted", name), before, before, nil)}
+		return []entities.DomainEvent{rdapPolicyEvent(ctx, entities.EventRDAPPublicationPolicyDeleted, name, fmt.Sprintf("RDAP publication policy %s deleted", name), before, before, nil)}
 	})
 }
 
@@ -133,24 +132,11 @@ func (s *RDAPPublicationPolicyService) AssignPolicy(ctx context.Context, tld str
 	after := entities.RDAPPublicationAssignment{TLD: t.Name, Policy: cmd.Policy}
 	err = s.repo.AssignPolicy(ctx, t.Name, cmd.Policy, func(prev string) []entities.DomainEvent {
 		before := entities.RDAPPublicationAssignment{TLD: t.Name, Policy: prev}
-		return []entities.DomainEvent{s.event(ctx, entities.EventRDAPPublicationPolicyAssigned, string(t.Name),
+		return []entities.DomainEvent{rdapPolicyEvent(ctx, entities.EventRDAPPublicationPolicyAssigned, string(t.Name),
 			fmt.Sprintf("RDAP publication policy %q assigned to %s", cmd.Policy, t.Name), after, before, after)}
 	})
 	if err != nil {
 		return nil, err
 	}
 	return s.TLDPolicy(ctx, tld)
-}
-
-func (s *RDAPPublicationPolicyService) event(ctx context.Context, eventType, subject, msg string, data, before, after interface{}) entities.DomainEvent {
-	e := entities.NewDomainEvent(eppEventSource, eventType, subject, msg, data)
-	if v, ok := appcontext.TraceID(ctx); ok {
-		e.TraceID = v
-	}
-	if v, ok := appcontext.CorrelationID(ctx); ok {
-		e.CorrelationID = v
-	}
-	e.Actor = actorOf(ctx)
-	e.BeforeState, e.AfterState = before, after
-	return e
 }

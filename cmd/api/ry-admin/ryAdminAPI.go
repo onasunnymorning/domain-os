@@ -20,7 +20,7 @@ import (
 	sharedconfig "github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/lockout"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/ratelimit"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/ratelimit"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/sessionstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/secrets"
@@ -415,6 +415,8 @@ func main() {
 	// RDAP publication policies (ADR 0021): the RDAP servers reload them
 	// within RDAP_POLICY_REFRESH_INTERVAL.
 	rest.NewRDAPPublicationController(r, appservices.NewRDAPPublicationPolicyService(postgres.NewRDAPPublicationPolicyRepository(gormDB), tldRepo), authMiddleware)
+	// RDAP access policies and networks (ADR 0022), reloaded the same way.
+	rest.NewRDAPAccessController(r, appservices.NewRDAPAccessPolicyService(postgres.NewRDAPAccessPolicyRepository(gormDB)), authMiddleware)
 	rest.NewContactController(r, contactService, authMiddleware)
 	rest.NewHostController(r, hostService, authMiddleware)
 	rest.NewDomainController(r, domainService, authMiddleware)

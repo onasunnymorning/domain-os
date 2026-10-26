@@ -135,7 +135,7 @@ func TestInfraUsedByIsDerived(t *testing.T) {
 	// rdap-server reads registry state for every lookup (ADR 0020).
 	want := map[string][]string{
 		"postgresql": {"admin-api", "unified-worker", "epp-server", "rdap-server", "whois", "mcp-server"},
-		"redis":      {"admin-api", "epp-server"},
+		"redis":      {"admin-api", "epp-server", "rdap-server"},
 		"temporal":   {"admin-api", "unified-worker"},
 		"s3":         {"admin-api", "unified-worker"},
 	}

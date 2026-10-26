@@ -29,12 +29,18 @@ type fakeLookups struct {
 	registrars  map[int]*entities.Registrar
 	err         error // returned by every lookup when set
 
+	access *entities.RDAPAccessSet // nil: every client is anonymous
+	block  chan struct{}           // when set, Domain waits on it
+
 	mu         sync.Mutex
 	refreshes  int
 	refreshErr error
 }
 
 func (f *fakeLookups) Domain(_ context.Context, name string) (*interfaces.RDAPDomain, error) {
+	if f.block != nil {
+		<-f.block
+	}
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -76,11 +82,18 @@ func (f *fakeLookups) Registrar(_ context.Context, ianaID int) (*entities.Regist
 	return rr, nil
 }
 
-func (f *fakeLookups) RefreshPublicationPolicies(context.Context) error {
+func (f *fakeLookups) RefreshPolicies(context.Context) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.refreshes++
 	return f.refreshErr
+}
+
+func (f *fakeLookups) AccessPolicy(addr netip.Addr) *entities.RDAPAccessPolicy {
+	if f.access != nil {
+		return f.access.ForAddress(addr)
+	}
+	return entities.DefaultRDAPAccessSet().ForAddress(addr)
 }
 
 // testRegistrar is an accredited registrar with every contact field.
@@ -111,6 +124,7 @@ func testConfig(base string) config.RDAP {
 		TLS:      config.RDAPTLS{SelfSigned: true, ServerName: "rdap.example.test", ReloadInterval: time.Minute},
 		Timeouts: config.RDAPTimeouts{Read: 5 * time.Second, Write: 5 * time.Second, Idle: 30 * time.Second, Drain: 5 * time.Second},
 		Notices:  config.RDAPNotices{TermsOfServiceURL: "https://registry.example.test/rdap-terms"},
+		Limits:   config.RDAPLimits{MaxInFlight: 50, MaxConnections: 100},
 	}
 }
 
@@ -123,7 +137,12 @@ type testServer struct {
 
 func startServer(t *testing.T, cfg config.RDAP, lookups *fakeLookups) *testServer {
 	t.Helper()
-	srv, err := NewServer(Options{Config: cfg, Lookups: lookups})
+	return startServerWith(t, Options{Config: cfg, Lookups: lookups})
+}
+
+func startServerWith(t *testing.T, opts Options) *testServer {
+	t.Helper()
+	srv, err := NewServer(opts)
 	require.NoError(t, err)
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)

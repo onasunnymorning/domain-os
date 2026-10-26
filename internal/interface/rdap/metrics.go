@@ -16,6 +16,12 @@ const (
 	routeInvalid    = "invalid"
 )
 
+// Why the node refused work, for rdap_shed_total.
+const (
+	shedInFlight    = "in_flight"
+	shedConnections = "connections"
+)
+
 // metrics are the RDAP server's Prometheus series. They live on their own
 // registry, served on the ops port, as the EPP server's do. The names are
 // listed in docs/rdap/ARCHITECTURE.md §5.
@@ -34,6 +40,9 @@ type metrics struct {
 	nameserversAmbiguous prometheus.Counter
 	policiesRefreshed    prometheus.Gauge
 	policyRefreshErrors  prometheus.Counter
+	policyDecisions      *prometheus.CounterVec
+	ratesDegraded        prometheus.Gauge
+	shed                 *prometheus.CounterVec
 }
 
 func newMetrics() *metrics {
@@ -83,11 +92,23 @@ func newMetrics() *metrics {
 		}),
 		policyRefreshErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "rdap_policy_refresh_errors_total",
-			Help: "Failed reloads of the publication policies. The node keeps the set last loaded.",
+			Help: "Failed reloads of the publication or access policies. The node keeps the set last loaded.",
 		}),
+		policyDecisions: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "rdap_policy_decisions_total",
+			Help: "Requests allowed or refused (429) by the client's access policy, with the scope that refused: address or aggregate (ADR 0022).",
+		}, []string{"policy", "scope", "action"}),
+		ratesDegraded: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "rdap_ratelimit_degraded",
+			Help: "1 while Redis cannot answer and the node limits clients with its own buckets (fail open).",
+		}),
+		shed: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "rdap_shed_total",
+			Help: "Work the node refused to protect itself: requests over RDAP_MAX_IN_FLIGHT (503), connections over RDAP_MAX_CONNECTIONS (closed).",
+		}, []string{"reason"}),
 	}
 	m.registry.MustRegister(
-		m.requests, m.requestDuration, m.inFlight, m.certNotAfter, m.certReloadErrors, m.draining, m.lookupErrors, m.redactions, m.nameserversAmbiguous, m.policiesRefreshed, m.policyRefreshErrors,
+		m.requests, m.requestDuration, m.inFlight, m.certNotAfter, m.certReloadErrors, m.draining, m.lookupErrors, m.redactions, m.nameserversAmbiguous, m.policiesRefreshed, m.policyRefreshErrors, m.policyDecisions, m.ratesDegraded, m.shed,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)

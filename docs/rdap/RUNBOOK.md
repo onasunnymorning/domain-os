@@ -29,10 +29,10 @@ What to do when an RDAP alert fires, and how to carry out the routine operations
 ## Tasks
 
 ### Change a network's limits
-*(Phase 4.)*
+Needs `rdap:policy:admin`. Find the policy a network has with `GET $API/rdap/access-networks` (a client in none is `anonymous`). Raise a policy for everyone who has it with `PUT $API/rdap/access-policies/$NAME`, or give one network its own: create a policy, then `PUT $API/rdap/access-networks` with `{"network": "$CIDR", "policy": "$NAME"}`. Nodes apply it within `RDAP_POLICY_REFRESH_INTERVAL`. Raise limits from evidence: `rdap_policy_decisions_total{action="refused"}` by policy and scope.
 
 ### Put a monitoring network on the `monitoring` policy
-*(Phase 4.)* Do this for ICANN's SLA probes, and for RST's `rdap.clientACL` before a test run.
+Do this for ICANN's SLA probes, and for RST's `rdap.clientACL` before a test run: `PUT $API/rdap/access-networks` with `{"network": "$CIDR", "policy": "monitoring"}` for each network. A throttled probe counts against the SLA.
 
 ### Change what a TLD publishes
 Needs `rdap:policy:admin`. Read what applies with `GET $API/tlds/$TLD/rdap/publication-policy`. Either change that policy (`PUT $API/rdap/publication-policies/$NAME`, with every field of every published role), or create one and assign it (`PUT $API/tlds/$TLD/rdap/publication-policy` with `{"policy": "$NAME"}`). Every node applies it within `RDAP_POLICY_REFRESH_INTERVAL`; confirm with `rdap_policies_refreshed_timestamp_seconds`. Record the policy owner's sign-off in [PUBLICATION_REFERENCE.md](PUBLICATION_REFERENCE.md) for a policy that serves a live TLD.

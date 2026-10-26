@@ -26,6 +26,9 @@ type Options struct {
 	// Lookups reads the registry. Required.
 	Lookups interfaces.RDAPLookups
 	Logger  *slog.Logger
+	// Limiter limits clients by their access policy (ADR 0022). Nil
+	// limits no one: local development and tests only.
+	Limiter RateLimiter
 	// Now is the clock, for the "last update of RDAP database" event and
 	// grace-period statuses. Defaults to time.Now.
 	Now func() time.Time
@@ -41,6 +44,9 @@ type Server struct {
 	certs   *tlsconfig.CertSource
 	http    *http.Server
 	now     func() time.Time
+	limiter RateLimiter
+	// inFlight holds a slot per request being served.
+	inFlight chan struct{}
 
 	// baseURL is the public base, ending in "/"; basePath is its path.
 	baseURL, basePath string
@@ -75,6 +81,8 @@ func NewServer(opts Options) (*Server, error) {
 		termsOfService: opts.Config.Notices.TermsOfServiceURL,
 		stopWatch:      func() {},
 		now:            opts.Now,
+		limiter:        opts.Limiter,
+		inFlight:       make(chan struct{}, max(opts.Config.Limits.MaxInFlight, 1)),
 	}
 	if s.now == nil {
 		s.now = time.Now
@@ -138,6 +146,10 @@ func (s *Server) Serve(l net.Listener) error {
 		l = pl
 	}
 
+	if s.cfg.Limits.MaxConnections > 0 {
+		l = newConnLimitListener(l, s.cfg.Limits.MaxConnections, s.metrics.shed.WithLabelValues(shedConnections).Inc)
+	}
+
 	watchCtx, stop := context.WithCancel(context.Background())
 	s.stopWatch = stop
 	defer stop()
@@ -148,7 +160,11 @@ func (s *Server) Serve(l net.Listener) error {
 		"addr", l.Addr().String(),
 		"base_url", s.baseURL,
 		"proxy_protocol", s.cfg.Proxy.Enabled,
+		"rate_limited", s.limiter != nil,
 		"cert_not_after", s.certs.NotAfter().UTC().Format(time.RFC3339))
+	if s.limiter == nil {
+		s.logger.Warn("RDAP server has no rate limiter; clients are not limited (local development only)")
+	}
 	if s.termsOfService == "" {
 		s.logger.Warn("RDAP_TERMS_OF_SERVICE_URL is unset; responses carry no Terms of Use notice, which the gTLD RDAP Profile requires")
 	}
@@ -195,9 +211,10 @@ func (s *Server) OpsHandler() http.Handler {
 	return mux
 }
 
-// watchPolicies reloads the TLDs' publication policies now and every
+// watchPolicies reloads the publication and access policies now and every
 // PolicyRefresh, until ctx is done. A failed load keeps the set last loaded
-// (ADR 0021): before the first, every TLD has the built-in for its type.
+// (ADR 0021, ADR 0022): before the first, every TLD has the built-in for its
+// type and every client is anonymous.
 func (s *Server) watchPolicies(ctx context.Context) {
 	interval := s.cfg.PolicyRefresh
 	if interval <= 0 {
@@ -207,14 +224,14 @@ func (s *Server) watchPolicies(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		loadCtx, cancel := context.WithTimeout(ctx, interval)
-		err := s.lookups.RefreshPublicationPolicies(loadCtx)
+		err := s.lookups.RefreshPolicies(loadCtx)
 		cancel()
 		switch {
 		case err == nil:
 			s.metrics.policiesRefreshed.Set(float64(s.now().Unix()))
 		case ctx.Err() == nil:
 			s.metrics.policyRefreshErrors.Inc()
-			s.logger.Warn("RDAP publication policies not refreshed; keeping the previous set", "error", err)
+			s.logger.Warn("RDAP policies not refreshed; keeping the previous set", "error", err)
 		}
 		select {
 		case <-ctx.Done():

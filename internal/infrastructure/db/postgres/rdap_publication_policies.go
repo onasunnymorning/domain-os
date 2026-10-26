@@ -72,15 +72,15 @@ func NewRDAPPublicationPolicyRepository(db *gorm.DB) *RDAPPublicationPolicyRepos
 	return &RDAPPublicationPolicyRepository{db: db}
 }
 
-// rdapPublicationLock serialises every publication policy change, as
-// eppPolicyLock does EPP's.
-const rdapPublicationLock int64 = 0x52444150 // "RDAP"
+// rdapPolicyLock serialises every RDAP policy change, publication and
+// access alike, as eppPolicyLock does EPP's.
+const rdapPolicyLock int64 = 0x52444150 // "RDAP"
 
 func (r *RDAPPublicationPolicyRepository) change(ctx context.Context, fn func(tx *gorm.DB) error) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if tx.Dialector.Name() == "postgres" {
-			if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", rdapPublicationLock).Error; err != nil {
-				return fmt.Errorf("lock RDAP publication policies: %w", err)
+			if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", rdapPolicyLock).Error; err != nil {
+				return fmt.Errorf("lock RDAP policies: %w", err)
 			}
 		}
 		return fn(tx)
@@ -216,6 +216,7 @@ func (r *RDAPPublicationPolicyRepository) AssignPolicy(ctx context.Context, tld 
 var rdapPublicationForeignKeys = []struct{ table, name, def string }{
 	{"rdap_publication_assignments", "fk_rdap_publication_assignments_tld", "FOREIGN KEY (tld_name) REFERENCES tlds(name) ON DELETE CASCADE"},
 	{"rdap_publication_assignments", "fk_rdap_publication_assignments_policy", "FOREIGN KEY (policy) REFERENCES rdap_publication_policies(name) ON DELETE RESTRICT"},
+	{"rdap_access_networks", "fk_rdap_access_networks_policy", "FOREIGN KEY (policy) REFERENCES rdap_access_policies(name) ON DELETE RESTRICT"},
 }
 
 // ensureRDAPPublicationForeignKeys adds rdapPublicationForeignKeys that are

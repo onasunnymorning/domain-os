@@ -24,7 +24,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/lockout"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/ratelimit"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/ratelimit"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/sessionstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"

@@ -2,6 +2,7 @@ package interfaces
 
 import (
 	"context"
+	"net/netip"
 
 	"github.com/onasunnymorning/domain-os/internal/application/rdappolicy"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -20,9 +21,11 @@ type RDAPLookups interface {
 	// Registrar returns the registrar with IANA ID ianaID, or
 	// entities.ErrRegistrarNotFound.
 	Registrar(ctx context.Context, ianaID int) (*entities.Registrar, error)
-	// RefreshPublicationPolicies reloads the TLDs' publication policies. A
-	// failed load keeps the set last loaded.
-	RefreshPublicationPolicies(ctx context.Context) error
+	// RefreshPolicies reloads the publication and access policies. A set
+	// that fails to load keeps the one last loaded.
+	RefreshPolicies(ctx context.Context) error
+	// AccessPolicy is the access policy for a client address (ADR 0022).
+	AccessPolicy(addr netip.Addr) *entities.RDAPAccessPolicy
 }
 
 // RDAPDomain is everything a domain response is built from.
