@@ -313,7 +313,7 @@ test-api-coverage: ## Generate API integration test coverage report (HTML)
 test-epp: ## Run EPP-specific tests
 	@echo "Running EPP tests..."
 	@go test ./cmd/epp/... ./internal/interface/epp/... -v -race -short
-	@go test ./cmd/cli/epp/... -v -race -short
+	@go test -tags eppcli ./cmd/cli/epp/... -v -race -short
 
 rst-epp: ## ICANN RST v2.0 EPP readiness scoreboard (ADR 0015)
 	@out=$$(mktemp); \
