@@ -295,6 +295,24 @@ to** (built in Phase 4h-2; the process is in `entities.DomainTransfer`):
   its own, and the transfer's poll message says so. Copying them was rejected:
   it would duplicate registrant data the industry is moving away from holding.
 
+### 2026-10-26: the public read plane (RDAP)
+
+RDAP ([ADR 0020](0020-rdap-server-architecture.md)) is a third plane, alongside
+the operator and registrar planes. **It is public and has no scope.** An
+anonymous requester is not a tenant, and `PlatformScope` does not stand in for
+one. What the plane may show is decided by publication policies that hang off
+the TLD ([ADR 0021](0021-rdap-publication-and-redaction.md)). They belong to
+the operator side and are reached through `TLD.RyID`, as guardrail 1 requires.
+Contacts and hosts still have no TLD (guardrail 2). So a contact is served only
+inside a domain's response, under that domain's TLD's policy, and never by a
+direct lookup.
+
+This does not settle rule 6. RDAP serves only what a TLD's policy publishes to
+everyone, which is not one tenant reading another's data. A future
+authenticated RDAP tier gives fields through grants (ADR 0021 decision 6),
+and its requester scope will come from a claim on the authenticated principal
+(rule 2), never from a header.
+
 ## Action Items
 
 1. [ ] EPP transactional verbs enforce sponsorship/accreditation in the command
