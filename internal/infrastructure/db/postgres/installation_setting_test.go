@@ -50,3 +50,13 @@ func TestVerifyRepositoryID(t *testing.T) {
 	require.ErrorIs(t, VerifyRepositoryID(ctx, db, "OTHER"), entities.ErrRepositoryIDChanged)
 	require.ErrorIs(t, VerifyRepositoryID(ctx, db, ""), entities.ErrInvalidRepositoryID)
 }
+
+func TestOpenExistingNeverCreatesADatabase(t *testing.T) {
+	db := getTestDB()
+	name := "rdap_open_existing_missing"
+	_, err := OpenExisting(Config{User: "postgres", Pass: "postgres", Host: dbHost, Port: dbPortString, DBName: name, SSLmode: "disable"})
+	require.Error(t, err, "a missing database is an error")
+	var n int64
+	require.NoError(t, db.Raw("SELECT count(*) FROM pg_database WHERE datname = ?", name).Scan(&n).Error)
+	assert.Zero(t, n, "and is not created")
+}

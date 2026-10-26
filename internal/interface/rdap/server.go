@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -80,19 +81,21 @@ func NewServer(opts Options) (*Server, error) {
 		Loaded:       func(notAfter time.Time) { s.metrics.certNotAfter.Set(float64(notAfter.Unix())) },
 		ReloadFailed: s.metrics.certReloadErrors.Inc,
 	}
+	// The certificate must cover the host name clients reach: the server
+	// name, or the base URL's host when it is not set.
+	name := s.cfg.TLS.ServerName
+	if name == "" {
+		name = strings.ToLower(base.Hostname())
+	}
 	if s.cfg.TLS.SelfSigned {
 		var cert tls.Certificate
-		name := s.cfg.TLS.ServerName
-		if name == "" {
-			name = base.Hostname()
-		}
 		if cert, err = tlsconfig.SelfSigned(name); err == nil {
 			s.certs, err = tlsconfig.NewStaticCertSource(cert, hooks)
 		}
 	} else {
 		s.certs, err = tlsconfig.NewFileCertSource(tlsconfig.FileOptions{
 			CertPath: s.cfg.TLS.CertPath, KeyPath: s.cfg.TLS.KeyPath,
-			ServerName: s.cfg.TLS.ServerName, ServerNameSetting: "RDAP_SERVER_NAME",
+			ServerName: name, ServerNameSetting: "RDAP_SERVER_NAME (or RDAP_BASE_URL's host)",
 			Interval: s.cfg.TLS.ReloadInterval, Service: "RDAP", Logger: s.logger, Hooks: hooks,
 		})
 	}

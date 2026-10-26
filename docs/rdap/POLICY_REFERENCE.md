@@ -19,7 +19,7 @@ Durations use Go syntax (`30s`, `10m`). Every value is checked at start. A bad v
 
 | Variable | Default | Meaning | Phase |
 |---|---|---|---|
-| `ROID_REPOSITORY_ID` | *(required)* | The repository ID appended to every handle. See the EPP reference and [ADR 0017](../adr/0017-roid-repository-id.md). The RDAP server only verifies it against the recorded one, never records it, so it runs on read-only database credentials; the migrate job or the admin API must have started first | 1 |
+| `ROID_REPOSITORY_ID` | *(required)* | The repository ID appended to every handle. See the EPP reference and [ADR 0017](../adr/0017-roid-repository-id.md). The RDAP server only verifies it against the recorded one, never records it, so it runs on read-only database credentials. The admin API records it on its first start, so start the admin API before the RDAP server on a new installation (the migrate job does not record it) | 1 |
 | `RDAP_PORT` | `443` | HTTPS listen port. RST requires base URLs on 443. The local stack uses `8443` because the image runs as a non-root user | 1 |
 | `RDAP_OPS_PORT` | `9701` | Plain-HTTP ops port: `/healthz`, `/readyz`, `/metrics`. Never expose it publicly | 1 |
 | `RDAP_SERVER_NAME` | *(set in every deployment)* | The RDAP hostname. A certificate from file that does not cover it is refused at start and on reload (rdap-91) | 1 |
@@ -35,7 +35,7 @@ Durations use Go syntax (`30s`, `10m`). Every value is checked at start. A bad v
 | `RDAP_DRAIN_TIMEOUT` | `20s` | On SIGTERM, how long requests in flight may finish after readiness turns 503 | 1 |
 | `RDAP_TERMS_OF_SERVICE_URL` | *(unset)* | The registry's RDAP terms of use, linked from the Terms of Use notice. Unset leaves the notice out, which the gTLD profile does not allow, and logs a warning at start. Moves into each TLD's publication policy in Phase 3 | 1 |
 | `RDAP_DB_MAX_OPEN_CONNS` | `20` | Database pool cap per node | 1 |
-| `DB_*`, `SCHEMA_GUARD`, `LOG_LEVEL` | as the other services | Database connection, schema check and log level | 1 |
+| `DB_*`, `SCHEMA_GUARD`, `LOG_LEVEL` | as the other services | Database connection, schema check and log level. The RDAP server only connects to an existing database: unlike the admin API, it never creates one | 1 |
 | `RDAP_MAX_IN_FLIGHT` | `200` *(planned)* | Requests a node serves at once, to protect the node | 4 |
 | `RDAP_MAX_CONNECTIONS` | `5000` *(planned)* | Open connections per node | 4 |
 | `RDAP_MAX_CONNECTIONS_PER_IP` | `20` *(planned)* | Open connections per client address per node | 4 |
