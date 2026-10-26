@@ -3,7 +3,6 @@ package rdap
 import (
 	"net/http"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
@@ -186,7 +185,7 @@ func (s *Server) buildDomain(r *http.Request, rec *interfaces.RDAPDomain, req rd
 	}
 
 	if rec.Registrar != nil {
-		resp.Entities = append(resp.Entities, registrarEntity(rec.Registrar))
+		resp.Entities = append(resp.Entities, registrarEntity(rec.Registrar, false))
 		if base := string(rec.Registrar.RdapBaseURL); base != "" {
 			if base[len(base)-1] != '/' {
 				base += "/"
@@ -215,34 +214,6 @@ func (s *Server) buildDomain(r *http.Request, rec *interfaces.RDAPDomain, req rd
 		}
 	}
 	return resp
-}
-
-// registrarEntity is the sponsoring registrar inside a domain response,
-// with its abuse contact (gTLD RDAP Profile).
-func registrarEntity(rr *entities.Registrar) entity {
-	e := entity{
-		ObjectClassName: "entity",
-		Handle:          string(rr.ClID),
-		Roles:           []string{"registrar"},
-		VCardArray:      vcard(vcardProperty("fn", nil, "text", rr.Name)),
-	}
-	if rr.GurID > 0 {
-		id := strconv.Itoa(rr.GurID)
-		e.Handle = id
-		e.PublicIDs = []publicID{{Type: "IANA Registrar ID", Identifier: id}}
-	}
-	if rr.URL != "" {
-		e.Links = []link{{Rel: "about", Href: string(rr.URL), Type: "text/html"}}
-	}
-	abuse := []any{vcardProperty("fn", nil, "text", "")}
-	if rr.Voice != "" {
-		abuse = append(abuse, vcardProperty("tel", map[string]any{"type": "voice"}, "uri", "tel:"+rr.Voice.String()))
-	}
-	if rr.Email != "" {
-		abuse = append(abuse, vcardProperty("email", nil, "text", rr.Email))
-	}
-	e.Entities = []entity{{ObjectClassName: "entity", Roles: []string{"abuse"}, VCardArray: vcard(abuse...)}}
-	return e
 }
 
 // domainNotices are the notices a domain response carries: the terms of

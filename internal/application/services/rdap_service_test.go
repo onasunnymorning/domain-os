@@ -96,3 +96,61 @@ func TestRDAPServicePublicationFollowsTLDType(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, rdappolicy.CCTLDMinimal().Name, rec.Publication.Name)
 }
+
+type rdapHosts struct {
+	repositories.HostRepository
+	hosts []*entities.Host
+}
+
+func (f rdapHosts) ListHostsByName(context.Context, string) ([]*entities.Host, error) {
+	return f.hosts, nil
+}
+
+// rdapDomainsByName holds registered domains by name.
+type rdapDomainsByName struct {
+	repositories.DomainRepository
+	byName map[string]*entities.Domain
+}
+
+func (f rdapDomainsByName) GetDomainByName(_ context.Context, name string, _ bool) (*entities.Domain, error) {
+	if d, ok := f.byName[name]; ok {
+		return d, nil
+	}
+	return nil, entities.ErrDomainNotFound
+}
+
+func TestRDAPNameserverResolution(t *testing.T) {
+	older := &entities.Host{Name: "ns1.a.example", ClID: "other", CreatedAt: time.Unix(1, 0)}
+	sponsors := &entities.Host{Name: "ns1.a.example", ClID: "owner", CreatedAt: time.Unix(2, 0)}
+
+	for _, tc := range []struct {
+		name      string
+		hosts     []*entities.Host
+		domains   map[string]*entities.Domain
+		want      *entities.Host
+		ambiguous bool
+	}{
+		{"one host", []*entities.Host{sponsors}, nil, sponsors, false},
+		{"several: the superordinate domain's sponsor wins over the oldest", []*entities.Host{older, sponsors},
+			map[string]*entities.Domain{"a.example": {Name: "a.example", ClID: "owner"}}, sponsors, true},
+		{"several, external: the oldest", []*entities.Host{older, sponsors}, nil, older, true},
+		{"several, sponsor holds none: the oldest", []*entities.Host{older, sponsors},
+			map[string]*entities.Domain{"a.example": {Name: "a.example", ClID: "nobody"}}, older, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewRDAPService(RDAPServiceDeps{
+				Hosts: rdapHosts{hosts: tc.hosts}, Domains: rdapDomainsByName{byName: tc.domains}, Registrars: rdapRegistrars{},
+			})
+			rec, err := svc.Nameserver(context.Background(), "ns1.a.example")
+			require.NoError(t, err)
+			assert.Same(t, tc.want, rec.Host)
+			assert.Equal(t, tc.ambiguous, rec.Ambiguous)
+		})
+	}
+
+	t.Run("no host is not found", func(t *testing.T) {
+		svc := NewRDAPService(RDAPServiceDeps{Hosts: rdapHosts{}, Domains: rdapDomainsByName{}, Registrars: rdapRegistrars{}})
+		_, err := svc.Nameserver(context.Background(), "ns1.a.example")
+		assert.ErrorIs(t, err, entities.ErrHostNotFound)
+	})
+}

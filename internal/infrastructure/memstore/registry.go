@@ -812,6 +812,22 @@ func (v registryHosts) DeleteHostByRoid(_ context.Context, roid int64) error {
 	return nil
 }
 
+func (v registryHosts) ListHostsByName(_ context.Context, name string) ([]*entities.Host, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return nil, v.r.err
+	}
+	var out []*entities.Host
+	for k, h := range v.r.hosts {
+		if k.name == name {
+			out = append(out, h.DeepCopy())
+		}
+	}
+	slices.SortFunc(out, func(a, b *entities.Host) int { return a.CreatedAt.Compare(b.CreatedAt) })
+	return out, nil
+}
+
 func (v registryHosts) CountHostsByName(_ context.Context, name string) (int64, error) {
 	v.r.mu.Lock()
 	defer v.r.mu.Unlock()

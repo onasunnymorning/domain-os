@@ -44,6 +44,9 @@ type HostRepository interface {
 	// CountHostsByName counts the host objects named name, whichever
 	// registrar sponsors them.
 	CountHostsByName(ctx context.Context, name string) (int64, error)
+	// ListHostsByName returns every host object named name, whichever
+	// registrar sponsors it, with its addresses, oldest first.
+	ListHostsByName(ctx context.Context, name string) ([]*entities.Host, error)
 	// CountHostLinksFromOtherSponsors counts the domains that have the host
 	// as a nameserver and that clid does not sponsor.
 	CountHostLinksFromOtherSponsors(ctx context.Context, roid int64, clid string) (int64, error)
@@ -63,6 +66,7 @@ type MockHostRepository struct {
 	UpdateHostAndAddressesFunc   func(ctx context.Context, h *entities.Host, parent string) (*entities.Host, error)
 	CreateHostUnderFunc          func(ctx context.Context, h *entities.Host, parent string) (*entities.Host, error)
 	CountHostsByNameFunc         func(ctx context.Context, name string) (int64, error)
+	ListHostsByNameFunc          func(ctx context.Context, name string) ([]*entities.Host, error)
 	DeleteHostIfUnchangedFunc    func(ctx context.Context, h *entities.Host) error
 	CountHostLinksFromOthersFunc func(ctx context.Context, roid int64, clid string) (int64, error)
 }
@@ -132,6 +136,11 @@ func (m *MockHostRepository) CountHostsByName(ctx context.Context, name string) 
 	return m.CountHostsByNameFunc(ctx, name)
 }
 
+// ListHostsByName lists hosts by name
+func (m *MockHostRepository) ListHostsByName(ctx context.Context, name string) ([]*entities.Host, error) {
+	return m.ListHostsByNameFunc(ctx, name)
+}
+
 // CountHostLinksFromOtherSponsors counts other sponsors' domains using a host
 func (m *MockHostRepository) CountHostLinksFromOtherSponsors(ctx context.Context, roid int64, clid string) (int64, error) {
 	return m.CountHostLinksFromOthersFunc(ctx, roid, clid)
@@ -156,6 +165,7 @@ func NewMockHostRepository() *MockHostRepository {
 		},
 		CreateHostUnderFunc:       func(ctx context.Context, h *entities.Host, parent string) (*entities.Host, error) { return nil, nil },
 		CountHostsByNameFunc:      func(ctx context.Context, name string) (int64, error) { return 0, nil },
+		ListHostsByNameFunc:       func(ctx context.Context, name string) ([]*entities.Host, error) { return nil, nil },
 		DeleteHostIfUnchangedFunc: func(ctx context.Context, h *entities.Host) error { return nil },
 		CountHostLinksFromOthersFunc: func(ctx context.Context, roid int64, clid string) (int64, error) {
 			return 0, nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/rdappolicy"
@@ -84,10 +85,58 @@ func (s *RDAPService) Domain(ctx context.Context, name string) (*interfaces.RDAP
 	return out, nil
 }
 
-// NameserverExists reports whether any registrar holds a host named name.
-func (s *RDAPService) NameserverExists(ctx context.Context, name string) (bool, error) {
-	n, err := s.hosts.CountHostsByName(ctx, name)
-	return n > 0, err
+// Nameserver returns the host served for name, or entities.ErrHostNotFound.
+//
+// Host names are unique per registrar, not across the registry, so a name
+// can match several hosts. RFC 9082 has no "several" answer for an exact
+// lookup, so one is picked (ADR 0020 decision 5): the host sponsored by the
+// sponsor of its superordinate domain, which is the host RFC 5732 says the
+// name belongs to and the one whose glue is published; otherwise the oldest.
+func (s *RDAPService) Nameserver(ctx context.Context, name string) (*interfaces.RDAPNameserver, error) {
+	hosts, err := s.hosts.ListHostsByName(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if len(hosts) == 0 {
+		return nil, entities.ErrHostNotFound
+	}
+	out := &interfaces.RDAPNameserver{Host: hosts[0], Ambiguous: len(hosts) > 1}
+	if out.Ambiguous {
+		sponsor, err := s.superordinateSponsor(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		for _, h := range hosts {
+			if sponsor != "" && h.ClID == sponsor {
+				out.Host = h
+				break
+			}
+		}
+	}
+	out.Registrar, err = s.registrars.GetByClID(ctx, out.Host.ClID.String(), false)
+	if err != nil && !errors.Is(err, entities.ErrRegistrarNotFound) {
+		return nil, fmt.Errorf("sponsor %s of nameserver %s: %w", out.Host.ClID, name, err)
+	}
+	return out, nil
+}
+
+// superordinateSponsor is the sponsor of the registered domain that host
+// name sits under, or empty if it sits under none: an external host.
+func (s *RDAPService) superordinateSponsor(ctx context.Context, name string) (entities.ClIDType, error) {
+	labels := strings.Split(name, ".")
+	// A registered domain has at least two labels: try every ancestor of
+	// the host that does.
+	for i := 1; i+2 <= len(labels); i++ {
+		d, err := s.domains.GetDomainByName(ctx, strings.Join(labels[i:], "."), false)
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		return d.ClID, nil
+	}
+	return "", nil
 }
 
 // Registrar returns the registrar with IANA ID ianaID, or
