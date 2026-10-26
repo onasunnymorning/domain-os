@@ -13,26 +13,39 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/application/rdappolicy"
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
-// fakeLookups is a registry holding the names and IANA IDs it is given.
+// fakeLookups is a registry holding the records, names and IANA IDs it is
+// given.
 type fakeLookups struct {
-	domains     map[string]bool
+	domains     map[string]*interfaces.RDAPDomain
 	nameservers map[string]bool
 	registrars  map[int]bool
 	err         error // returned by every lookup when set
 }
 
-func (f *fakeLookups) Domain(_ context.Context, name string) (*entities.Domain, error) {
+func (f *fakeLookups) Domain(_ context.Context, name string) (*interfaces.RDAPDomain, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
-	if !f.domains[name] {
+	rec, ok := f.domains[name]
+	if !ok {
 		return nil, entities.ErrDomainNotFound
 	}
-	return &entities.Domain{Name: entities.DomainName(name)}, nil
+	return rec, nil
+}
+
+// minimalDomain is a registered domain with nothing but its name.
+func minimalDomain(name, tld string) *interfaces.RDAPDomain {
+	return &interfaces.RDAPDomain{
+		Domain:      &entities.Domain{Name: entities.DomainName(name), TLDName: entities.DomainName(tld), RoID: "1_DOM-TEST"},
+		TLDType:     entities.TLDTypeGTLD,
+		Publication: rdappolicy.GTLDRegistrationDataPolicy2024(),
+	}
 }
 
 func (f *fakeLookups) NameserverExists(_ context.Context, name string) (bool, error) {

@@ -73,11 +73,13 @@ func run(cfg config.RDAP, repositoryID entities.RepositoryID, logger *slog.Logge
 	}
 	logger.Info("Connected to the database", "host", cfg.DB.Host, "name", cfg.DB.Name)
 
-	lookups := services.NewRDAPService(
-		postgres.NewDomainRepository(db, repositoryID),
-		postgres.NewGormHostRepository(db, repositoryID),
-		postgres.NewGormRegistrarRepository(db),
-	)
+	lookups := services.NewRDAPService(services.RDAPServiceDeps{
+		Domains:    postgres.NewDomainRepository(db, repositoryID),
+		Hosts:      postgres.NewGormHostRepository(db, repositoryID),
+		Registrars: postgres.NewGormRegistrarRepository(db),
+		TLDs:       postgres.NewGormTLDRepo(db),
+		Contacts:   postgres.NewContactRepository(db, repositoryID),
+	})
 	srv, err := rdap.NewServer(rdap.Options{Config: cfg, Lookups: lookups, Logger: logger})
 	if err != nil {
 		return err

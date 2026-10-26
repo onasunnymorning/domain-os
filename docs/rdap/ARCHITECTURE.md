@@ -15,13 +15,14 @@
 
 ## Where it stands today
 
-The server runs (Phase 1) but serves no registration data yet:
+The server runs (Phase 1) and serves domains (Phase 2), but not yet nameservers or registrars:
 - `cmd/rdap` terminates TLS on the node (TLS 1.2 and 1.3, the RFC 9325 suites, a hot-reloaded certificate), accepts PROXY protocol from trusted load balancers, and serves health, readiness and metrics on an ops port.
 - It routes the registry-wide base URL and each TLD's (`{base}{tld}/`), answers `/help`, and gives RDAP error objects with CORS on every response.
-- A lookup for something that does not exist is a 404. A lookup for something that does exist is a **501**, because its response arrives in Phase 2 (domains) or Phase 3 (nameservers and registrars). So the server must not be deployed publicly before then.
+- **Domain lookups answer with full domain objects** (Phase 2): statuses (RFC 8056), events, the registrar and its abuse contact, nameservers with glue, DS records, IDN names, ROID handles, the gTLD profile's notices, and contacts as the TLD's policy allows, redacted per RFC 9537.
+- A nameserver or registrar that exists is answered **501** until Phase 3. Anything that does not exist is a 404. Rate limiting is Phase 4, so the server must not be deployed publicly before then.
 - The TLD in a base URL is not yet checked against the TLDs the registry serves. Any label is accepted, and a domain outside that label is a 404.
 
-`make rst-rdap` reports rdap-04 (shape), 08, 09, 10 and 91 passing; rdap-91's CA and chain requirements are operational. The port-43 `cmd/whois` stays as it is until the later phase that retires it.
+`make rst-rdap` reports rdap-01 and rdap-04 (shape; the conformance tool grades them from Phase 6), rdap-05, 08, 09, 10 and 91 passing. rdap-91's CA and chain requirements are operational. The port-43 `cmd/whois` stays as it is until the later phase that retires it.
 
 ---
 
@@ -66,7 +67,7 @@ The server runs (Phase 1) but serves no registration data yet:
 - Within an allowed role, each field follows the TLD's publication policy (`publish`, `publish-if-disclosed`, `withhold`), and is narrowed further by the contact's RFC 5733 disclose flags. Withheld fields are listed in `redacted` (RFC 9537).
 - `rdappolicy.Decide` is a pure function that every response path goes through. Every requester is `public` until the authenticated tier exists.
 
-*Today:* nothing. Phase 2 builds `Decide` with a built-in default policy, and Phase 3 makes publication policies data assigned per TLD.
+*Today:* built (Phase 2) with built-in policies: `rdappolicy.Decide` decides each contact field, and the response builders in `internal/interface/rdap` (`domain.go`, `contact.go`) only carry the decision out. `services.RDAPService` reads a contact only for a role the current GA phase allows and the publication policy publishes, so a contact in any other role is never read. A generic TLD has `gtld-rdp-2024` and any other `cctld-minimal` until Phase 3 makes publication policies data, assigned per TLD. Golden responses for a thick gTLD, a gTLD gone thin and a ccTLD are in `internal/interface/rdap/testdata/golden/`.
 
 ## 4. Rate limiting
 
@@ -83,7 +84,7 @@ The server runs (Phase 1) but serves no registration data yet:
 - Alert rules link to the runbook. A test fails if a rule or a dashboard panel names a metric the server does not serve.
 - Request latency is measured against the SLA's 400 ms round-trip time. Availability is measured against the monthly downtime allowance.
 
-*Today:* the base metrics are served (Phase 1): `rdap_requests_total{route,code}`, `rdap_request_duration_seconds{route}`, `rdap_requests_in_flight`, `rdap_lookup_errors_total{route}`, `rdap_server_cert_not_after_timestamp_seconds`, `rdap_server_cert_reload_errors_total` and `rdap_draining`, plus the Go and process collectors. The `route` label is a fixed set, so a request path cannot mint a series. A `tld` label waits until the TLD in a path is checked against the TLDs served. Alerts, dashboard and runbook are Phase 5.
+*Today:* the base metrics are served (Phase 1): `rdap_requests_total{route,code}`, `rdap_request_duration_seconds{route}`, `rdap_requests_in_flight`, `rdap_lookup_errors_total{route}`, `rdap_server_cert_not_after_timestamp_seconds`, `rdap_server_cert_reload_errors_total`, `rdap_draining` and `rdap_redactions_total{tld,field,method}` (never the values), plus the Go and process collectors. The `route` label is a fixed set, so a request path cannot mint a series. A `tld` label waits until the TLD in a path is checked against the TLDs served. Alerts, dashboard and runbook are Phase 5.
 
 ---
 
@@ -110,7 +111,7 @@ Each phase is one or more PRs and can be shipped on its own.
 |---|---|---|
 | 0 | Pin the RST v2.0 RDAP catalogue (`internal/interface/rdap/testdata/rst/`), its completeness test and `make rst-rdap`; ADRs 0020, 0021 and 0022; ADR 0006 amended with the public read plane; this page, the policy and publication references and the runbook as skeletons | **Done** |
 | 1 | Server skeleton: `cmd/rdap`, `internal/config/rdap.go` with its variables in the env registry and deployment contract, the EPP server's TLS moved to `internal/infrastructure/tlsconfig` and shared, PROXY protocol, the ops port and drain, routing per TLD base URL, RDAP error objects, CORS, HEAD, `/help`, `rdapConformance` and the Terms of Use notice, base metrics, `Dockerfile.rdap` in the CI image matrix, compose and Tilt | **Done**. rdap-04 (shape), 08, 09, 10 and 91 pass. Existing objects are answered 501 until Phases 2 and 3 |
-| 2 | Domain lookup through a new `RDAPService`: statuses (RFC 8056), events, the registrar and its abuse contact, nameservers, DS data, IDN names, ROID handles, reserved and deleted domains; `rdappolicy.Decide` with a built-in publication policy, the current GA phase's contact roles, disclose flags and `redacted` (RFC 9537); golden responses for thick, thin and thick-to-thin TLDs. Moves rdap-01 (shape) and 05 | Planned |
+| 2 | Domain lookup through `RDAPService`: statuses (RFC 8056), events, the registrar and its abuse contact, nameservers with glue, DS data, IDN names, ROID handles, the gTLD notices; `rdappolicy.Decide` with built-in publication policies by TLD type, the current GA phase's contact roles, disclose flags and `redacted` (RFC 9537); golden responses for thick, thin and thick-to-thin TLDs | **Done**. rdap-01 (shape) and rdap-05 pass. Reserved and blocked names are served as stored domains; there is no special case |
 | 3 | Nameserver lookup (`HostRepository` lookup by name, the resolution rule), registrar entities by IANA ID; publication policies as data (`rdap_publication_policies`, assignments per TLD, built-ins `gtld-rdp-2024` and `cctld-minimal`), admin API under `rdap:policy:admin`. Moves rdap-02, 03, 06 and 07 | Planned |
 | 4 | Rate limiting: the EPP GCRA limiter extracted to `internal/infrastructure/ratelimit`; access policies assigned to networks (`anonymous`, `monitoring`), per-address and per-aggregate buckets, the not-found cost, 429 with `Retry-After`, node limits, fail-open, admin API. **Must land before any public deployment** | Planned |
 | 5 | Alert rules (`prometheus/rules/rdap.rules.yml`, with promtool unit tests), the *RDAP server* Grafana dashboard, this runbook filled in, and the test that keeps rules and panels to served metrics; optionally ICANN's MoSAPI view of RDAP availability as an alert | Planned |

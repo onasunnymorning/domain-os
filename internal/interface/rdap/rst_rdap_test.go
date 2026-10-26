@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/tlsconfig"
 )
 
@@ -74,7 +75,7 @@ func assertNotFound(t *testing.T, ts *testServer, path string) {
 func rstServer(t *testing.T) *testServer {
 	t.Helper()
 	return startServer(t, testConfig("https://rdap.example.test/"), &fakeLookups{
-		domains:     map[string]bool{"registered.example": true},
+		domains:     map[string]*interfaces.RDAPDomain{"registered.example": minimalDomain("registered.example", "example")},
 		nameservers: map[string]bool{"ns1.registered.example": true},
 		registrars:  map[int]bool{9995: true},
 	})
@@ -100,6 +101,42 @@ func TestRST_rdap04_HelpQuery(t *testing.T) {
 	}
 	t.Run("rdap-04 validated by the RDAP Conformance Tool", func(t *testing.T) {
 		rstPending(t, "Phase 6, the conformance tool pinned and run by this suite")
+	})
+}
+
+// --- rdap-01: Domain query test -------------------------------------------
+
+func TestRST_rdap01_DomainQuery(t *testing.T) {
+	for name, rec := range map[string]*interfaces.RDAPDomain{"thick": fullDomain(), "thin": thickToThin()} {
+		t.Run("rdap-01 a "+name+" domain answers with a domain object", func(t *testing.T) {
+			ts := startServer(t, testConfig("https://rdap.example.test/"), &fakeLookups{domains: map[string]*interfaces.RDAPDomain{string(rec.Domain.Name): rec}})
+			resp, body := ts.do(t, http.MethodGet, "example/domain/"+string(rec.Domain.Name))
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			assert.Equal(t, contentType, resp.Header.Get("Content-Type"))
+			var got map[string]any
+			require.NoError(t, json.Unmarshal(body, &got))
+			assert.Equal(t, "domain", got["objectClassName"])
+			assert.Equal(t, string(rec.Domain.RoID), got["handle"])
+			assert.Contains(t, got["rdapConformance"], "icann_rdap_response_profile_1")
+			for _, member := range []string{"status", "events", "entities", "secureDNS", "links", "notices"} {
+				assert.Contains(t, got, member)
+			}
+		})
+	}
+	t.Run("rdap-01 validated by the RDAP Conformance Tool", func(t *testing.T) {
+		rstPending(t, "Phase 6, the conformance tool pinned and run by this suite")
+	})
+}
+
+// --- rdap-05: Domain HEAD test --------------------------------------------
+
+func TestRST_rdap05_DomainHEAD(t *testing.T) {
+	ts := rstServer(t)
+	t.Run("rdap-05 HEAD on a domain is 200 with CORS and no body", func(t *testing.T) {
+		resp, body := ts.do(t, http.MethodHead, "example/domain/registered.example")
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
+		assert.Empty(t, body)
 	})
 }
 
@@ -195,10 +232,8 @@ func TestRST_rdap91_TLS(t *testing.T) {
 // yet, each with the phase that delivers it. TestRST_RDAPCatalogueIsComplete
 // keeps this list and the pinned spec in step.
 var rstPendingCases = map[string]string{
-	"rdap-01": "Phase 2, domain lookup; graded by the conformance tool from Phase 6",
 	"rdap-02": "Phase 3, nameserver lookup; graded by the conformance tool from Phase 6",
 	"rdap-03": "Phase 3, registrar entity lookup; graded by the conformance tool from Phase 6",
-	"rdap-05": "Phase 2, HEAD on a domain",
 	"rdap-06": "Phase 3, HEAD on a nameserver",
 	"rdap-07": "Phase 3, HEAD on an entity",
 	"rdap-92": "Phase 7, identical responses over IPv4 and IPv6 (per deployment)",
@@ -216,7 +251,7 @@ func TestRST_RDAPPendingCases(t *testing.T) {
 }
 
 // rstImplementedCases have their own TestRST_ function in this file.
-var rstImplementedCases = []string{"rdap-04", "rdap-08", "rdap-09", "rdap-10", "rdap-91"}
+var rstImplementedCases = []string{"rdap-01", "rdap-04", "rdap-05", "rdap-08", "rdap-09", "rdap-10", "rdap-91"}
 
 // TestRST_RDAPCatalogueIsComplete fails when the pinned spec and this file
 // disagree: a case in the spec that is neither implemented nor pending, or a
