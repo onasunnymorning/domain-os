@@ -1,6 +1,6 @@
 # RDAP server: architecture
 
-**Status:** target architecture plus a roadmap. **Nothing on this page exists yet except the pinned RST spec and its completeness test (Phase 0).** Each section says what holds today, and the [roadmap](#roadmap) says which phase builds the rest. Update this page in the same PR as each phase lands, so it never describes the system as intended rather than as built.
+**Status:** target architecture plus a roadmap. The server skeleton exists (Phase 1); most of what this page describes does not yet. Each section says what holds today, and the [roadmap](#roadmap) says which phase builds the rest. Update this page in the same PR as each phase lands, so it never describes the system as intended rather than as built.
 
 **Decisions:**
 - [ADR 0020](../adr/0020-rdap-server-architecture.md): the server
@@ -9,15 +9,19 @@
 
 **Every setting, its default and how to change it:** [POLICY_REFERENCE.md](POLICY_REFERENCE.md). **Which field each TLD publishes:** [PUBLICATION_REFERENCE.md](PUBLICATION_REFERENCE.md). **What to do when an alert fires:** [RUNBOOK.md](RUNBOOK.md).
 
-**Code:** `cmd/rdap` will be the composition root. The server lives in `internal/interface/rdap`.
+**Code:** `cmd/rdap` is the composition root. The server lives in `internal/interface/rdap`, its reads in `services.RDAPService`, and the TLS it shares with the EPP server in `internal/infrastructure/tlsconfig`.
 
 ---
 
 ## Where it stands today
 
-There is no RDAP server. The registry's only public lookup is `cmd/whois`, a port-43 server that answers domain queries only, with no metrics or limits. It stays as it is until the later phase that retires it or serves it from here.
+The server runs (Phase 1) but serves no registration data yet:
+- `cmd/rdap` terminates TLS on the node (TLS 1.2 and 1.3, the RFC 9325 suites, a hot-reloaded certificate), accepts PROXY protocol from trusted load balancers, and serves health, readiness and metrics on an ops port.
+- It routes the registry-wide base URL and each TLD's (`{base}{tld}/`), answers `/help`, and gives RDAP error objects with CORS on every response.
+- A lookup for something that does not exist is a 404. A lookup for something that does exist is a **501**, because its response arrives in Phase 2 (domains) or Phase 3 (nameservers and registrars). So the server must not be deployed publicly before then.
+- The TLD in a base URL is not yet checked against the TLDs the registry serves. Any label is accepted, and a domain outside that label is a 404.
 
-`internal/interface/rdap/testdata/rst/` pins ICANN's RST v2.0 RDAP catalogue (release `v2026.08`), and `make rst-rdap` reports all twelve cases as pending, each with the phase below that delivers it.
+`make rst-rdap` reports rdap-04 (shape), 08, 09, 10 and 91 passing; rdap-91's CA and chain requirements are operational. The port-43 `cmd/whois` stays as it is until the later phase that retires it.
 
 ---
 
@@ -37,7 +41,7 @@ There is no RDAP server. The registry's only public lookup is `cmd/whois`, a por
 - Health, readiness and `/metrics` are served on a separate ops port. On SIGTERM, `/readyz` answers 503 and the node drains.
 - The service is dual-stack (IPv4 and IPv6) on port 443, with one base URL per TLD (`https://rdap.example/{tld}/`).
 
-*Today:* nothing. Phase 1 builds it.
+*Today:* built (Phase 1), except dual-stack publication, which is a deployment property (Phase 7). The certificate source, cipher suites and PROXY listener are the EPP server's, moved to `internal/infrastructure/tlsconfig`.
 
 ## 2. Protocol surface
 
@@ -54,7 +58,7 @@ There is no RDAP server. The registry's only public lookup is `cmd/whois`, a por
 - Nameserver resolution: when several registrars hold a host with the same name, the host sponsored by its superordinate domain's sponsor is served, otherwise the oldest (ADR 0020 decision 5).
 - Entities: registrars are served by IANA ID. Contacts are served only inside a domain response, never by a direct lookup.
 
-*Today:* nothing. Phase 1 builds the surface, Phase 2 domains, and Phase 3 nameservers and entities.
+*Today:* the surface is built (Phase 1): routing, `/help`, errors, CORS, HEAD, 501 for searches, 405 for other methods, 400 for paths that are not RDAP queries, and IDN names accepted as U-labels or A-labels. Existing objects are answered 501 until Phase 2 (domains) and Phase 3 (nameservers and entities). The `/help` and error responses carry `rdapConformance`; the Terms of Use notice comes from `RDAP_TERMS_OF_SERVICE_URL` until Phase 3 moves it into each TLD's policy.
 
 ## 3. Publication and redaction
 
@@ -79,7 +83,7 @@ There is no RDAP server. The registry's only public lookup is `cmd/whois`, a por
 - Alert rules link to the runbook. A test fails if a rule or a dashboard panel names a metric the server does not serve.
 - Request latency is measured against the SLA's 400 ms round-trip time. Availability is measured against the monthly downtime allowance.
 
-*Today:* nothing. Phase 1 adds the base metrics, and Phase 5 the alerts, dashboard and runbook.
+*Today:* the base metrics are served (Phase 1): `rdap_requests_total{route,code}`, `rdap_request_duration_seconds{route}`, `rdap_requests_in_flight`, `rdap_lookup_errors_total{route}`, `rdap_server_cert_not_after_timestamp_seconds`, `rdap_server_cert_reload_errors_total` and `rdap_draining`, plus the Go and process collectors. The `route` label is a fixed set, so a request path cannot mint a series. A `tld` label waits until the TLD in a path is checked against the TLDs served. Alerts, dashboard and runbook are Phase 5.
 
 ---
 
@@ -105,7 +109,7 @@ Each phase is one or more PRs and can be shipped on its own.
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Pin the RST v2.0 RDAP catalogue (`internal/interface/rdap/testdata/rst/`), its completeness test and `make rst-rdap`; ADRs 0020, 0021 and 0022; ADR 0006 amended with the public read plane; this page, the policy and publication references and the runbook as skeletons | **Done** |
-| 1 | Server skeleton: `cmd/rdap`, `internal/config/rdap.go` with its variables in the env registry, the shared TLS package extracted from the EPP server, PROXY protocol, the ops port and drain, routing per TLD base URL, RDAP error objects, CORS, HEAD, `/help`, `rdapConformance` and notices, base metrics, `Dockerfile.rdap`, compose and Tilt. Moves rdap-04 (shape), 08, 09 and 10 to passing | Planned |
+| 1 | Server skeleton: `cmd/rdap`, `internal/config/rdap.go` with its variables in the env registry and deployment contract, the EPP server's TLS moved to `internal/infrastructure/tlsconfig` and shared, PROXY protocol, the ops port and drain, routing per TLD base URL, RDAP error objects, CORS, HEAD, `/help`, `rdapConformance` and the Terms of Use notice, base metrics, `Dockerfile.rdap` in the CI image matrix, compose and Tilt | **Done**. rdap-04 (shape), 08, 09, 10 and 91 pass. Existing objects are answered 501 until Phases 2 and 3 |
 | 2 | Domain lookup through a new `RDAPService`: statuses (RFC 8056), events, the registrar and its abuse contact, nameservers, DS data, IDN names, ROID handles, reserved and deleted domains; `rdappolicy.Decide` with a built-in publication policy, the current GA phase's contact roles, disclose flags and `redacted` (RFC 9537); golden responses for thick, thin and thick-to-thin TLDs. Moves rdap-01 (shape) and 05 | Planned |
 | 3 | Nameserver lookup (`HostRepository` lookup by name, the resolution rule), registrar entities by IANA ID; publication policies as data (`rdap_publication_policies`, assignments per TLD, built-ins `gtld-rdp-2024` and `cctld-minimal`), admin API under `rdap:policy:admin`. Moves rdap-02, 03, 06 and 07 | Planned |
 | 4 | Rate limiting: the EPP GCRA limiter extracted to `internal/infrastructure/ratelimit`; access policies assigned to networks (`anonymous`, `monitoring`), per-address and per-aggregate buckets, the not-found cost, 429 with `Retry-After`, node limits, fail-open, admin API. **Must land before any public deployment** | Planned |

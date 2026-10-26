@@ -32,6 +32,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/onasunnymorning/domain-os/internal/config"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/tlsconfig"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -205,7 +206,7 @@ func TestRST_epp01_ServiceConnectivity(t *testing.T) {
 
 	t.Run("epp-01/10 only RFC 9325 recommended cipher suites under TLSv1.2", func(t *testing.T) {
 		recommended := map[uint16]bool{}
-		for _, id := range rfc9325CipherSuites {
+		for _, id := range tlsconfig.RFC9325CipherSuites {
 			recommended[id] = true
 		}
 		var negotiated []string

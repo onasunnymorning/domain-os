@@ -132,8 +132,9 @@ func TestInfraUsedByIsDerived(t *testing.T) {
 	// mcp-server and whois both build a DSN from DB_* (cmd/mcp/main.go,
 	// cmd/whois/whois.go) — they are Postgres consumers and need DB credentials.
 	// epp-server reads registrars' credentials at every login (ADR 0014).
+	// rdap-server reads registry state for every lookup (ADR 0020).
 	want := map[string][]string{
-		"postgresql": {"admin-api", "unified-worker", "epp-server", "whois", "mcp-server"},
+		"postgresql": {"admin-api", "unified-worker", "epp-server", "rdap-server", "whois", "mcp-server"},
 		"redis":      {"admin-api", "epp-server"},
 		"temporal":   {"admin-api", "unified-worker"},
 		"s3":         {"admin-api", "unified-worker"},

@@ -1,0 +1,59 @@
+# Dockerfile for the RDAP server (docs/rdap/ARCHITECTURE.md)
+# Multi-stage build to keep the final image small
+
+FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine AS builder
+
+WORKDIR /build
+
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Dependencies come from the committed vendor tree, not the module proxy, so
+# the build is hermetic. go.mod/go.sum are still needed: vendor mode checks
+# them against vendor/modules.txt.
+COPY go.mod go.sum ./
+COPY vendor/ ./vendor/
+
+COPY cmd/rdap/ ./cmd/rdap/
+COPY internal/ ./internal/
+COPY pkg/ ./pkg/
+
+# CGO is disabled for a fully static binary
+ARG VERSION=dev
+ARG GIT_SHA=unknown
+ARG TARGETOS
+ARG TARGETARCH
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -mod=vendor \
+    -ldflags="-w -s -extldflags '-static' \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.Version=${VERSION} \
+      -X github.com/onasunnymorning/domain-os/internal/buildinfo.GitSHA=${GIT_SHA}" \
+    -a \
+    -o rdap-server \
+    ./cmd/rdap
+
+FROM alpine:3.21.8
+
+RUN apk upgrade --no-cache && \
+    apk --no-cache add ca-certificates tzdata && \
+    update-ca-certificates
+
+RUN addgroup -g 1000 rdap && \
+    adduser -D -u 1000 -G rdap rdap && \
+    mkdir -p /etc/rdap/certs && \
+    chown -R rdap:rdap /etc/rdap
+
+WORKDIR /app
+COPY --from=builder --chown=rdap:rdap /build/rdap-server /app/rdap-server
+
+USER rdap
+
+# HTTPS (443) and the ops port (9701: /healthz, /readyz, /metrics).
+# Binding 443 as a non-root user needs CAP_NET_BIND_SERVICE or a mapped port;
+# local compose sets RDAP_PORT=8443.
+EXPOSE 443 9701
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -q -O /dev/null http://localhost:9701/readyz || exit 1
+
+CMD ["/app/rdap-server"]

@@ -1,0 +1,124 @@
+package rdap
+
+import (
+	"errors"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+)
+
+// handler answers RDAP requests: it records each request's metrics, refuses
+// what is not a lookup, parses the path and dispatches the query.
+func (s *Server) handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		s.metrics.inFlight.Inc()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		route := routeInvalid
+		defer func() {
+			s.metrics.inFlight.Dec()
+			s.metrics.requests.WithLabelValues(route, strconv.Itoa(rec.status)).Inc()
+			s.metrics.requestDuration.WithLabelValues(route).Observe(time.Since(start).Seconds())
+		}()
+
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			rec.Header().Set("Allow", "GET, HEAD")
+			writeError(rec, http.StatusMethodNotAllowed, "RDAP is read-only: only GET and HEAD are served")
+			return
+		}
+		path, ok := strings.CutPrefix(r.URL.Path, s.basePath)
+		if !ok {
+			writeError(rec, http.StatusNotFound, "this path is outside the RDAP service's base URL")
+			return
+		}
+		q := parseQuery(path)
+		route = q.kind.route()
+		s.serve(rec, r, q)
+	})
+}
+
+// serve answers a parsed query.
+func (s *Server) serve(w http.ResponseWriter, r *http.Request, q query) {
+	switch q.kind {
+	case queryHelp:
+		writeJSON(w, http.StatusOK, helpResponse{RDAPConformance: conformance, Notices: s.notices(r)})
+	case querySearch:
+		writeError(w, http.StatusNotImplemented, "searches are not offered")
+	case queryDomain:
+		// A domain outside the TLD whose base URL was used is not this
+		// TLD's to answer for.
+		if q.tld != "" && !strings.HasSuffix(q.arg, "."+q.tld) {
+			writeError(w, http.StatusNotFound)
+			return
+		}
+		_, err := s.lookups.Domain(r.Context(), q.arg)
+		s.answerLookup(w, routeDomain, err == nil, errors.Is(err, entities.ErrDomainNotFound), err)
+	case queryNameserver:
+		found, err := s.lookups.NameserverExists(r.Context(), q.arg)
+		s.answerLookup(w, routeNameserver, found, err == nil && !found, err)
+	case queryEntity:
+		// Only registrars are served directly, by IANA ID. A contact
+		// appears only inside a domain's response (ADR 0020 decision 5).
+		ianaID, isRegistrar := registrarHandle(q.arg)
+		if !isRegistrar {
+			writeError(w, http.StatusNotFound)
+			return
+		}
+		_, err := s.lookups.Registrar(r.Context(), ianaID)
+		s.answerLookup(w, routeEntity, err == nil, errors.Is(err, entities.ErrRegistrarNotFound), err)
+	default:
+		writeError(w, http.StatusBadRequest, q.problem)
+	}
+}
+
+// answerLookup answers a lookup by whether the object was found.
+//
+// Phase 1 answers only for objects that do not exist. The responses for
+// those that do arrive with Phase 2 (domains) and Phase 3 (nameservers and
+// registrars); until then an existing object is answered 501.
+func (s *Server) answerLookup(w http.ResponseWriter, route string, found, notFound bool, err error) {
+	switch {
+	case notFound:
+		writeError(w, http.StatusNotFound)
+	case found:
+		writeError(w, http.StatusNotImplemented, "this object exists; responses for it are not served yet")
+	default:
+		s.metrics.lookupErrors.WithLabelValues(route).Inc()
+		s.logger.Error("RDAP lookup failed reading the registry; answered 500", "route", route, "error", err)
+		writeError(w, http.StatusInternalServerError)
+	}
+}
+
+// notices are the gTLD profile's notices that every top-level response
+// carries. The Status Codes and RDDS Inaccuracy notices belong to domain
+// responses and arrive with them (Phase 2).
+func (s *Server) notices(r *http.Request) []notice {
+	if s.termsOfService == "" {
+		return nil
+	}
+	return []notice{{
+		Title:       "Terms of Use",
+		Description: []string{"Service subject to the terms of use."},
+		Links:       []link{{Value: s.requestURL(r), Rel: "terms-of-service", Href: s.termsOfService, Type: "text/html"}},
+	}}
+}
+
+// requestURL is the public URL of r, the context of every link in its
+// response.
+func (s *Server) requestURL(r *http.Request) string {
+	return s.baseURL + strings.TrimPrefix(r.URL.EscapedPath(), s.basePath)
+}
+
+// statusRecorder keeps the status a handler wrote, for metrics.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}

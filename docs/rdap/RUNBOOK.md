@@ -38,10 +38,10 @@ What to do when an RDAP alert fires, and how to carry out the routine operations
 *(Phase 3.)* See [PUBLICATION_REFERENCE.md](PUBLICATION_REFERENCE.md).
 
 ### Rotate the certificate
-*(Phase 1.)*
+Replace the files at `RDAP_TLS_CERT_PATH` and `RDAP_TLS_KEY_PATH` (key first, then certificate). Each node picks them up within `RDAP_TLS_RELOAD_INTERVAL`, for new connections only. A certificate that is expired, not yet valid or does not cover `RDAP_SERVER_NAME` is refused: the node keeps the current one, logs the reason, and counts it in `rdap_server_cert_reload_errors_total`. Check `rdap_server_cert_not_after_timestamp_seconds` on every node to confirm the new expiry.
 
 ### Drain a node
-*(Phase 1.)*
+Send SIGTERM. `/readyz` on the ops port turns 503 and `rdap_draining` turns 1, new connections are refused, and requests in flight get `RDAP_DRAIN_TIMEOUT` to finish. The load balancer's health check must use `/readyz`, not the HTTPS port.
 
 ### Load test
 *(Phase 6.)*

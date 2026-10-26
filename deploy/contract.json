@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-24T01:30:58Z",
+  "generated": "2026-10-26T20:12:07Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -692,6 +692,145 @@
         ]
       }
     },
+    "rdap-server": {
+      "image": "gprins/domain-os-rdap",
+      "port": 443,
+      "protocol": "tls",
+      "env_injection": "runtime",
+      "health_check": {
+        "type": "http",
+        "path": "/readyz",
+        "port": 9701
+      },
+      "env_vars": {
+        "required": [
+          {
+            "name": "ROID_REPOSITORY_ID",
+            "description": "The registry's EPP repository ID, registered with IANA (https://www.iana.org/assignments/epp-repository-ids): 1 to 8 letters or digits. Every ROID ends in it (e.g. 123_DOM-XYZ): only the number is stored, and the ID is appended when a ROID is read. Set it once, before the first start: the database records it then, and a process configured with a different one refuses to start. Any value will do for local development"
+          }
+        ],
+        "optional": [
+          {
+            "name": "DB_USER",
+            "default": "postgres",
+            "description": "PostgreSQL user. The DB_* set is the production credential path on AWS ECS; used whenever DATABASE_URL is unset"
+          },
+          {
+            "name": "DB_PASS",
+            "default": "postgres",
+            "secret": true,
+            "description": "PostgreSQL password. The DB_* set is the production credential path on AWS ECS (inject from the secret store); used whenever DATABASE_URL is unset"
+          },
+          {
+            "name": "DB_HOST",
+            "default": "localhost",
+            "description": "PostgreSQL host; used whenever DATABASE_URL is unset"
+          },
+          {
+            "name": "DB_PORT",
+            "default": "5432",
+            "description": "PostgreSQL port; used whenever DATABASE_URL is unset"
+          },
+          {
+            "name": "DB_NAME",
+            "default": "domain_os",
+            "description": "PostgreSQL database name; used whenever DATABASE_URL is unset"
+          },
+          {
+            "name": "DB_SSLMODE",
+            "default": "disable",
+            "description": "PostgreSQL SSL mode"
+          },
+          {
+            "name": "SCHEMA_GUARD",
+            "default": "enforce",
+            "description": "Startup check that schema_version is at least this build's version: enforce (refuse to start), warn (log and continue) or off. Emergency escape hatch only - leave unset (enforce) in deployed environments"
+          },
+          {
+            "name": "LOG_LEVEL",
+            "default": "info",
+            "description": "Log level (debug/info/warn/error)"
+          },
+          {
+            "name": "RDAP_PORT",
+            "default": "443",
+            "description": "RDAP HTTPS listen port. RST requires base URLs on 443"
+          },
+          {
+            "name": "RDAP_OPS_PORT",
+            "default": "9701",
+            "description": "Plain-HTTP port serving /healthz, /readyz and /metrics. Never expose it publicly"
+          },
+          {
+            "name": "RDAP_SERVER_NAME",
+            "description": "The RDAP hostname. When set, a server certificate that does not cover it is refused at start and on reload (rdap-91), and RDAP_BASE_URL defaults to https://\u003cit\u003e/. Set it in every deployment"
+          },
+          {
+            "name": "RDAP_BASE_URL",
+            "description": "Public base URL every TLD is served under, as https://host/path/; a TLD's base URL (RST's rdap.baseURLs) is this plus the TLD and a slash. Defaults to https://RDAP_SERVER_NAME/"
+          },
+          {
+            "name": "RDAP_TLS_CERT_PATH",
+            "required_when": "RDAP_TLS_SELF_SIGNED=false",
+            "description": "Path to the PEM server certificate (with chain). Hot-reloaded when the file changes"
+          },
+          {
+            "name": "RDAP_TLS_KEY_PATH",
+            "required_when": "RDAP_TLS_SELF_SIGNED=false",
+            "description": "Path to the PEM private key for RDAP_TLS_CERT_PATH. The path is not secret; the key file it names is, so mount it from the secret store"
+          },
+          {
+            "name": "RDAP_TLS_SELF_SIGNED",
+            "default": "false",
+            "description": "Present a generated self-signed certificate instead of RDAP_TLS_CERT_PATH. Local development only"
+          },
+          {
+            "name": "RDAP_TLS_RELOAD_INTERVAL",
+            "default": "1m",
+            "description": "How often the certificate files are checked for a renewal"
+          },
+          {
+            "name": "RDAP_PROXY_PROTOCOL",
+            "default": "false",
+            "description": "Require a PROXY protocol header on every connection. Must be true behind a load balancer, or per-address rate limits see only the balancer"
+          },
+          {
+            "name": "RDAP_PROXY_TRUSTED_CIDRS",
+            "required_when": "RDAP_PROXY_PROTOCOL=true",
+            "description": "Comma-separated CIDRs or IPs of the load balancers allowed to send PROXY headers. Connections from anywhere else are dropped"
+          },
+          {
+            "name": "RDAP_READ_TIMEOUT",
+            "default": "5s",
+            "description": "Time to read a request, including any PROXY header"
+          },
+          {
+            "name": "RDAP_WRITE_TIMEOUT",
+            "default": "10s",
+            "description": "Time to write one response"
+          },
+          {
+            "name": "RDAP_IDLE_TIMEOUT",
+            "default": "60s",
+            "description": "Time a keep-alive connection may wait for its next request"
+          },
+          {
+            "name": "RDAP_DRAIN_TIMEOUT",
+            "default": "20s",
+            "description": "On SIGTERM, time allowed for requests in flight after readiness turns 503"
+          },
+          {
+            "name": "RDAP_TERMS_OF_SERVICE_URL",
+            "description": "The registry's RDAP terms of use, linked from the gTLD profile's Terms of Use notice. Unset leaves that notice out, which a gTLD may not do. Moves into each TLD's publication policy in Phase 3"
+          },
+          {
+            "name": "RDAP_DB_MAX_OPEN_CONNS",
+            "default": "20",
+            "description": "Database connections one RDAP node may open"
+          }
+        ]
+      }
+    },
     "unified-worker": {
       "image": "gprins/domain-os-worker",
       "env_injection": "runtime",
@@ -1099,6 +1238,7 @@
         "admin-api",
         "unified-worker",
         "epp-server",
+        "rdap-server",
         "whois",
         "mcp-server"
       ]

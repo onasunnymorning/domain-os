@@ -18,6 +18,7 @@ const (
 	ServiceEPP      Service = "epp"
 	ServiceMCP      Service = "mcp"
 	ServiceWhois    Service = "whois"
+	ServiceRDAP     Service = "rdap"
 	ServiceCLI      Service = "cli"
 	// ServiceMigrate is the one-off `ryAdminAPI migrate` job (contract "jobs"),
 	// not a long-running service. It reads only the database connection vars.
@@ -63,14 +64,14 @@ var Registry = []EnvVar{
 	// its own. The DB_* set is the production credential path on AWS ECS — a
 	// secret-store password injected as DB_PASS never has to survive URL parsing.
 	{Name: "DATABASE_URL", Services: []Service{ServiceAPI, ServiceWorker, ServiceMigrate}, Secret: true, Description: "PostgreSQL connection URL. Embeds the password, so it is credential material. Alternative to the DB_* set — configure one of the two; on AWS prefer DB_* so the managed password never passes through a URL."},
-	{Name: "DB_USER", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP}, Default: "postgres", Description: "PostgreSQL user. The DB_* set is the production credential path on AWS ECS; used whenever DATABASE_URL is unset"},
-	{Name: "DB_PASS", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP}, Default: "postgres", Secret: true, Description: "PostgreSQL password. The DB_* set is the production credential path on AWS ECS (inject from the secret store); used whenever DATABASE_URL is unset"},
-	{Name: "DB_HOST", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP}, Default: "localhost", Description: "PostgreSQL host; used whenever DATABASE_URL is unset"},
-	{Name: "DB_PORT", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP}, Default: "5432", Description: "PostgreSQL port; used whenever DATABASE_URL is unset"},
-	{Name: "DB_NAME", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP}, Default: "domain_os", Description: "PostgreSQL database name; used whenever DATABASE_URL is unset"},
-	{Name: "DB_SSLMODE", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP}, Default: "disable", Description: "PostgreSQL SSL mode"},
+	{Name: "DB_USER", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP, ServiceRDAP}, Default: "postgres", Description: "PostgreSQL user. The DB_* set is the production credential path on AWS ECS; used whenever DATABASE_URL is unset"},
+	{Name: "DB_PASS", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP, ServiceRDAP}, Default: "postgres", Secret: true, Description: "PostgreSQL password. The DB_* set is the production credential path on AWS ECS (inject from the secret store); used whenever DATABASE_URL is unset"},
+	{Name: "DB_HOST", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP, ServiceRDAP}, Default: "localhost", Description: "PostgreSQL host; used whenever DATABASE_URL is unset"},
+	{Name: "DB_PORT", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP, ServiceRDAP}, Default: "5432", Description: "PostgreSQL port; used whenever DATABASE_URL is unset"},
+	{Name: "DB_NAME", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP, ServiceRDAP}, Default: "domain_os", Description: "PostgreSQL database name; used whenever DATABASE_URL is unset"},
+	{Name: "DB_SSLMODE", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceWhois, ServiceCLI, ServiceMigrate, ServiceEPP, ServiceRDAP}, Default: "disable", Description: "PostgreSQL SSL mode"},
 	{Name: "AUTO_MIGRATE", Services: []Service{ServiceAPI}, Default: "false", Description: "Migrate the schema on startup (local development). Deployed environments leave this false and run the `migrate` job before rolling services - see docs/adr/0010-database-migrations.md"},
-	{Name: "SCHEMA_GUARD", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceEPP}, Default: "enforce", Description: "Startup check that schema_version is at least this build's version: enforce (refuse to start), warn (log and continue) or off. Emergency escape hatch only - leave unset (enforce) in deployed environments"},
+	{Name: "SCHEMA_GUARD", Services: []Service{ServiceAPI, ServiceWorker, ServiceMCP, ServiceEPP, ServiceRDAP}, Default: "enforce", Description: "Startup check that schema_version is at least this build's version: enforce (refuse to start), warn (log and continue) or off. Emergency escape hatch only - leave unset (enforce) in deployed environments"},
 
 	// ═══════════════════════════════════════════
 	// AUTH0
@@ -90,7 +91,7 @@ var Registry = []EnvVar{
 	// Every process that mints or shows ROIDs reads it, and refuses to start
 	// without it, or with one other than the installation recorded on its
 	// first start (ADR 0017).
-	{Name: "ROID_REPOSITORY_ID", Services: []Service{ServiceAPI, ServiceWorker, ServiceEPP, ServiceMCP, ServiceWhois, ServiceCLI}, Required: true, Description: "The registry's EPP repository ID, registered with IANA (https://www.iana.org/assignments/epp-repository-ids): 1 to 8 letters or digits. Every ROID ends in it (e.g. 123_DOM-XYZ): only the number is stored, and the ID is appended when a ROID is read. Set it once, before the first start: the database records it then, and a process configured with a different one refuses to start. Any value will do for local development"},
+	{Name: "ROID_REPOSITORY_ID", Services: []Service{ServiceAPI, ServiceWorker, ServiceEPP, ServiceMCP, ServiceWhois, ServiceCLI, ServiceRDAP}, Required: true, Description: "The registry's EPP repository ID, registered with IANA (https://www.iana.org/assignments/epp-repository-ids): 1 to 8 letters or digits. Every ROID ends in it (e.g. 123_DOM-XYZ): only the number is stored, and the ID is appended when a ROID is read. Set it once, before the first start: the database records it then, and a process configured with a different one refuses to start. Any value will do for local development"},
 
 	// ═══════════════════════════════════════════
 	// API SERVER
@@ -145,7 +146,7 @@ var Registry = []EnvVar{
 	{Name: "NEW_RELIC_LICENSE_KEY", Services: []Service{ServiceAPI}, Secret: true, Description: "New Relic license key"},
 	{Name: "PROMETHEUS_ENABLED", Services: []Service{ServiceAPI}, Default: "false", Description: "Enable Prometheus metrics endpoint"},
 	{Name: "LOG_DOMAIN_EVENTS", Services: []Service{ServiceAPI}, Default: "true", Description: "Log domain lifecycle events"},
-	{Name: "LOG_LEVEL", Services: []Service{ServiceEPP}, Default: "info", Description: "Log level (debug/info/warn/error)"},
+	{Name: "LOG_LEVEL", Services: []Service{ServiceEPP, ServiceRDAP}, Default: "info", Description: "Log level (debug/info/warn/error)"},
 
 	// ═══════════════════════════════════════════
 	// EPP / REDIS
@@ -193,6 +194,28 @@ var Registry = []EnvVar{
 	{Name: "REDIS_HOST", Services: []Service{ServiceEPP, ServiceAPI}, Default: "localhost", Description: "Redis holding the EPP session registry and lockouts. The admin API reads it to list and end EPP sessions"},
 	{Name: "REDIS_PORT", Services: []Service{ServiceEPP, ServiceAPI}, Default: "6379", Description: "Redis port"},
 	{Name: "REDIS_PASSWORD", Services: []Service{ServiceEPP, ServiceAPI}, Secret: true, Description: "Redis password (empty = no auth)"},
+
+	// ═══════════════════════════════════════════
+	// RDAP
+	// ═══════════════════════════════════════════
+	// Every RDAP_* setting is documented, with how and when to change it, in
+	// docs/rdap/POLICY_REFERENCE.md. Parsing and cross-checks: internal/config/rdap.go.
+	{Name: "RDAP_PORT", Services: []Service{ServiceRDAP}, Default: "443", Description: "RDAP HTTPS listen port. RST requires base URLs on 443"},
+	{Name: "RDAP_OPS_PORT", Services: []Service{ServiceRDAP}, Default: "9701", Description: "Plain-HTTP port serving /healthz, /readyz and /metrics. Never expose it publicly"},
+	{Name: "RDAP_SERVER_NAME", Services: []Service{ServiceRDAP}, Description: "The RDAP hostname. When set, a server certificate that does not cover it is refused at start and on reload (rdap-91), and RDAP_BASE_URL defaults to https://<it>/. Set it in every deployment"},
+	{Name: "RDAP_BASE_URL", Services: []Service{ServiceRDAP}, Description: "Public base URL every TLD is served under, as https://host/path/; a TLD's base URL (RST's rdap.baseURLs) is this plus the TLD and a slash. Defaults to https://RDAP_SERVER_NAME/"},
+	{Name: "RDAP_TLS_CERT_PATH", Services: []Service{ServiceRDAP}, RequiredWhen: "RDAP_TLS_SELF_SIGNED=false", Description: "Path to the PEM server certificate (with chain). Hot-reloaded when the file changes"},
+	{Name: "RDAP_TLS_KEY_PATH", Services: []Service{ServiceRDAP}, RequiredWhen: "RDAP_TLS_SELF_SIGNED=false", Description: "Path to the PEM private key for RDAP_TLS_CERT_PATH. The path is not secret; the key file it names is, so mount it from the secret store"},
+	{Name: "RDAP_TLS_SELF_SIGNED", Services: []Service{ServiceRDAP}, Default: "false", Description: "Present a generated self-signed certificate instead of RDAP_TLS_CERT_PATH. Local development only"},
+	{Name: "RDAP_TLS_RELOAD_INTERVAL", Services: []Service{ServiceRDAP}, Default: "1m", Description: "How often the certificate files are checked for a renewal"},
+	{Name: "RDAP_PROXY_PROTOCOL", Services: []Service{ServiceRDAP}, Default: "false", Description: "Require a PROXY protocol header on every connection. Must be true behind a load balancer, or per-address rate limits see only the balancer"},
+	{Name: "RDAP_PROXY_TRUSTED_CIDRS", Services: []Service{ServiceRDAP}, RequiredWhen: "RDAP_PROXY_PROTOCOL=true", Description: "Comma-separated CIDRs or IPs of the load balancers allowed to send PROXY headers. Connections from anywhere else are dropped"},
+	{Name: "RDAP_READ_TIMEOUT", Services: []Service{ServiceRDAP}, Default: "5s", Description: "Time to read a request, including any PROXY header"},
+	{Name: "RDAP_WRITE_TIMEOUT", Services: []Service{ServiceRDAP}, Default: "10s", Description: "Time to write one response"},
+	{Name: "RDAP_IDLE_TIMEOUT", Services: []Service{ServiceRDAP}, Default: "60s", Description: "Time a keep-alive connection may wait for its next request"},
+	{Name: "RDAP_DRAIN_TIMEOUT", Services: []Service{ServiceRDAP}, Default: "20s", Description: "On SIGTERM, time allowed for requests in flight after readiness turns 503"},
+	{Name: "RDAP_TERMS_OF_SERVICE_URL", Services: []Service{ServiceRDAP}, Description: "The registry's RDAP terms of use, linked from the gTLD profile's Terms of Use notice. Unset leaves that notice out, which a gTLD may not do. Moves into each TLD's publication policy in Phase 3"},
+	{Name: "RDAP_DB_MAX_OPEN_CONNS", Services: []Service{ServiceRDAP}, Default: "20", Description: "Database connections one RDAP node may open"},
 
 	// ═══════════════════════════════════════════
 	// MCP SERVER

@@ -4,7 +4,7 @@
 
 **Decisions:** [ADR 0013](../adr/0013-epp-server-architecture.md), with credential rotation amended by [ADR 0014](../adr/0014-epp-credential-rotation.md) and schema validation decided by [ADR 0016](../adr/0016-epp-schema-validation-in-go.md). **Every setting, its default and how to change it:** [POLICY_REFERENCE.md](POLICY_REFERENCE.md). This page replaces `docs/EPP_PRODUCTION_ARCHITECTURE.md`, which described an aspirational design (anycast, Vault, RabbitMQ) and was removed rather than kept in sync.
 
-**Code:** `cmd/epp` is the composition root. The server lives in `internal/interface/epp`. The session registry is `internal/infrastructure/epp/sessionstore` and the lockout `internal/infrastructure/epp/lockout`, both in Redis.
+**Code:** `cmd/epp` is the composition root. The server lives in `internal/interface/epp`. The server certificate source, the RFC 9325 cipher suites and the PROXY protocol listener live in `internal/infrastructure/tlsconfig`, shared with the RDAP server since RDAP Phase 1. The session registry is `internal/infrastructure/epp/sessionstore` and the lockout `internal/infrastructure/epp/lockout`, both in Redis.
 
 ---
 
