@@ -1,5 +1,11 @@
 # libxml2
 
+**UPDATE 5 Mar, 2026**: Might I refer you to [lestrrat-go/helium](https://github.com/lestrrat-go/helium)? This is a complete _port_ of libxml2 to Go, with heaps more features such as XSLT3, XPath3.1, XSD 1.1, etc.
+
+**NOTICE**: Instead of making people use this library while wondering if this module is ever going to be modified any time soon, I've opted to archive it. I may come back to it later, but for the time being I have no motivation or pressing need to work on this project.
+
+
+
 Interface to libxml2, with DOM interface.
 
 [![Build Status](https://travis-ci.org/lestrrat-go/libxml2.svg?branch=master)](https://travis-ci.org/lestrrat-go/libxml2)
@@ -278,9 +284,13 @@ pkg-config --list-all
 
 See the first FAQ entry.
 
-### I can't build this library statically
+### I can't statically link this module to libxml2
 
-See prior discussion: https://github.com/lestrrat-go/libxml2/issues/62
+Use the `static_build` tag when building this module, for example:
+
+```sh
+go build -tags static_build
+```
 
 ## See Also
 
