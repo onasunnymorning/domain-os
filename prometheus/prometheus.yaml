@@ -28,3 +28,10 @@ scrape_configs:
     metrics_path: '/metrics'
     static_configs:
       - targets: ['epp-server:9700']
+
+  # RDAP server ops port: requests, latency against the SLA, limits, redactions
+  - job_name: 'rdap-server'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['rdap-server:9701']
