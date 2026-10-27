@@ -25,7 +25,7 @@ The server runs (Phase 1) and serves domains (Phase 2), nameservers and registra
 - Anything that does not exist is a 404.
 - The TLD in a base URL is not yet checked against the TLDs the registry serves. Any label is accepted, and a domain outside that label is a 404.
 
-`make rst-rdap` reports rdap-01 to 10 and 91 passing, rdap-01 to 04 graded by ICANN's conformance tool; only rdap-92 is pending, a deployment check (Phase 7). rdap-91's CA and chain requirements are operational. The port-43 `cmd/whois` stays as it is until the later phase that retires it.
+`make rst-rdap` reports rdap-01 to 10 and 91 passing, rdap-01 to 04 graded by ICANN's conformance tool; rdap-92 and rdap-91's certificate requirements are operational: `cmd/tools/rdapcheck` checks them against a deployment (Phase 7a). rdap-91's CA and chain requirements are operational. The port-43 `cmd/whois` stays as it is until the later phase that retires it.
 
 ---
 
@@ -111,6 +111,7 @@ RST grades rdap-01 to rdap-04 with ICANN's RDAP Conformance Tool, so the suite r
 - RST's `rdap.clientACL` networks are assigned the `monitoring` policy.
 - A and AAAA records are published for the RDAP hostname, and the certificate covers it (rdap-91, rdap-92).
 - Each gTLD's base URL is registered in IANA's RDAP bootstrap.
+- `go run ./cmd/tools/rdapcheck -base https://$HOST/$TLD/ -domain … -nameserver … -entity …` passes against the deployment: rdap-91 (TLS 1.2 accepted, TLS 1.1 and the non-RFC 9325 suites Go can offer refused, a trusted, current certificate for the host name) and rdap-92 (an IPv4 and an IPv6 address, the same answers on each) on every address the host name resolves to. `testssl.sh --cipher-per-proto` against each address covers the suites Go cannot offer (DHE, CCM, ARIA, Camellia): only RFC 9325's may be accepted on TLS 1.2.
 
 ## Roadmap
 
@@ -126,7 +127,8 @@ Each phase is one or more PRs and can be shipped on its own.
 | 4 | Rate limiting: the EPP limiter moved to `internal/infrastructure/ratelimit` with a key prefix per service; access policies as data (`rdap_access_policies`, `rdap_access_networks`, built-ins `anonymous` and `monitoring`), most specific network wins; address and aggregate buckets, the not-found cost, 429 with `Retry-After`; in-flight and connection caps per node; fail-open; admin API under `rdap:policy:admin` | **Done**. No per-address connection cap (ADR 0022 amended) |
 | 5 | Alert rules (`prometheus/rules/rdap.rules.yml`, 13 rules with promtool unit tests), the *RDAP server* Grafana dashboard, the scrape job, the runbook's alert sections, and the test that keeps rules and panels to served metrics and runbook anchors | **Done**, except a MoSAPI-based alert on ICANN's view of availability |
 | 6 | `cmd/tools/rdapload` (status codes, latency percentiles against the 400 ms SLA, 429s and 503s, a share of misses); ICANN's RDAP Conformance Tool v3.1.0 pinned (checksum, RST's RSP configuration) and run by the suite on every object type, required in CI; the defects it found fixed | **Done**. rdap-01 to 04 graded by the tool |
-| 7 | Deployment: dual-stack endpoint, certificate, TLS and IPv4/IPv6 consistency checks against staging (rdap-91, 92), IANA bootstrap entries, an OT&E `StandardRDAPOnly` run | Planned: needs a deployment |
+| 7a | `cmd/tools/rdapcheck`: rdap-91 and rdap-92 against a deployed base URL, on every IPv4 and IPv6 address of its host name, with canonical JSON comparison as RST does it; rdap-92 accounted for in the suite as operational | **Done** |
+| 7b | Deployment: dual-stack endpoint on 443, public certificate, `rdapcheck` passing, IANA bootstrap entries, the `monitoring` policy for ICANN's probes, an OT&E `StandardRDAPOnly` run | Planned: needs a deployment |
 | 8a | RFC 9560 OpenID Connect: token validation, capability discovery in `/help`, tiers and grants as inputs to `Decide`, responses never shared-cached | Later |
 | 8b | Disclosure requests: intake, review, approve or deny with reasons, configurable deadlines (Registration Data Policy §10, NIS2 Article 28) and escalation | Later |
 | 8c | Searches | Later |
