@@ -146,6 +146,13 @@ func (s *Server) Serve(l net.Listener) error {
 		l = pl
 	}
 
+	// The publication policies decide what a response may show, so the
+	// node serves nothing until it holds the stored set: built-ins could
+	// publish what a stricter stored policy withholds.
+	if err := s.loadPolicies(context.Background()); err != nil {
+		return fmt.Errorf("rdap: load the publication policies before serving: %w", err)
+	}
+
 	// The certificate watch lives as long as Serve: shutting the HTTP
 	// server down returns ServeTLS, which stops it.
 	watchCtx, stop := context.WithCancel(context.Background())
@@ -203,31 +210,42 @@ func (s *Server) OpsHandler() http.Handler {
 	return mux
 }
 
-// watchPolicies reloads the TLDs' publication policies now and every
-// PolicyRefresh, until ctx is done. A failed load keeps the set last loaded
-// (ADR 0021): before the first, every TLD has the built-in for its type.
-func (s *Server) watchPolicies(ctx context.Context) {
-	interval := s.cfg.PolicyRefresh
-	if interval <= 0 {
-		interval = 30 * time.Second
+// policyInterval is how often the policies are reloaded, and how long one
+// load may take.
+func (s *Server) policyInterval() time.Duration {
+	if s.cfg.PolicyRefresh > 0 {
+		return s.cfg.PolicyRefresh
 	}
-	ticker := time.NewTicker(interval)
+	return 30 * time.Second
+}
+
+// loadPolicies loads the publication policies once, bounded by the reload
+// interval, and records the outcome.
+func (s *Server) loadPolicies(ctx context.Context) error {
+	loadCtx, cancel := context.WithTimeout(ctx, s.policyInterval())
+	defer cancel()
+	if err := s.lookups.RefreshPublicationPolicies(loadCtx); err != nil {
+		s.metrics.policyRefreshErrors.Inc()
+		return err
+	}
+	s.metrics.policiesRefreshed.Set(float64(s.now().Unix()))
+	return nil
+}
+
+// watchPolicies reloads the publication policies every PolicyRefresh, until
+// ctx is done. Serve has loaded them once already; a later load that fails
+// keeps the set last loaded (ADR 0021).
+func (s *Server) watchPolicies(ctx context.Context) {
+	ticker := time.NewTicker(s.policyInterval())
 	defer ticker.Stop()
 	for {
-		loadCtx, cancel := context.WithTimeout(ctx, interval)
-		err := s.lookups.RefreshPublicationPolicies(loadCtx)
-		cancel()
-		switch {
-		case err == nil:
-			s.metrics.policiesRefreshed.Set(float64(s.now().Unix()))
-		case ctx.Err() == nil:
-			s.metrics.policyRefreshErrors.Inc()
-			s.logger.Warn("RDAP publication policies not refreshed; keeping the previous set", "error", err)
-		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		}
+		if err := s.loadPolicies(ctx); err != nil && ctx.Err() == nil {
+			s.logger.Warn("RDAP publication policies not refreshed; keeping the previous set", "error", err)
 		}
 	}
 }

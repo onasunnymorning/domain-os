@@ -72,6 +72,17 @@ func TestRDAPPublicationPolicyRepository(t *testing.T) {
 		assert.ErrorIs(t, repo.DeletePolicy(ctx, "custom-test", event("test.deleted")), entities.ErrRDAPPublicationPolicyInUse)
 	})
 
+	t.Run("a snapshot holds the policies and the assignments together", func(t *testing.T) {
+		policies, assignments, err := repo.Snapshot(ctx)
+		require.NoError(t, err)
+		names := map[string]bool{}
+		for _, p := range policies {
+			names[p.Name] = true
+		}
+		assert.True(t, names["custom-test"])
+		assert.Equal(t, "custom-test", assignments["rdappoltest"])
+	})
+
 	t.Run("assignment refuses an unknown TLD or policy", func(t *testing.T) {
 		assert.ErrorIs(t, repo.AssignPolicy(ctx, "rdappoltest", "no-such", func(string) []entities.DomainEvent { return nil }), entities.ErrRDAPPublicationPolicyNotFound)
 		assert.ErrorIs(t, repo.AssignPolicy(ctx, "no-such-tld", "custom-test", func(string) []entities.DomainEvent { return nil }), entities.ErrTLDNotFound)

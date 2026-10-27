@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/appcontext"
@@ -30,15 +31,19 @@ func NewRDAPPublicationPolicyService(repo repositories.RDAPPublicationPolicyRepo
 
 // PublicationSet returns every policy and assignment, for an RDAP node.
 func (s *RDAPPublicationPolicyService) PublicationSet(ctx context.Context) (*entities.RDAPPublicationSet, error) {
-	policies, err := s.repo.ListPolicies(ctx)
+	// One snapshot: an assignment read apart from the policies could name a
+	// policy created in between, and fall back to a less strict built-in.
+	policies, assignments, err := s.repo.Snapshot(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list RDAP publication policies: %w", err)
+		return nil, fmt.Errorf("load RDAP publication policies: %w", err)
 	}
-	assignments, err := s.repo.ListAssignments(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list RDAP publication assignments: %w", err)
+	set := entities.NewRDAPPublicationSet(policies, assignments, s.now().UTC())
+	// A node keeps its last good set rather than serve a TLD the built-in
+	// in place of a policy it cannot find.
+	if missing := set.UnresolvedAssignments(); len(missing) > 0 {
+		return nil, fmt.Errorf("%w: %s", entities.ErrRDAPPublicationPolicyNotFound, strings.Join(missing, ", "))
 	}
-	return entities.NewRDAPPublicationSet(policies, assignments, s.now().UTC()), nil
+	return set, nil
 }
 
 // ListPolicies returns every policy, the built-in ones included.

@@ -39,7 +39,7 @@ Durations use Go syntax (`30s`, `10m`). Every value is checked at start. A bad v
 | `RDAP_MAX_IN_FLIGHT` | `200` *(planned)* | Requests a node serves at once, to protect the node | 4 |
 | `RDAP_MAX_CONNECTIONS` | `5000` *(planned)* | Open connections per node | 4 |
 | `RDAP_MAX_CONNECTIONS_PER_IP` | `20` *(planned)* | Open connections per client address per node | 4 |
-| `RDAP_POLICY_REFRESH_INTERVAL` | `30s` | How often a node reloads the publication policies (and, from Phase 4, access policies). A failed reload keeps the set last loaded; before the first, every TLD has its built-in | 3b |
+| `RDAP_POLICY_REFRESH_INTERVAL` | `30s` | How often a node reloads the publication policies (and, from Phase 4, access policies). A node does not serve until its first load succeeds (built-ins could publish what a stored policy withholds); a later reload that fails keeps the set last loaded. Policies and assignments are read in one snapshot, and a set with an assignment to a missing policy is refused | 3b |
 | `REDIS_*` | as EPP *(planned)* | The limiter's store. Without it the limiter fails open to per-node buckets | 4 |
 
 A read replica for lookups is not offered yet. It is added if load testing (Phase 6) shows the primary is the bottleneck.
