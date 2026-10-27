@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-27T16:03:33Z",
+  "generated": "2026-10-27T16:54:30Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -92,6 +92,10 @@
             "name": "ADMIN_TOKEN",
             "secret": true,
             "description": "Legacy bearer token (fallback when Auth0 disabled)"
+          },
+          {
+            "name": "SNOWFLAKE_NODE_ID",
+            "description": "The snowflake node this process mints ROIDs on, 0 to 1023; every ROID carries it. One range for every process that writes the same database: two processes on one node can mint the same ROID in the same millisecond, and the second create then fails. Give each service a block and each replica its offset in it: api 0-99, worker 100-199, epp 200-299, cli and importers 900-999, so api-0 is 0, worker-0 is 100, epp-2 is 202. Unset, the node is derived from the host, which is fine for one process and a gamble for a fleet"
           },
           {
             "name": "API_HOST",
@@ -360,6 +364,10 @@
             "name": "SCHEMA_GUARD",
             "default": "enforce",
             "description": "Startup check that schema_version is at least this build's version: enforce (refuse to start), warn (log and continue) or off. Emergency escape hatch only - leave unset (enforce) in deployed environments"
+          },
+          {
+            "name": "SNOWFLAKE_NODE_ID",
+            "description": "The snowflake node this process mints ROIDs on, 0 to 1023; every ROID carries it. One range for every process that writes the same database: two processes on one node can mint the same ROID in the same millisecond, and the second create then fails. Give each service a block and each replica its offset in it: api 0-99, worker 100-199, epp 200-299, cli and importers 900-999, so api-0 is 0, worker-0 is 100, epp-2 is 202. Unset, the node is derived from the host, which is fine for one process and a gamble for a fleet"
           },
           {
             "name": "LOG_LEVEL",
@@ -975,6 +983,10 @@
             "name": "ADMIN_TOKEN",
             "secret": true,
             "description": "Legacy bearer token (fallback when Auth0 disabled)"
+          },
+          {
+            "name": "SNOWFLAKE_NODE_ID",
+            "description": "The snowflake node this process mints ROIDs on, 0 to 1023; every ROID carries it. One range for every process that writes the same database: two processes on one node can mint the same ROID in the same millisecond, and the second create then fails. Give each service a block and each replica its offset in it: api 0-99, worker 100-199, epp 200-299, cli and importers 900-999, so api-0 is 0, worker-0 is 100, epp-2 is 202. Unset, the node is derived from the host, which is fine for one process and a gamble for a fleet"
           },
           {
             "name": "API_URL",

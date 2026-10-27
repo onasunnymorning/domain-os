@@ -14,6 +14,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/bootstrap"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -43,6 +44,17 @@ func main() {
 	// connections: nothing closes them on the way out.
 	db, importPool := openDB(repositoryID)
 	log.Printf("unified-worker ROID repository ID %s", repositoryID)
+	// The lifecycle and import activities mint ROIDs on the process's node.
+	if id, set, err := config.LoadSnowflakeNodeID(); err != nil {
+		log.Fatalf("Refusing to start: %v", err)
+	} else if set {
+		if err := snowflakeidgenerator.SetNodeID(id); err != nil {
+			log.Fatalf("Refusing to start: %v", err)
+		}
+		log.Printf("unified-worker snowflake node %d (from SNOWFLAKE_NODE_ID)", id)
+	} else {
+		log.Printf("unified-worker snowflake node derived from the host; set SNOWFLAKE_NODE_ID per replica")
+	}
 	// Create a shared Temporal client
 	cfg := temporal.NewClientConfigFromEnv("")
 
