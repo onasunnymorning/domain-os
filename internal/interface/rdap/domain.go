@@ -189,7 +189,7 @@ func (s *Server) buildDomain(r *http.Request, rec *interfaces.RDAPDomain, req rd
 	if rec.Registrar != nil {
 		resp.Entities = append(resp.Entities, registrarEntity(rec.Registrar, false))
 		if base := string(rec.Registrar.RdapBaseURL); base != "" {
-			if base[len(base)-1] != '/' {
+			if !strings.HasSuffix(base, "/") {
 				base += "/"
 			}
 			resp.Links = append(resp.Links, link{

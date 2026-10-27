@@ -25,7 +25,7 @@ The server runs (Phase 1) and serves domains (Phase 2), nameservers and registra
 - Anything that does not exist is a 404.
 - The TLD in a base URL is not yet checked against the TLDs the registry serves. Any label is accepted, and a domain outside that label is a 404.
 
-`make rst-rdap` reports rdap-01 to 04 (shape; the conformance tool grades them from Phase 6), rdap-05 to 10 and 91 passing; only rdap-92 is pending, a deployment check. rdap-91's CA and chain requirements are operational. The port-43 `cmd/whois` stays as it is until the later phase that retires it.
+`make rst-rdap` reports rdap-01 to 10 and 91 passing, rdap-01 to 04 graded by ICANN's conformance tool; only rdap-92 is pending, a deployment check (Phase 7). rdap-91's CA and chain requirements are operational. The port-43 `cmd/whois` stays as it is until the later phase that retires it.
 
 ---
 
@@ -97,7 +97,9 @@ Two departures from ADR 0022, recorded there: there is no per-address connection
 
 ## Conformance
 
-ICANN's RST v2.0 `StandardRDAP` catalogue is the acceptance test ([ADR 0015](../adr/0015-rst-conformance-test-suites.md)). `internal/interface/rdap/rst_rdap_test.go` accounts for every case. `make rst-rdap` prints which pass, which are pending and in which phase, and which are operational. RST grades rdap-01 to rdap-04 with ICANN's RDAP Conformance Tool, so from Phase 6 the suite runs the pinned tool against the server, as the EPP suite runs xmllint. Every phase below should move cases from pending to passing, and its PR should say which.
+ICANN's RST v2.0 `StandardRDAP` catalogue is the acceptance test ([ADR 0015](../adr/0015-rst-conformance-test-suites.md)). `internal/interface/rdap/rst_rdap_test.go` accounts for every case. `make rst-rdap` prints which pass, which are pending and in which phase, and which are operational.
+
+RST grades rdap-01 to rdap-04 with ICANN's RDAP Conformance Tool, so the suite runs the same tool (Phase 6), as the EPP suite runs xmllint. `conformance_test.go` serves a thick domain, a domain of a thin TLD, a nameserver, a registrar and `/help` over TLS with a certificate from a test CA (with a CRL, since the tool checks revocation), and runs the pinned tool on each, with RST's configuration for RSP evaluation and the February 2024 profile. Any error the tool reports fails the case. The tool is fetched by `make rdapct` into `.cache/rdapct`, with its IANA datasets, so the test runs offline. It skips locally without Java (`make rst-rdap-docker` runs it in a container) and is required in CI, where the unit-test job installs Java 21 and the cached tool. Running it found four defects the shape tests had missed, all fixed in Phase 6: withheld phones must be removed, not emptied; the registrar's `about` link carries its RDAP base URL as its `value`; every link needs a `value`; and handles must end in a registered repository ID (the fixtures use RST's `ICANNRST`). Every phase below should move cases from pending to passing, and its PR should say which.
 
 ### Pre-test checklist (for an RST run)
 
@@ -123,7 +125,7 @@ Each phase is one or more PRs and can be shipped on its own.
 | 3b | Publication policies as data: the vocabulary and validation in `entities.RDAPPublicationPolicy`, `rdap_publication_policies` and `rdap_publication_assignments` (foreign keys to TLDs, built-ins seeded by the migration), the contact form URI per policy, admin API under `rdap:policy:admin` (`/rdap/publication-policies`, `/tlds/{tld}/rdap/publication-policy`) with outbox events, reload by polling (`RDAP_POLICY_REFRESH_INTERVAL`) | **Done**. The terms of use stay an installation setting: they are the RDAP service's |
 | 4 | Rate limiting: the EPP limiter moved to `internal/infrastructure/ratelimit` with a key prefix per service; access policies as data (`rdap_access_policies`, `rdap_access_networks`, built-ins `anonymous` and `monitoring`), most specific network wins; address and aggregate buckets, the not-found cost, 429 with `Retry-After`; in-flight and connection caps per node; fail-open; admin API under `rdap:policy:admin` | **Done**. No per-address connection cap (ADR 0022 amended) |
 | 5 | Alert rules (`prometheus/rules/rdap.rules.yml`, 13 rules with promtool unit tests), the *RDAP server* Grafana dashboard, the scrape job, the runbook's alert sections, and the test that keeps rules and panels to served metrics and runbook anchors | **Done**, except a MoSAPI-based alert on ICANN's view of availability |
-| 6 | `cmd/tools/rdapload`; the RDAP Conformance Tool and its RST config pinned and run by the suite (skipped locally without Java, required in CI), with seeded thick and thin TLDs. rdap-01 to 04 graded by the tool | Planned |
+| 6 | `cmd/tools/rdapload` (status codes, latency percentiles against the 400 ms SLA, 429s and 503s, a share of misses); ICANN's RDAP Conformance Tool v3.1.0 pinned (checksum, RST's RSP configuration) and run by the suite on every object type, required in CI; the defects it found fixed | **Done**. rdap-01 to 04 graded by the tool |
 | 7 | Deployment: dual-stack endpoint, certificate, TLS and IPv4/IPv6 consistency checks against staging (rdap-91, 92), IANA bootstrap entries, an OT&E `StandardRDAPOnly` run | Planned: needs a deployment |
 | 8a | RFC 9560 OpenID Connect: token validation, capability discovery in `/help`, tiers and grants as inputs to `Decide`, responses never shared-cached | Later |
 | 8b | Disclosure requests: intake, review, approve or deny with reasons, configurable deadlines (Registration Data Policy §10, NIS2 Article 28) and escalation | Later |

@@ -340,7 +340,7 @@ rst-rdap: ## ICANN RST v2.0 RDAP readiness scoreboard (ADR 0015)
 	echo "RST v2.0 StandardRDAP (pinned: internal/interface/rdap/testdata/rst/PROVENANCE.md)"; \
 	grep -E '^\s+--- (PASS|FAIL|SKIP): TestRST_[^/]+/' $$out | sed -E 's/^ +--- //; s/ \([0-9.]+s\)$$//'; \
 	echo ""; echo "Pending and operational reasons:"; \
-	grep -E 'RST (pending|operational)' $$out | sed -E 's/^ +rst_rdap_test.go:[0-9]+: /  /' | sort | uniq -c | sort -rn; \
+	grep -E 'RST (pending|operational)' $$out | sed -E 's/^ +[a-z_]+_test.go:[0-9]+: /  /' | sort | uniq -c | sort -rn; \
 	echo ""; \
 	printf "passed %s  failed %s  pending %s  operational %s\n" \
 		"$$(grep -cE '^\s+--- PASS: TestRST_[^/]+/' $$out)" \
@@ -349,6 +349,33 @@ rst-rdap: ## ICANN RST v2.0 RDAP readiness scoreboard (ADR 0015)
 		"$$(grep -cE 'RST operational' $$out)"; \
 	if [ $$status -ne 0 ]; then echo ""; grep -E -- '--- FAIL|Error' $$out | head -40; fi; \
 	rm -f $$out; exit $$status
+
+RDAPCT_VERSION := 3.1.0
+RDAPCT_SHA256  := e0d0d2002e8d2e933426c25712be5137bc629d3b081e042d6ffdcc42309e1a42
+RDAPCT_DIR     := .cache/rdapct
+
+.PHONY: rdapct rst-rdap-docker
+rdapct: ## Fetch the pinned RDAP Conformance Tool and its IANA datasets into .cache/rdapct (needs Java 21, or RDAPCT_DOCKER=1)
+	@mkdir -p $(RDAPCT_DIR)
+	@if [ ! -f $(RDAPCT_DIR)/rdapct-$(RDAPCT_VERSION).jar ]; then \
+		echo "Downloading rdapct $(RDAPCT_VERSION)..."; \
+		curl -fsSL -o $(RDAPCT_DIR)/rdapct-$(RDAPCT_VERSION).jar \
+			https://github.com/icann/rdap-conformance-tool/releases/download/v$(RDAPCT_VERSION)/rdapct-$(RDAPCT_VERSION).jar; \
+	fi
+	@echo "$(RDAPCT_SHA256)  $(RDAPCT_DIR)/rdapct-$(RDAPCT_VERSION).jar" | shasum -a 256 -c - >/dev/null \
+		|| { echo "rdapct-$(RDAPCT_VERSION).jar does not match the pinned checksum"; rm -f $(RDAPCT_DIR)/rdapct-$(RDAPCT_VERSION).jar; exit 1; }
+	@if [ ! -f $(RDAPCT_DIR)/datasets/.complete ]; then \
+		echo "Fetching the tool's IANA datasets..."; \
+		rm -rf $(RDAPCT_DIR)/datasets; \
+		RDAPCT_FETCH_DATASETS=1 go test -count=1 -run 'TestRST_RDAPConformanceTool/rdap-04' ./internal/interface/rdap/ >/dev/null \
+			|| { echo "fetching the datasets failed; run again (needs Java 21 and rdap.conformance.internal, or RDAPCT_DOCKER=1)"; exit 1; }; \
+		touch $(RDAPCT_DIR)/datasets/.complete; \
+	fi
+	@echo "rdapct $(RDAPCT_VERSION) and its datasets are in $(RDAPCT_DIR)"
+
+rst-rdap-docker: ## make rst-rdap, with the conformance tool run in a Java container (Docker Desktop: it reaches the server as host.docker.internal)
+	@RDAPCT_DOCKER=1 $(MAKE) rdapct
+	@RDAPCT_DOCKER=1 $(MAKE) rst-rdap
 
 test-askg: ## Run Ask G orchestrator tests
 	@echo "Running Ask G tests..."

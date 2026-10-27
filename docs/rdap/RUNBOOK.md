@@ -76,4 +76,4 @@ Replace the files at `RDAP_TLS_CERT_PATH` and `RDAP_TLS_KEY_PATH` (key first, th
 Send SIGTERM. `/readyz` on the ops port turns 503 and `rdap_draining` turns 1, new connections are refused, and requests in flight get `RDAP_DRAIN_TIMEOUT` to finish. The load balancer's health check must use `/readyz`, not the HTTPS port.
 
 ### Load test
-*(Phase 6.)*
+`go run ./cmd/tools/rdapload -base https://$HOST/$TLD/ -names names.txt -workers 8 -duration 1m` against a test environment. It reports status codes, latency percentiles and how many requests were over 400 ms. `-miss 0.3` makes 30% of lookups ask for names that do not exist, as an enumerator would; `-rate` paces each worker. From one address the client meets its own access policy first: to measure the server rather than the limiter, assign the load generator's network a generous policy ([Change a network's limits](#change-a-networks-limits)) and remove it afterwards.

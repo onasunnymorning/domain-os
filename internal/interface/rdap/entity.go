@@ -3,6 +3,7 @@ package rdap
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
@@ -75,8 +76,20 @@ func registrarEntity(rr *entities.Registrar, full bool) entity {
 		e.Handle = id
 		e.PublicIDs = []publicID{{Type: "IANA Registrar ID", Identifier: id}}
 	}
-	if rr.URL != "" {
-		e.Links = []link{{Rel: "about", Href: string(rr.URL), Type: "text/html"}}
+	// The gTLD profile's "about" link: its value is the registrar's RDAP
+	// base URL, its href the registrar's web site.
+	base, site := string(rr.RdapBaseURL), string(rr.URL)
+	if base != "" && !strings.HasSuffix(base, "/") {
+		base += "/"
+	}
+	if base == "" {
+		base = site
+	}
+	if site == "" {
+		site = base
+	}
+	if base != "" {
+		e.Links = []link{{Value: base, Rel: "about", Href: site, Type: "text/html"}}
 	}
 	abuse := []any{vcardProperty("fn", nil, "text", "")}
 	if rr.Voice != "" {

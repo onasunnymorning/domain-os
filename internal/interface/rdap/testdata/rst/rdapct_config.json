@@ -1,0 +1,96 @@
+{
+  "definitionError": [
+    {
+      "code": -13020,
+      "notes": "A 404 status was returned for a request for a resource that should exist."
+    }
+  ],
+  "definitionIdentifier": "RDAP Conformance Tool (RDAPCT) Configuration for Registry System Testing (RST) v2.0 Registry Service Provider (RSP) evaluation.",
+  "definitionIgnore": [
+    -10601,
+    -10701,
+    -10901,
+    -11201,
+    -11302,
+    -11501,
+    -11508,
+    -12001,
+    -12009,
+    -12019,
+    -12101,
+    -12201,
+    -12301,
+    -12401,
+    -12501,
+    -12601,
+    -47000,
+    -49102,
+    -49103,
+    -49104,
+    -10403,
+    -46101,
+    -46900,
+    -47203,
+    -52104,
+    -10303,
+    -23100,
+    -13005,
+    -13006,
+    -11703,
+    -12205,
+    -12405,
+    -12206,
+    -11603,
+    -12406,
+    -10611,
+    -10704,
+    -12217,
+    -10100,
+    -11100,
+    -12215,
+    -10402,
+    -10200,
+    -999,
+    -11404,
+    -11406,
+    -11407,
+    -11409,
+    -12412,
+    -12414,
+    -12314,
+    -12315,
+    -12107,
+    -12208,
+    -46205,
+    -47205,
+    -52106,
+    -47701
+  ],
+  "definitionNotes": [
+    "This configuration file is based on the default configuration file published in the RDAP Conformance Tool's git repository.",
+    "It includes additional options appropriate for the Registry System Testing (RST) v2.0 system.",
+    "This file is intended for use in Registry Service Provider (RSP) evaluation."
+  ],
+  "definitionWarning": [
+    {
+      "code": -10912,
+      "notes": "Repeating event actions is not a protocol violation but is unintentional in most scenarios."
+    },
+    {
+      "code": -11003,
+      "notes": "Repeating status values is not a protocol violation but is unintentional in most scenarios."
+    },
+    {
+      "code": -11310,
+      "notes": "Repeating event actions is not a protocol violation but is unintentional in most scenarios."
+    },
+    {
+      "code": -10102,
+      "notes": "The IPv4 address is included in the IANA IPv4 Special-Purpose Address Registry. Dataset: specialIPv4Addresses."
+    },
+    {
+      "code": -10202,
+      "notes": "The IPv6 address is included in the IANA IPv6 Special-Purpose Address Registry. Dataset: specialIPv6Addresses."
+    }
+  ]
+}

@@ -28,7 +28,7 @@ func ptr[T any](v T) *T { return &v }
 
 func registrant() *entities.Contact {
 	return &entities.Contact{
-		ID: "reg-1", RoID: "11_CONT-TEST",
+		ID: "reg-1", RoID: "11_CONT-ICANNRST",
 		PostalInfo: [2]*entities.ContactPostalInfo{{
 			Type: "int", Name: "Jane Registrant", Org: "Example Org",
 			Address: &entities.Address{Street1: "1 Main St", City: "Springfield", StateProvince: "IL", PostalCode: "62701", CountryCode: "US"},
@@ -39,7 +39,7 @@ func registrant() *entities.Contact {
 
 func tech() *entities.Contact {
 	return &entities.Contact{
-		ID: "tech-1", RoID: "12_CONT-TEST",
+		ID: "tech-1", RoID: "12_CONT-ICANNRST",
 		PostalInfo: [2]*entities.ContactPostalInfo{{
 			Type: "int", Name: "Tom Tech", Address: &entities.Address{City: "Paris", CountryCode: "FR"},
 		}},
@@ -51,7 +51,7 @@ func tech() *entities.Contact {
 // records, a transfer and a registrar with an RDAP base URL.
 func fullDomain() *interfaces.RDAPDomain {
 	d := &entities.Domain{
-		RoID: "100_DOM-TEST", Name: "xn--bcher-kva.example", UName: "bücher.example", TLDName: "example",
+		RoID: "100_DOM-ICANNRST", Name: "xn--bcher-kva.example", UName: "bücher.example", TLDName: "example",
 		ClID: "rar-1", RegistrantID: "reg-1", TechID: "tech-1", AdminID: "reg-1",
 		CreatedAt:     time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC),
 		UpdatedAt:     time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC),
@@ -60,8 +60,8 @@ func fullDomain() *interfaces.RDAPDomain {
 		Status:        entities.DomainStatus{ClientTransferProhibited: true, ServerDeleteProhibited: true},
 		RGPStatus:     entities.DomainRGPStatus{RenewPeriodEnd: goldenNow.Add(24 * time.Hour)},
 		Hosts: []*entities.Host{
-			{RoID: "200_HOST-TEST", Name: "ns1.xn--bcher-kva.example", InBailiwick: true, Addresses: []netip.Addr{netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("2001:db8::1")}},
-			{RoID: "201_HOST-TEST", Name: "ns.dns.example.net"},
+			{RoID: "200_HOST-ICANNRST", Name: "ns1.xn--bcher-kva.example", InBailiwick: true, Addresses: []netip.Addr{netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("2001:db8::1")}},
+			{RoID: "201_HOST-ICANNRST", Name: "ns.dns.example.net"},
 		},
 		DSRecords: []entities.DSRecord{{KeyTag: 12345, Algorithm: 13, DigestType: 2, Digest: "49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE4B9D4C3A1F2E9C9E7A8B6C5D"}},
 	}
@@ -100,7 +100,7 @@ func ccTLD() *interfaces.RDAPDomain {
 	c.Disclose = *entities.NewDiscloseStruct(true)
 	return &interfaces.RDAPDomain{
 		Domain: &entities.Domain{
-			RoID: "300_DOM-TEST", Name: "example.cc", TLDName: "cc", ClID: "local-rar", RegistrantID: "reg-1",
+			RoID: "300_DOM-ICANNRST", Name: "example.cc", TLDName: "cc", ClID: "local-rar", RegistrantID: "reg-1",
 			CreatedAt: time.Date(2020, 5, 5, 0, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2020, 5, 5, 0, 0, 0, 0, time.UTC),
 			ExpiryDate: time.Date(2027, 5, 5, 0, 0, 0, 0, time.UTC), Status: entities.DomainStatus{OK: true},
 		},
@@ -182,7 +182,7 @@ func TestGTLDThickRedactsWithheldFields(t *testing.T) {
 	resp := decoded(t, goldenServer(t), fullDomain())
 	assert.Equal(t, []string{"registrar", "registrant", "technical"}, roles(resp), "admin is not published under the RDP")
 	raw, _ := json.Marshal(resp)
-	for _, leak := range []string{"Jane Registrant", "jane@example.test", "1 Main St", "Springfield", "62701", "5555551234", "11_CONT-TEST", "Tom Tech", "tom@example.test"} {
+	for _, leak := range []string{"Jane Registrant", "jane@example.test", "1 Main St", "Springfield", "62701", "5555551234", "11_CONT-ICANNRST", "Tom Tech", "tom@example.test"} {
 		assert.NotContains(t, string(raw), leak, "withheld values never reach the response")
 	}
 	assert.Contains(t, string(raw), `"cc":"US"`)

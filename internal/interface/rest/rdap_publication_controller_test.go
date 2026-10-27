@@ -142,7 +142,7 @@ func TestRDAPPublicationRequiresPermission(t *testing.T) {
 const thickPolicy = `{"description":"thick","contactFormUri":"https://registry.example/contact","roles":{"registrant":{
 	"handle":{"rule":"withhold","method":"removal"},"name":{"rule":"publish"},"org":{"rule":"publish-if-disclosed"},
 	"street":{"rule":"withhold","method":"emptyValue"},"city":{"rule":"withhold","method":"emptyValue"},"sp":{"rule":"publish"},
-	"pc":{"rule":"withhold","method":"emptyValue"},"cc":{"rule":"publish"},"voice":{"rule":"withhold","method":"emptyValue"},
+	"pc":{"rule":"withhold","method":"emptyValue"},"cc":{"rule":"publish"},"voice":{"rule":"withhold","method":"removal"},
 	"fax":{"rule":"withhold","method":"removal"},"email":{"rule":"withhold","method":"replacementValue"}}}}`
 
 func TestRDAPPublicationAPI(t *testing.T) {

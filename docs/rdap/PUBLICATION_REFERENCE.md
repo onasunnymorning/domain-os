@@ -40,11 +40,13 @@ A TLD is assigned a policy through the admin API ([POLICY_REFERENCE.md § Public
 | State or province | `Address.SP` | P | W (removal) |
 | Postal code | `Address.PC` | W (emptyValue) | W (removal) |
 | Country | `Address.CC` | P | W (removal) |
-| Phone | `Contact.Voice` | W (emptyValue) | W (emptyValue) |
+| Phone | `Contact.Voice` | W (removal) | W (removal) |
 | Fax | `Contact.Fax` | W (removal) | W (removal) |
 | Email | `Contact.Email` | W (replacementValue: contact form URI) | W (replacementValue: contact form URI) |
 
 The administrative and billing roles are not published.
+
+The gTLD profile fixes some methods, and ICANN's conformance tool checks them: the registrant's name, street, city and postal code are emptied; the organisation and phone are removed; the email is replaced by a contact form or removed. A withheld phone or fax is always removed: an empty `tel` is not a valid jCard property, so a policy that empties one is refused.
 
 A `replacementValue` email needs the policy's contact form URI (`contactFormUri`). The built-ins start without one, so their emails are removed until a URI is set.
 

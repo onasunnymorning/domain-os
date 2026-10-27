@@ -100,3 +100,6 @@ temporal-certs/
 /coverage.html
 /api-coverage.html
 /agent-coverage.html
+
+# Tools fetched by make targets (e.g. make rdapct)
+/.cache/

@@ -2,7 +2,8 @@ package rdap
 
 // ICANN RST v2.0 StandardRDAP conformance, per ADR 0015.
 //
-// Each RST case will be one test named after its case ID. Until a case can be
+// Each RST case is one test named after its case ID; rdap-01 to rdap-04 are
+// also graded by ICANN's RDAP Conformance Tool (conformance_test.go). Until a case can be
 // tested it is listed in rstPendingCases with the phase of
 // docs/rdap/ARCHITECTURE.md that delivers it, so `make rst-rdap` reads as a
 // readiness scoreboard from the first PR. TestRST_RDAPCatalogueIsComplete
@@ -100,9 +101,6 @@ func TestRST_rdap04_HelpQuery(t *testing.T) {
 			require.NotEmpty(t, help.Notices, "the Terms of Use notice")
 		})
 	}
-	t.Run("rdap-04 validated by the RDAP Conformance Tool", func(t *testing.T) {
-		rstPending(t, "Phase 6, the conformance tool pinned and run by this suite")
-	})
 }
 
 // --- rdap-01: Domain query test -------------------------------------------
@@ -124,9 +122,6 @@ func TestRST_rdap01_DomainQuery(t *testing.T) {
 			}
 		})
 	}
-	t.Run("rdap-01 validated by the RDAP Conformance Tool", func(t *testing.T) {
-		rstPending(t, "Phase 6, the conformance tool pinned and run by this suite")
-	})
 }
 
 // --- rdap-05: Domain HEAD test --------------------------------------------
@@ -152,14 +147,11 @@ func TestRST_rdap02_NameserverQuery(t *testing.T) {
 		require.NoError(t, json.Unmarshal(body, &got))
 		assert.Equal(t, "nameserver", got["objectClassName"])
 		assert.Equal(t, "ns1.registered.example", got["ldhName"])
-		assert.Equal(t, "200_HOST-TEST", got["handle"])
+		assert.Equal(t, "200_HOST-ICANNRST", got["handle"])
 		assert.ElementsMatch(t, []any{"active", "associated"}, got["status"])
 		for _, member := range []string{"ipAddresses", "entities", "events", "links", "notices", "rdapConformance"} {
 			assert.Contains(t, got, member)
 		}
-	})
-	t.Run("rdap-02 validated by the RDAP Conformance Tool", func(t *testing.T) {
-		rstPending(t, "Phase 6, the conformance tool pinned and run by this suite")
 	})
 }
 
@@ -178,9 +170,6 @@ func TestRST_rdap03_RegistrarQuery(t *testing.T) {
 		for _, want := range []string{`"fn"`, `"adr"`, `"tel"`, `"email"`, `"abuse"`} {
 			assert.Contains(t, raw, want)
 		}
-	})
-	t.Run("rdap-03 validated by the RDAP Conformance Tool", func(t *testing.T) {
-		rstPending(t, "Phase 6, the conformance tool pinned and run by this suite")
 	})
 }
 
