@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/bwmarrin/snowflake"
 )
@@ -38,8 +39,16 @@ func NewIDGenerator() (*IDGenerator, error) {
 	}, nil
 }
 
+// newNodeMu serialises snowflake.NewNode, which writes package-level state
+// of the library (its node and step masks) each time it is called. Two
+// generators built at once, as the worker's concurrent import activities
+// do, raced on it.
+var newNodeMu sync.Mutex
+
 // NewSnowflakeNode creates a new instance of SnowflakeNode with a unique host ID
 func NewSnowflakeNode() (*snowflake.Node, error) {
+	newNodeMu.Lock()
+	defer newNodeMu.Unlock()
 	return snowflake.NewNode(int64(generateHostID()))
 }
 

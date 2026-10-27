@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"net/url"
-	"os"
 	"sync"
 	"testing"
 
@@ -40,19 +38,6 @@ func stagedLinks(t *testing.T, links [][2]string) *sql.DB {
 		require.NoError(t, err)
 	}
 	return db
-}
-
-// testImportDSN is the connection string of the database authInfoTestDB
-// put in the environment.
-func testImportDSN() string {
-	u := url.URL{
-		Scheme:   "postgres",
-		User:     url.UserPassword(os.Getenv("DB_USER"), os.Getenv("DB_PASS")),
-		Host:     os.Getenv("DB_HOST") + ":" + os.Getenv("DB_PORT"),
-		Path:     "/" + os.Getenv("DB_NAME"),
-		RawQuery: "sslmode=require",
-	}
-	return u.String()
 }
 
 // LinkDomainHosts builds a TEMP table, which lives in one session, and reads
@@ -90,20 +75,27 @@ func TestLinkDomainHosts_SharesOnePoolAcrossConcurrentLinkers(t *testing.T) {
 			require.NoError(t, err)
 			defer pool.Close()
 
-			run := func(links [][2]string) (int64, int64, error) {
+			// Everything that may fail the test is set up here, on the test
+			// goroutine; the linkers only report errors back.
+			type linker struct {
+				imp    *services.DirectDBImporter
+				staged *sql.DB
+			}
+			var linkers []linker
+			for _, links := range [][][2]string{linksA, linksB} {
 				imp, err := services.NewDirectDBImporterWith("TEST", pool)
 				require.NoError(t, err)
 				imp.SetBatchSize(batch)
-				return imp.LinkDomainHosts(ctx, stagedLinks(t, links), "", func(string) {})
+				linkers = append(linkers, linker{imp: imp, staged: stagedLinks(t, links)})
 			}
 			var wg sync.WaitGroup
 			results := make([][3]int64, 2)
 			errs := make([]error, 2)
-			for i, links := range [][][2]string{linksA, linksB} {
+			for i, l := range linkers {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					total, inserted, err := run(links)
+					total, inserted, err := l.imp.LinkDomainHosts(ctx, l.staged, "", func(string) {})
 					results[i] = [3]int64{total, inserted}
 					errs[i] = err
 				}()

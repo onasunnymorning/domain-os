@@ -78,38 +78,14 @@ func (s *DirectDBImporter) rowsPerBatch() int {
 const DefaultImportConns = 5
 
 // ImportPool is the importer's own connection pool (its driver is go-pg,
-// apart from the process's GORM pool). A process opens one and shares it
-// across every importer it builds, so concurrent imports draw on one bounded
-// pool rather than one each.
+// apart from the process's GORM pool). A process opens one, out of its
+// connection budget loaded at the composition root (config.LoadDatabase),
+// and shares it across every importer it builds, so concurrent imports draw
+// on one bounded pool rather than one each.
 type ImportPool struct{ db *pg.DB }
 
 // Close closes the pool.
 func (p *ImportPool) Close() error { return p.db.Close() }
-
-// NewDirectDBImporter connects an importer that mints ROIDs with repository,
-// the process's configured repository ID (config.LoadRepositoryID), to the
-// database the environment names: DATABASE_URL (Neon/Render), else the
-// DB_* variables (the production credential path on AWS ECS, also used
-// locally), on a pool of its own that the caller closes (importer.PG). The
-// CLI import path uses it, where this pool is the process's only one, so
-// it is bounded by DB_MAX_OPEN_CONNS as well as by DefaultImportConns. The
-// worker opens one ImportPool out of its budget and builds its importers
-// on it with NewDirectDBImporterWith.
-func NewDirectDBImporter(repository entities.RepositoryID) (*DirectDBImporter, error) {
-	pgURL := os.Getenv("DATABASE_URL")
-	if pgURL == "" {
-		pgURL = fallbackPGURL()
-	}
-	conns := DefaultImportConns
-	if budget, err := strconv.Atoi(getEnv("DB_MAX_OPEN_CONNS", "")); err == nil && budget > 0 && budget < conns {
-		conns = budget
-	}
-	pool, err := OpenImportPool(pgURL, conns)
-	if err != nil {
-		return nil, err
-	}
-	return NewDirectDBImporterWith(repository, pool)
-}
 
 // NewDirectDBImporterWith builds an importer on pool, which it does not own:
 // the caller closes it, after every importer built on it is done.
@@ -154,7 +130,12 @@ func OpenImportPool(pgURL string, conns int) (*ImportPool, error) {
 	opt.DialTimeout = 10 * time.Second
 	opt.ReadTimeout = 90 * time.Second // Bulk upserts with 5K+ rows can take time
 	opt.WriteTimeout = 90 * time.Second
-	opt.PoolTimeout = 30 * time.Second
+	// A small budget serialises imports: a linking that holds its connection
+	// for an hour keeps the next activity waiting. That wait is the design,
+	// not a failure, so it is long here and bounded by the activity's own
+	// context (go-pg gives up the wait when the context ends), which Temporal
+	// cancels on the activity's timeouts.
+	opt.PoolTimeout = 30 * time.Minute
 	opt.MaxRetries = 3               // Retry transient connection failures
 	opt.RetryStatementTimeout = true // Retry on statement_timeout errors too
 
@@ -199,13 +180,6 @@ func (s *DirectDBImporter) SaveReport(path string) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0600)
-}
-
-func getEnv(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
 }
 
 func parseJiscTime(s string) (time.Time, error) {
@@ -1364,16 +1338,6 @@ func (s *DirectDBImporter) AccreditRegistrars(ctx context.Context, sqliteDB *sql
 // (:, @, /, ?, #, …) — which RDS- and Secrets Manager-generated passwords
 // routinely include — are percent-escaped rather than corrupting the URL,
 // mirroring buildDSN in internal/infrastructure/db/postgres/connection.go.
-func fallbackPGURL() string {
-	u := url.URL{
-		Scheme:   "postgres",
-		User:     url.UserPassword(getEnv("DB_USER", "postgres"), getEnv("DB_PASS", "postgres")),
-		Host:     fmt.Sprintf("%s:%s", getEnv("DB_HOST", "localhost"), getEnv("DB_PORT", "5432")),
-		Path:     "/" + getEnv("DB_NAME", "domain_os"),
-		RawQuery: "sslmode=" + url.QueryEscape(getEnv("DB_SSLMODE", "disable")),
-	}
-	return u.String()
-}
 
 // sanitizePGURLForGoPG strips query parameters that go-pg/pg doesn't support.
 // go-pg only accepts: sslmode, application_name, connect_timeout.

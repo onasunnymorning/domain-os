@@ -144,8 +144,9 @@ linters:
         path: _test\.go$
 
       # INV-17 backlog, allowlisted as of 2026-10-03: 28 files, 143 call sites;
-      # 16 files, 59 call sites as of 2026-10-27, after config.LoadDatabase
-      # replaced the per-activity DSN builders and the adapter's env reads.
+      # 15 files, 56 call sites as of 2026-10-27, after config.LoadDatabase
+      # replaced the per-activity DSN builders, the adapter's env reads and
+      # the direct importer's.
       # The rule guards every other file, so the backlog cannot grow outside
       # these. Migrate a file when you are already changing it: load the values
       # into a typed struct in internal/config at startup, inject it through the
@@ -159,8 +160,6 @@ linters:
         path: internal/application/activities/variables\.go                     # 10
       - linters: [forbidigo]
         path: internal/application/activities/verify_ingestion\.go              # 3
-      - linters: [forbidigo]
-        path: internal/application/services/direct_db_importer\.go              # 3
       - linters: [forbidigo]
         path: internal/infrastructure/auth/token_manager\.go                    # 2
       - linters: [forbidigo]
