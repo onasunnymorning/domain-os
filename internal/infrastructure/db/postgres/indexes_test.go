@@ -13,6 +13,25 @@ import (
 // in AutoMigrate is what this test guards.
 func TestAutoMigrateIndexes(t *testing.T) {
 	db := getTestDB()
+	// A database from before this change still has the indexes the struct
+	// tags used to create. Put them back and migrate again: the drops, not
+	// the absence of a tag, are what must remove them.
+	for _, legacy := range []string{
+		"CREATE INDEX IF NOT EXISTS idx_domains_cl_id ON domains (cl_id)",
+		"CREATE INDEX IF NOT EXISTS idx_domains_tld_name ON domains (tld_name)",
+		"CREATE INDEX IF NOT EXISTS idx_domains_purge_date ON domains (purge_date)",
+		"CREATE INDEX IF NOT EXISTS idx_domains_pending_restore_end ON domains (pending_restore_end)",
+		"CREATE INDEX IF NOT EXISTS idx_domain_events_published ON domain_events (published)",
+		"CREATE INDEX IF NOT EXISTS idx_domain_events_source ON domain_events (source)",
+		"CREATE INDEX IF NOT EXISTS idx_domain_events_subject ON domain_events (subject)",
+	} {
+		if err := db.Exec(legacy).Error; err != nil {
+			t.Fatalf("seed legacy index: %v", err)
+		}
+	}
+	if err := AutoMigrate(db); err != nil {
+		t.Fatalf("AutoMigrate on the legacy schema: %v", err)
+	}
 	var rows []struct {
 		Indexname string
 		Indexdef  string

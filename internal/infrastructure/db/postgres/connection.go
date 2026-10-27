@@ -116,18 +116,6 @@ func AutoMigrate(db *gorm.DB) error {
 		// The first also serves every lookup by tld_name alone (the counts, the zone builds).
 		"CREATE INDEX IF NOT EXISTS idx_domains_tld_expiry ON domains (tld_name, expiry_date)",
 		"CREATE INDEX IF NOT EXISTS idx_domains_tld_purge ON domains (tld_name, purge_date)",
-		// domains: the purge sweep with neither cl_id nor tld (purgeableFilter). Only a
-		// pendingDelete domain has a purge date that matters, so the index holds only
-		// those rows; the query says "pending_delete = true" in the same words so the
-		// planner can match it.
-		"CREATE INDEX IF NOT EXISTS idx_domains_pending_delete_purge ON domains (purge_date) WHERE pending_delete = true",
-		// domains: the lapsed-restore sweep (ListLapsedRestores). Same shape: a restore
-		// is pending on a handful of domains at a time, so the index is tiny.
-		"CREATE INDEX IF NOT EXISTS idx_domains_pending_restore_pending_end ON domains (pending_restore_end, ro_id) WHERE pending_restore = true",
-		// domain_events: the outbox relay reads only unpublished events, oldest first, and
-		// almost every row is published. A full index on the boolean cost a write per
-		// event for nothing; this one holds only the backlog.
-		"CREATE INDEX IF NOT EXISTS idx_domain_events_unpublished ON domain_events (occurred_at) WHERE published = false",
 		// domain_events: global index to support global list of recent events ordered by occurred_at DESC
 		"CREATE INDEX IF NOT EXISTS idx_domain_events_occurred_at ON domain_events (occurred_at DESC)",
 		// domain_events: type index for type-filtered event search queries
@@ -160,6 +148,15 @@ func AutoMigrate(db *gorm.DB) error {
 		}
 	}
 
+	// Partial indexes that replace full ones dropped below. Unlike the loop
+	// above, a failure here is fatal, and it runs before the drops: a sweep
+	// must never lose its index because the replacement failed to build.
+	for _, idx := range replacementIndexes {
+		if err := db.Exec(idx).Error; err != nil {
+			return fmt.Errorf("failed to create replacement index: %s: %w", idx, err)
+		}
+	}
+
 	// Drop legacy domain_events indexes that have no matching queries in the codebase.
 	// These were replaced by a composite (subject, occurred_at DESC) index via GORM tags.
 	// GORM AutoMigrate only adds indexes, never removes them, so we clean up manually.
@@ -172,9 +169,9 @@ func AutoMigrate(db *gorm.DB) error {
 		// drops an index, so they go here.
 		"DROP INDEX IF EXISTS idx_domains_cl_id",
 		"DROP INDEX IF EXISTS idx_domains_tld_name",
-		// Replaced by the partial indexes above: the full ones indexed every domain's
-		// purge date and restore end, almost all of them zero, and every event's
-		// published flag, almost all of them true.
+		// Replaced by replacementIndexes, which exist by now: the full ones indexed
+		// every domain's purge date and restore end, almost all of them zero, and
+		// every event's published flag, almost all of them true.
 		"DROP INDEX IF EXISTS idx_domains_purge_date",
 		"DROP INDEX IF EXISTS idx_domains_pending_restore_end",
 		"DROP INDEX IF EXISTS idx_domain_events_published",
@@ -215,6 +212,24 @@ func AutoMigrate(db *gorm.DB) error {
 	}
 
 	return nil
+}
+
+// replacementIndexes are the partial indexes that replaced full ones on the
+// two hottest write tables. AutoMigrate creates them before it drops the
+// full ones, and fails if it cannot.
+var replacementIndexes = []string{
+	// domains: the purge sweep with neither cl_id nor tld (purgeableFilter). Only a
+	// pendingDelete domain has a purge date that matters, so the index holds only
+	// those rows; the query says "pending_delete = true" in the same words so the
+	// planner can match it.
+	"CREATE INDEX IF NOT EXISTS idx_domains_pending_delete_purge ON domains (purge_date) WHERE pending_delete = true",
+	// domains: the lapsed-restore sweep (ListLapsedRestores). Same shape: a restore
+	// is pending on a handful of domains at a time, so the index is tiny.
+	"CREATE INDEX IF NOT EXISTS idx_domains_pending_restore_pending_end ON domains (pending_restore_end, ro_id) WHERE pending_restore = true",
+	// domain_events: the outbox relay reads only unpublished events, oldest first, and
+	// almost every row is published. A full index on the boolean cost a write per
+	// event for nothing; this one holds only the backlog.
+	"CREATE INDEX IF NOT EXISTS idx_domain_events_unpublished ON domain_events (occurred_at) WHERE published = false",
 }
 
 func CreateDB(dbUser, dbPass, dbHost, dbName, dbPort string) error {
