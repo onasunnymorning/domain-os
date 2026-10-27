@@ -108,14 +108,6 @@ func AutoMigrate(db *gorm.DB) error {
 		"CREATE INDEX IF NOT EXISTS idx_phases_tld_type_starts ON phases (tld_name, type, starts)",
 		// accreditations: tld_name is second in composite PK, can't be used for tld_name-only GROUP BY
 		"CREATE INDEX IF NOT EXISTS idx_accreditations_tld_name ON accreditations (tld_name)",
-		// domains: composite index to support expiring/purgeable domain queries filtered by cl_id and tld_name.
-		// They also serve every lookup by cl_id alone or by cl_id and tld_name, as a left prefix.
-		"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_expiry ON domains (cl_id, tld_name, expiry_date)",
-		"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_purge ON domains (cl_id, tld_name, purge_date)",
-		// domains: composite index to support expiring/purgeable domain queries filtered by tld_name only (e.g. global/CLI workflows).
-		// The first also serves every lookup by tld_name alone (the counts, the zone builds).
-		"CREATE INDEX IF NOT EXISTS idx_domains_tld_expiry ON domains (tld_name, expiry_date)",
-		"CREATE INDEX IF NOT EXISTS idx_domains_tld_purge ON domains (tld_name, purge_date)",
 		// domain_events: global index to support global list of recent events ordered by occurred_at DESC
 		"CREATE INDEX IF NOT EXISTS idx_domain_events_occurred_at ON domain_events (occurred_at DESC)",
 		// domain_events: type index for type-filtered event search queries
@@ -214,10 +206,21 @@ func AutoMigrate(db *gorm.DB) error {
 	return nil
 }
 
-// replacementIndexes are the partial indexes that replaced full ones on the
-// two hottest write tables. AutoMigrate creates them before it drops the
-// full ones, and fails if it cannot.
+// replacementIndexes are the indexes that replaced others on the two hottest
+// write tables: the composites that cover the dropped single-column ones as
+// a left prefix, and the partial ones that replaced full ones. AutoMigrate
+// creates them before it drops what they replace, and fails if it cannot.
 var replacementIndexes = []string{
+	// domains: composite indexes for the expiring/purgeable domain queries filtered by
+	// cl_id and tld_name. They also serve every lookup by cl_id alone or by cl_id and
+	// tld_name, as a left prefix, which is why the single-column cl_id index could go.
+	"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_expiry ON domains (cl_id, tld_name, expiry_date)",
+	"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_purge ON domains (cl_id, tld_name, purge_date)",
+	// domains: the same queries filtered by tld_name only (global/CLI workflows). The
+	// first also serves every lookup by tld_name alone (the counts, the zone builds),
+	// which is why the single-column tld_name index could go.
+	"CREATE INDEX IF NOT EXISTS idx_domains_tld_expiry ON domains (tld_name, expiry_date)",
+	"CREATE INDEX IF NOT EXISTS idx_domains_tld_purge ON domains (tld_name, purge_date)",
 	// domains: the purge sweep with neither cl_id nor tld (purgeableFilter). Only a
 	// pendingDelete domain has a purge date that matters, so the index holds only
 	// those rows; the query says "pending_delete = true" in the same words so the
