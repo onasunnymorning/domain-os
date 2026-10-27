@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -210,7 +209,14 @@ func CreateDB(dbUser, dbPass, dbHost, dbName, dbPort string) error {
 	return nil
 }
 
+// Config locates the database and bounds the pool. It has the same fields,
+// in the same order, as internal/config.Database, which reads them from
+// the environment at the composition root (INV-17): a cmd converts with
+// postgres.Config(db). Keep the two in step.
 type Config struct {
+	// URL is the whole connection string, when known; it takes precedence
+	// over the parts below.
+	URL         string
 	User        string
 	Pass        string
 	Host        string
@@ -218,6 +224,9 @@ type Config struct {
 	DBName      string
 	SSLmode     string
 	AutoMigrate bool
+	// MaxOpenConns bounds the pool: DefaultMaxOpenConns when zero, never
+	// below MinMaxOpenConns.
+	MaxOpenConns int
 }
 
 // buildDSN assembles a postgres connection URL from cfg. It uses net/url so
@@ -237,24 +246,95 @@ func buildDSN(cfg Config) string {
 	return u.String()
 }
 
+// Pool bounds, applied to every connection this package opens. database/sql
+// defaults to an unbounded pool that keeps two idle connections: a burst
+// opens as many connections as it has goroutines, each with a TLS
+// handshake, and drops them again a moment later. On a managed Postgres the
+// connection slots are the scarce, priced resource, and one process's burst
+// starves the others. Config.MaxOpenConns bounds the pool; the rest follows
+// from it.
+const (
+	// DefaultMaxOpenConns is the bound when Config.MaxOpenConns is zero.
+	DefaultMaxOpenConns = 20
+	// MinMaxOpenConns is the smallest pool that works: Migrate holds one
+	// connection for its advisory lock while AutoMigrate runs on another,
+	// so a pool of one hangs every migration for good.
+	MinMaxOpenConns = 2
+	connMaxLifetime = 30 * time.Minute
+	connMaxIdleTime = 5 * time.Minute
+)
+
+// poolSize is the bound to apply for Config.MaxOpenConns n: the default for
+// zero, n otherwise, and an error below MinMaxOpenConns.
+func poolSize(n int) (int, error) {
+	switch {
+	case n == 0:
+		return DefaultMaxOpenConns, nil
+	case n < MinMaxOpenConns:
+		return 0, fmt.Errorf("a pool of %d connections is below %d, the least a migration needs (one holds its lock while the other runs it)", n, MinMaxOpenConns)
+	}
+	return n, nil
+}
+
+// configurePool bounds db's connection pool to maxOpen.
+func configurePool(db *gorm.DB, maxOpen int) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("get sql.DB: %w", err)
+	}
+	n, err := poolSize(maxOpen)
+	if err != nil {
+		return err
+	}
+	sqlDB.SetMaxOpenConns(n)
+	sqlDB.SetMaxIdleConns(max(2, n/4))
+	sqlDB.SetConnMaxLifetime(connMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(connMaxIdleTime)
+	return nil
+}
+
+// open connects to dsn with a pool bounded to maxOpen.
+func open(dsn string, maxOpen int) (*gorm.DB, error) {
+	db, err := gorm.Open(postgres.Open(dsn))
+	if err != nil {
+		return nil, err
+	}
+	if err := configurePool(db, maxOpen); err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+// dsn is cfg's connection string: URL as given when it is set, otherwise
+// one built from the parts.
+func dsn(cfg Config) string {
+	if cfg.URL != "" {
+		return cfg.URL
+	}
+	return buildDSN(cfg)
+}
+
 // OpenExisting connects to an existing database and changes nothing: no
 // database is created and nothing is migrated. A read-only process (the
 // RDAP server, ADR 0020) uses it, so a mistyped DB_NAME fails at start
 // instead of creating an empty database.
 func OpenExisting(cfg Config) (*gorm.DB, error) {
-	db, err := gorm.Open(postgres.Open(buildDSN(cfg)))
+	db, err := open(dsn(cfg), cfg.MaxOpenConns)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 	return db, nil
 }
 
+// NewConnection connects to cfg's database, creating it when it does not
+// exist (when cfg names it by its parts: a URL is connected to as given)
+// and migrating it when cfg.AutoMigrate is set.
 func NewConnection(cfg Config) (*gorm.DB, error) {
-	dsn := buildDSN(cfg)
-	gormDB, err := gorm.Open(postgres.Open(dsn))
+	dsn := dsn(cfg)
+	gormDB, err := open(dsn, cfg.MaxOpenConns)
 	if err != nil {
 		errMsg := err.Error()
-		if strings.Contains(errMsg, fmt.Sprintf("database %q does not exist", cfg.DBName)) {
+		if cfg.URL == "" && strings.Contains(errMsg, fmt.Sprintf("database %q does not exist", cfg.DBName)) {
 			log.Printf("Database '%s' does not exist. Attempting to create it...", cfg.DBName)
 			if err := CreateDB(cfg.User, cfg.Pass, cfg.Host, cfg.DBName, cfg.Port); err != nil {
 				// Two processes starting against an empty cluster (e.g. two
@@ -268,7 +348,7 @@ func NewConnection(cfg Config) (*gorm.DB, error) {
 				log.Printf("Database '%s' was created concurrently by another process", cfg.DBName)
 			}
 			// Retry the connection after creating the database
-			gormDB, err = gorm.Open(postgres.Open(dsn))
+			gormDB, err = open(dsn, cfg.MaxOpenConns)
 			if err != nil {
 				// If there is still an issue establishing the connection, return the error
 				return nil, fmt.Errorf("failed to connect to database: %w, after creating it", err)
@@ -279,27 +359,6 @@ func NewConnection(cfg Config) (*gorm.DB, error) {
 	}
 
 	if cfg.AutoMigrate {
-		if err := autoMigrateOnConnect(gormDB); err != nil {
-			return gormDB, err
-		}
-	} else {
-		log.Println("Skipping auto migration")
-	}
-
-	return gormDB, nil
-}
-
-// NewConnectionFromURL opens a GORM connection using a single database URL
-// (e.g. postgres://user:pass@host:5432/dbname?sslmode=require).
-// This is useful for managed database providers like Neon that provide a
-// single connection string.
-func NewConnectionFromURL(databaseURL string, autoMigrate bool) (*gorm.DB, error) {
-	gormDB, err := gorm.Open(postgres.Open(databaseURL))
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
-	}
-
-	if autoMigrate {
 		if err := autoMigrateOnConnect(gormDB); err != nil {
 			return gormDB, err
 		}
@@ -327,23 +386,6 @@ func autoMigrateOnConnect(gormDB *gorm.DB) error {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 	return nil
-}
-
-// NewConnectionFromEnv opens a connection the way every domain-os process
-// does: DATABASE_URL when set, otherwise the DB_* variables. It never
-// migrates - callers that should migrate call Migrate explicitly.
-func NewConnectionFromEnv() (*gorm.DB, error) {
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		return NewConnectionFromURL(dbURL, false)
-	}
-	return NewConnection(Config{
-		User:    os.Getenv("DB_USER"),
-		Pass:    os.Getenv("DB_PASS"),
-		Host:    os.Getenv("DB_HOST"),
-		Port:    os.Getenv("DB_PORT"),
-		DBName:  os.Getenv("DB_NAME"),
-		SSLmode: os.Getenv("DB_SSLMODE"),
-	})
 }
 
 // isDuplicateDatabaseError reports whether err is Postgres refusing a CREATE

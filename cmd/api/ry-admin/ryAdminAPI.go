@@ -31,7 +31,6 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 
 	"os"
 
@@ -199,26 +198,19 @@ func main() {
 	// Initialize variables for the Swagger API documentation
 	setSwaggerInfo(cfg)
 
-	// Set up the GORM DB connection.
-	// Prefer DATABASE_URL (single connection string, e.g. from Neon) over individual vars.
-	var gormDB *gorm.DB
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+	// Set up the GORM DB connection: DATABASE_URL (one connection string,
+	// e.g. from Neon) when set, the DB_* variables otherwise.
+	dbCfg, err := sharedconfig.LoadDatabase()
+	if err != nil {
+		logger.Panic("Database configuration is invalid", zap.Error(err))
+	}
+	dbCfg.AutoMigrate = cfg.AutoMigrate
+	if dbCfg.URL != "" {
 		logger.Info("Connecting to database using DATABASE_URL")
-		gormDB, err = postgres.NewConnectionFromURL(dbURL, cfg.AutoMigrate)
 	} else {
 		logger.Info("Connecting to database using individual DB_* env vars")
-		gormDB, err = postgres.NewConnection(
-			postgres.Config{
-				User:        os.Getenv("DB_USER"),
-				Pass:        os.Getenv("DB_PASS"),
-				Host:        os.Getenv("DB_HOST"),
-				Port:        os.Getenv("DB_PORT"),
-				DBName:      os.Getenv("DB_NAME"),
-				SSLmode:     os.Getenv("DB_SSLMODE"),
-				AutoMigrate: cfg.AutoMigrate,
-			},
-		)
 	}
+	gormDB, err := postgres.NewConnection(postgres.Config(dbCfg))
 	if err != nil {
 		logger.Panic("Failed to connect to the database", zap.Error(err))
 	}

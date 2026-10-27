@@ -20,6 +20,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"golang.org/x/sync/semaphore"
 )
 
 // RunReport collects details about the import execution
@@ -66,6 +67,9 @@ type DirectDBImporter struct {
 
 const defaultImportBatchSize = 5000
 
+// linkBatchSize is LinkDomainHosts's default rows per batch.
+const linkBatchSize = 10000
+
 func (s *DirectDBImporter) rowsPerBatch() int {
 	if s.batchSize > 0 {
 		return s.batchSize
@@ -73,23 +77,71 @@ func (s *DirectDBImporter) rowsPerBatch() int {
 	return defaultImportBatchSize
 }
 
-// NewDirectDBImporter connects an importer that mints ROIDs with repository,
-// the process's configured repository ID (config.LoadRepositoryID).
-func NewDirectDBImporter(repository entities.RepositoryID) (*DirectDBImporter, error) {
+// DefaultImportConns is the connections an importer opens when its caller
+// sets no budget: bulk upserts need a few, never many.
+const DefaultImportConns = 5
+
+// ImportPool is the importer's own connection pool (its driver is go-pg,
+// apart from the process's GORM pool). A process opens one, out of its
+// connection budget loaded at the composition root (config.LoadDatabase),
+// and shares it across every importer it builds, so concurrent imports draw
+// on one bounded pool rather than one each.
+type ImportPool struct {
+	db *pg.DB
+	// slots admits as many importers at once as the pool has connections,
+	// so an importer admitted finds a connection rather than waiting on the
+	// driver's pool timeout.
+	slots *semaphore.Weighted
+}
+
+// Close closes the pool.
+func (p *ImportPool) Close() error { return p.db.Close() }
+
+// admissionHeartbeat is how often Acquire calls heartbeat while it waits.
+const admissionHeartbeat = 30 * time.Second
+
+// Acquire waits for one of the pool's connections to be free for an importer,
+// calling heartbeat every admissionHeartbeat while it waits, so a Temporal
+// activity queued behind a long import keeps its heartbeat (with its last
+// committed cursor) rather than timing out. It returns when ctx ends. The
+// caller releases the slot when its importer is done.
+func (p *ImportPool) Acquire(ctx context.Context, heartbeat func()) (release func(), err error) {
+	for {
+		wait, cancel := context.WithTimeout(ctx, admissionHeartbeat)
+		err := p.slots.Acquire(wait, 1)
+		cancel()
+		switch {
+		case err == nil:
+			return func() { p.slots.Release(1) }, nil
+		case ctx.Err() != nil:
+			return nil, fmt.Errorf("waiting for an import connection: %w", ctx.Err())
+		}
+		if heartbeat != nil {
+			heartbeat()
+		}
+	}
+}
+
+// NewDirectDBImporterWith builds an importer on pool, which it does not own:
+// the caller closes it, after every importer built on it is done.
+func NewDirectDBImporterWith(repository entities.RepositoryID, pool *ImportPool) (*DirectDBImporter, error) {
 	if err := repository.Validate(); err != nil {
 		return nil, fmt.Errorf("direct importer: %w", err)
 	}
-	// Initialize Postgres connection
-	// Prefer DATABASE_URL (Neon/Render), fall back to individual DB_* vars
-	// (the production credential path on AWS ECS, also used locally)
-	var pgURL string
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		pgURL = sanitizePGURLForGoPG(dbURL)
-	} else {
-		pgURL = fallbackPGURL()
+	if pool == nil || pool.db == nil {
+		return nil, errors.New("direct importer: no import pool")
+	}
+	return newDirectDBImporter(repository, pool.db)
+}
+
+// OpenImportPool connects to the database at pgURL with a pool of at most
+// conns connections (DefaultImportConns when conns is not positive).
+func OpenImportPool(pgURL string, conns int) (*ImportPool, error) {
+	if conns <= 0 {
+		conns = DefaultImportConns
 	}
 
-	opt, err := pg.ParseURL(pgURL)
+	opt, err := pg.ParseURL(sanitizePGURLForGoPG(pgURL))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse PG URL: %w", err)
 	}
@@ -107,18 +159,28 @@ func NewDirectDBImporter(repository entities.RepositoryID) (*DirectDBImporter, e
 	}
 
 	// Pool & resilience tuning for bulk import workloads.
-	// Worker only needs a few connections; timeouts prevent indefinite stalls.
-	opt.PoolSize = 5
-	opt.MinIdleConns = 1
+	// An import only needs a few connections; timeouts prevent indefinite stalls.
+	opt.PoolSize = conns
+	// No idle connections are dialled in the background: go-pg's Get can
+	// open a connection of its own while such a dial is still in flight,
+	// and the pool would briefly hold one more than its size, over the
+	// process's budget. Connections are dialled on demand only.
+	opt.MinIdleConns = 0
 	opt.DialTimeout = 10 * time.Second
 	opt.ReadTimeout = 90 * time.Second // Bulk upserts with 5K+ rows can take time
 	opt.WriteTimeout = 90 * time.Second
-	opt.PoolTimeout = 30 * time.Second
+	// Admission (Acquire) keeps importers to the pool's size, so a query
+	// rarely waits here; the timeout only has to outlast a long statement.
+	opt.PoolTimeout = 2 * time.Minute
 	opt.MaxRetries = 3               // Retry transient connection failures
 	opt.RetryStatementTimeout = true // Retry on statement_timeout errors too
 
-	db := pg.Connect(opt)
+	return &ImportPool{db: pg.Connect(opt), slots: semaphore.NewWeighted(int64(conns))}, nil
+}
 
+// newDirectDBImporter assembles an importer on db with its S3 client, ID
+// generator and an empty run report.
+func newDirectDBImporter(repository entities.RepositoryID, db *pg.DB) (*DirectDBImporter, error) {
 	// S3 Client is optional for some use-cases (like local CLI import)
 	s3c, err := storage.NewS3ClientFromEnv()
 	if err != nil {
@@ -154,13 +216,6 @@ func (s *DirectDBImporter) SaveReport(path string) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0600)
-}
-
-func getEnv(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
 }
 
 func parseJiscTime(s string) (time.Time, error) {
@@ -1032,7 +1087,12 @@ func replaceDSRecords(tx *pg.Tx, batch []*entities.Domain) (int64, error) {
 // --- Link Domain Hosts ---
 
 func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB, lastKey string, heartbeat func(processed string)) (int64, int64, error) {
-	const batchSize = 10000
+	// Links are small rows, so the linker's own default batch is larger than
+	// the importer's; a batch size set on the importer (tests) applies here too.
+	batchSize := linkBatchSize
+	if s.batchSize > 0 {
+		batchSize = s.batchSize
+	}
 	var total int64
 	var inserted int64
 	var lastDomain, lastNS string
@@ -1044,20 +1104,28 @@ func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB
 		}
 	}
 
+	// The dedup table below is a TEMP table, which lives in one session: every
+	// statement that touches it, from its creation through each batch to the
+	// drop, must run on the same connection. Hold one from the pool for the
+	// whole operation; the pool is shared, and another linking activity on
+	// another connection cannot see or drop this session's table.
+	conn := s.PG.Conn()
+	defer conn.Close()
+
 	// Pre-materialize a host dedup lookup table (once, before the loop).
 	// When multiple hosts share the same name (from cross-TLD imports with
 	// different cl_id), we pick one deterministically. This avoids a costly
 	// DISTINCT ON + ORDER BY sort in every batch INSERT.
-	if _, err := s.PG.Exec(`
+	if _, err := conn.ExecContext(ctx, `
 		CREATE TEMP TABLE IF NOT EXISTS _host_dedup AS
 		SELECT DISTINCT ON (name) name, ro_id FROM hosts ORDER BY name, ro_id
 	`); err != nil {
 		return 0, 0, fmt.Errorf("LinkDomainHosts: failed to build host dedup table: %w", err)
 	}
-	if _, err := s.PG.Exec(`CREATE INDEX IF NOT EXISTS _idx_host_dedup_name ON _host_dedup(name)`); err != nil {
+	if _, err := conn.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS _idx_host_dedup_name ON _host_dedup(name)`); err != nil {
 		log.Printf("LinkDomainHosts: index on _host_dedup failed (non-fatal): %v", err)
 	}
-	defer func() { _, _ = s.PG.Exec("DROP TABLE IF EXISTS _host_dedup") }() // best-effort cleanup of a scratch object
+	defer func() { _, _ = conn.Exec("DROP TABLE IF EXISTS _host_dedup") }() // best-effort cleanup of a scratch object, on the session that owns it
 
 	for {
 		rows, err := sqliteDB.Query(`SELECT domain_name, nameserver FROM domain_nameservers WHERE (domain_name > ?) OR (domain_name = ? AND nameserver > ?) ORDER BY domain_name, nameserver LIMIT ?`, lastDomain, lastDomain, lastNS, batchSize)
@@ -1108,7 +1176,7 @@ func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB
 		`, strings.Join(valueStrings, ","))
 
 		var batchInserted int64
-		if err := s.PG.RunInTransaction(ctx, func(tx *pg.Tx) error {
+		if err := conn.RunInTransaction(ctx, func(tx *pg.Tx) error {
 			res, err := tx.Exec(q, args...)
 			if err == nil {
 				batchInserted = int64(res.RowsAffected())
@@ -1311,16 +1379,6 @@ func (s *DirectDBImporter) AccreditRegistrars(ctx context.Context, sqliteDB *sql
 // (:, @, /, ?, #, …) — which RDS- and Secrets Manager-generated passwords
 // routinely include — are percent-escaped rather than corrupting the URL,
 // mirroring buildDSN in internal/infrastructure/db/postgres/connection.go.
-func fallbackPGURL() string {
-	u := url.URL{
-		Scheme:   "postgres",
-		User:     url.UserPassword(getEnv("DB_USER", "postgres"), getEnv("DB_PASS", "postgres")),
-		Host:     fmt.Sprintf("%s:%s", getEnv("DB_HOST", "localhost"), getEnv("DB_PORT", "5432")),
-		Path:     "/" + getEnv("DB_NAME", "domain_os"),
-		RawQuery: "sslmode=" + url.QueryEscape(getEnv("DB_SSLMODE", "disable")),
-	}
-	return u.String()
-}
 
 // sanitizePGURLForGoPG strips query parameters that go-pg/pg doesn't support.
 // go-pg only accepts: sslmode, application_name, connect_timeout.

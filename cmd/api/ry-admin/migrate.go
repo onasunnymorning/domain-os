@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
+	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"go.uber.org/zap"
 )
@@ -28,7 +29,11 @@ func runMigrate(logger *zap.Logger) error {
 		zap.String("version", buildinfo.Version),
 		zap.String("git_sha", buildinfo.GitSHA))
 
-	gormDB, err := postgres.NewConnectionFromEnv()
+	dbCfg, err := config.LoadDatabase()
+	if err != nil {
+		return fmt.Errorf("database configuration: %w", err)
+	}
+	gormDB, err := postgres.NewConnection(postgres.Config(dbCfg))
 	if err != nil {
 		return fmt.Errorf("connect to database: %w", err)
 	}
