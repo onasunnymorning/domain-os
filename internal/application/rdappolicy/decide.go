@@ -62,14 +62,16 @@ func RoleAllowed(cdp *entities.ContactDataPolicy, role Role) bool {
 }
 
 // Decide is what req may see of the contact in role, under the TLD's
-// current contact policy cdp and its publication policy p.
+// current contact policy cdp and its publication policy p. form is the
+// postal form the response shows ("int" or "loc"): its disclose flags are
+// the ones that count for the name, organisation and address.
 //
 // A role cdp prohibits is never served, whatever is stored: a TLD that moved
 // from thick to thin stops showing the contacts still linked from before.
 // Within a served role, disclose flags only narrow what p publishes: a
 // publish-if-disclosed field is shown only with its flag set, and a withheld
 // field is never shown, whatever the flags say.
-func Decide(req Requester, cdp *entities.ContactDataPolicy, p Policy, role Role, disclose entities.ContactDisclose) ContactDecision {
+func Decide(req Requester, cdp *entities.ContactDataPolicy, p Policy, role Role, disclose entities.ContactDisclose, form entities.PostalInfoEnumType) ContactDecision {
 	_ = req // every requester is public until the authenticated tier
 	rules, published := p.Roles[role]
 	if !RoleAllowed(cdp, role) || !published {
@@ -83,7 +85,7 @@ func Decide(req Requester, cdp *entities.ContactDataPolicy, p Policy, role Role,
 		}
 		switch {
 		case rule.Rule == Publish,
-			rule.Rule == PublishIfDisclosed && disclosed(disclose, f):
+			rule.Rule == PublishIfDisclosed && disclosed(disclose, f, form):
 			out.Fields[f] = FieldDecision{Publish: true}
 		default:
 			out.Fields[f] = withheldAs(rule, p, f)
@@ -108,17 +110,19 @@ func withheldAs(rule FieldRule, p Policy, f Field) FieldDecision {
 	return FieldDecision{Method: m}
 }
 
-// disclosed reads the RFC 5733 flag that covers f. Name, organisation and
-// address are disclosed if either the internationalised or the localised
-// form is.
-func disclosed(d entities.ContactDisclose, f Field) bool {
+// disclosed reads the RFC 5733 flag that covers f. A contact can hold an
+// internationalised and a localised form with different disclose flags, so
+// the name, organisation and address are disclosed only if the flag of the
+// form shown is set.
+func disclosed(d entities.ContactDisclose, f Field, form entities.PostalInfoEnumType) bool {
+	intForm := form == entities.PostalInfoEnumType("int")
 	switch f {
 	case FieldName:
-		return d.NameInt || d.NameLoc
+		return (intForm && d.NameInt) || (!intForm && d.NameLoc)
 	case FieldOrg:
-		return d.OrgInt || d.OrgLoc
+		return (intForm && d.OrgInt) || (!intForm && d.OrgLoc)
 	case FieldStreet, FieldCity, FieldSP, FieldPC, FieldCC:
-		return d.AddrInt || d.AddrLoc
+		return (intForm && d.AddrInt) || (!intForm && d.AddrLoc)
 	case FieldVoice:
 		return d.Voice
 	case FieldFax:

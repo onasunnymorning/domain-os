@@ -162,9 +162,9 @@
       "name": {
         "type": "Registrant Name"
       },
-      "prePath": "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[0]=='fn')][3]",
+      "postPath": "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[0]=='fn')][3]",
       "pathLang": "jsonpath",
-      "method": "removal",
+      "method": "emptyValue",
       "reason": {
         "type": "Server policy"
       }
@@ -184,9 +184,9 @@
       "name": {
         "type": "Registrant Street"
       },
-      "prePath": "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[0]=='adr')][3][2]",
+      "postPath": "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[0]=='adr')][3][2]",
       "pathLang": "jsonpath",
-      "method": "removal",
+      "method": "emptyValue",
       "reason": {
         "type": "Server policy"
       }
@@ -195,9 +195,9 @@
       "name": {
         "type": "Registrant City"
       },
-      "prePath": "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[0]=='adr')][3][3]",
+      "postPath": "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[0]=='adr')][3][3]",
       "pathLang": "jsonpath",
-      "method": "removal",
+      "method": "emptyValue",
       "reason": {
         "type": "Server policy"
       }
@@ -206,9 +206,9 @@
       "name": {
         "type": "Registrant State/Province"
       },
-      "prePath": "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[0]=='adr')][3][4]",
+      "postPath": "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[0]=='adr')][3][4]",
       "pathLang": "jsonpath",
-      "method": "removal",
+      "method": "emptyValue",
       "reason": {
         "type": "Server policy"
       }
@@ -217,9 +217,9 @@
       "name": {
         "type": "Registrant Postal Code"
       },
-      "prePath": "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[0]=='adr')][3][5]",
+      "postPath": "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[0]=='adr')][3][5]",
       "pathLang": "jsonpath",
-      "method": "removal",
+      "method": "emptyValue",
       "reason": {
         "type": "Server policy"
       }

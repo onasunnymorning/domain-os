@@ -119,14 +119,6 @@
       "objectClassName": "nameserver",
       "handle": "200_HOST-ICANNRST",
       "ldhName": "ns1.xn--bcher-kva.example",
-      "ipAddresses": {
-        "v4": [
-          "192.0.2.1"
-        ],
-        "v6": [
-          "2001:db8::1"
-        ]
-      },
       "links": [
         {
           "value": "https://rdap.example.test/example/domain/moved.example",

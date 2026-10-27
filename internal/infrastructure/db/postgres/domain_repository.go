@@ -77,7 +77,8 @@ func (dr *DomainRepository) GetDomainByName(ctx context.Context, name string, pr
 	var err error
 	d := &Domain{}
 	if preloadHosts {
-		err = dbFrom(ctx, dr.db).Preload("Hosts").Preload("DSRecords", orderDS).Where("name = ?", name).First(d).Error
+		// With their addresses, the glue of in-bailiwick nameservers.
+		err = dbFrom(ctx, dr.db).Preload("Hosts.Addresses").Preload("DSRecords", orderDS).Where("name = ?", name).First(d).Error
 	} else {
 		err = dbFrom(ctx, dr.db).Preload("DSRecords", orderDS).Where("name = ?", name).First(d).Error
 	}
