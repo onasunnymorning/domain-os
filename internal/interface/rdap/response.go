@@ -39,12 +39,14 @@ type helpResponse struct {
 	Notices         []notice `json:"notices,omitempty"`
 }
 
-// errorResponse is an RFC 9083 §6 error.
+// errorResponse is an RFC 9083 §6 error. Like every top-level response it
+// carries the Terms of Use notice.
 type errorResponse struct {
 	RDAPConformance []string `json:"rdapConformance"`
 	ErrorCode       int      `json:"errorCode"`
 	Title           string   `json:"title"`
 	Description     []string `json:"description,omitempty"`
+	Notices         []notice `json:"notices,omitempty"`
 }
 
 // cachePublic is how long a shared cache may keep a public answer
@@ -75,12 +77,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_, _ = w.Write(body)
 }
 
-// writeError writes an RDAP error object with the status as its code.
-func writeError(w http.ResponseWriter, status int, description ...string) {
+// writeErrorObject writes an RDAP error object with the status as its code.
+// Handlers use Server.fail, which adds the notices.
+func writeErrorObject(w http.ResponseWriter, status int, notices []notice, description ...string) {
 	writeJSON(w, status, errorResponse{
 		RDAPConformance: conformance,
 		ErrorCode:       status,
 		Title:           http.StatusText(status),
 		Description:     description,
+		Notices:         notices,
 	})
 }

@@ -55,6 +55,8 @@ func TestLoadRDAPBaseURL(t *testing.T) {
 		{raw: "https://rdap.example/", want: "https://rdap.example/"},
 		{raw: "http://rdap.example/", err: "not an absolute https URL"},
 		{raw: "https://rdap.example/?a=b", err: "not an absolute https URL"},
+		{raw: "https://rdap.example/?", err: "not an absolute https URL"},
+		{raw: "https://rdap.example/#", err: "not an absolute https URL"},
 	} {
 		t.Run(tc.raw, func(t *testing.T) {
 			clearRDAPEnv(t)
