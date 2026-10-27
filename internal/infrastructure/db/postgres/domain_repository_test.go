@@ -326,6 +326,10 @@ func (s *DomainSuite) TestDomainRepository_AddAndRemoveHosts() {
 	s.Require().Equal(domain.Name, retrievedDomain.Name)
 	s.Require().Equal(len(s.hosts), len(retrievedDomain.Hosts))
 	s.Require().Equal(domain.Status.Inactive, retrievedDomain.Status.Inactive)
+	// The hosts come with their addresses: the glue RDAP shows.
+	for _, h := range retrievedDomain.Hosts {
+		s.Require().Len(h.Addresses, 1, "%s's address is loaded with the domain", h.Name)
+	}
 
 	// Remove the hosts
 	for _, host := range s.hosts {

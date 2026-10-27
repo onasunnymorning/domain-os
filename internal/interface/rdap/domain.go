@@ -203,7 +203,11 @@ func (s *Server) buildDomain(r *http.Request, rec *interfaces.RDAPDomain, req rd
 		if !ok {
 			continue
 		}
-		dec := rdappolicy.Decide(req, rec.ContactPolicy, rec.Publication, role, c.Disclose)
+		var form entities.PostalInfoEnumType
+		if pi := postalInfo(c); pi != nil {
+			form = pi.Type
+		}
+		dec := rdappolicy.Decide(req, rec.ContactPolicy, rec.Publication, role, c.Disclose, form)
 		if !dec.Serve {
 			continue
 		}

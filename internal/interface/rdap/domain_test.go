@@ -228,3 +228,21 @@ func TestDomainOverHTTP(t *testing.T) {
 	assert.Contains(t, metrics, `rdap_redactions_total{field="name",method="emptyValue",tld="example"}`)
 	assert.False(t, bytes.Contains([]byte(metrics), []byte("Jane")), "metrics never carry values")
 }
+
+func TestUndisclosedPostalFormIsNotShown(t *testing.T) {
+	c := registrant()
+	c.PostalInfo = [2]*entities.ContactPostalInfo{
+		{Type: "int", Name: "Int Name", Org: "Int Org", Address: &entities.Address{City: "Int City", CountryCode: "US"}},
+		{Type: "loc", Name: "Loc Name", Org: "Loc Org", Address: &entities.Address{City: "Loc City", CountryCode: "US"}},
+	}
+	// The local form's organisation is disclosed, the international one's
+	// is not; the international form is the one shown.
+	c.Disclose = entities.ContactDisclose{OrgLoc: true}
+	rec := fullDomain()
+	rec.Contacts = map[rdappolicy.Role]*entities.Contact{rdappolicy.RoleRegistrant: c}
+
+	raw, err := json.Marshal(decoded(t, goldenServer(t), rec))
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "Int Org")
+	assert.NotContains(t, string(raw), "Loc Org", "the local form is not shown at all")
+}

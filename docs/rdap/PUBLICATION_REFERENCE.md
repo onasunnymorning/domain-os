@@ -15,7 +15,7 @@ What the RDAP server publishes for each contact field, per publication policy ([
    | `publish-if-disclosed` | Published only if the contact's RFC 5733 disclose flag for the field is set |
    | `withhold` | Not published, and listed in `redacted` |
 
-3. **Disclose flags** can only narrow a `publish-if-disclosed` field. They never widen a `withhold`.
+3. **Disclose flags** can only narrow a `publish-if-disclosed` field. They never widen a `withhold`. For the name, organisation and address, the flag that counts is that of the postal form shown (the internationalised one when a contact has both).
 4. **Absent data** (for example no fax number) is simply absent, and is not listed in `redacted`.
 
 Redaction methods (RFC 9537): `removal` (the member is left out), `emptyValue` (the member is present but empty), and `replacementValue` (another value is shown instead, for example a contact form URI in place of an email address).
@@ -52,7 +52,7 @@ The internationalised (`int`) postal information is used when a contact has both
 
 ### `cctld-minimal`: country only
 
-Only the registrant role is published. Every field is `W (removal)`, except the country, which is `P`.
+Only the registrant role is published. The country is `P`. The name, street, city, state or province and postal code are `W (emptyValue)`: the country is published in the jCard's address, whose other parts are then kept as empty slots, and a jCard always has a name. Every other field is `W (removal)`.
 
 ## Sign-off
 

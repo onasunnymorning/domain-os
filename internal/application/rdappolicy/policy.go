@@ -134,10 +134,16 @@ func GTLDRegistrationDataPolicy2024() Policy {
 }
 
 // CCTLDMinimal is the built-in cctld-minimal: only the registrant's country.
+// The country is published in the jCard's address, and a jCard always has a
+// name, so the name and the other address parts are kept empty
+// (emptyValue), not removed.
 func CCTLDMinimal() Policy {
 	registrant := map[Field]FieldRule{}
 	for _, f := range Fields {
 		registrant[f] = withhold(Removal)
+	}
+	for _, f := range []Field{FieldName, FieldStreet, FieldCity, FieldSP, FieldPC} {
+		registrant[f] = withhold(EmptyValue)
 	}
 	registrant[FieldCC] = publish
 	return Policy{Name: "cctld-minimal", Roles: map[Role]map[Field]FieldRule{RoleRegistrant: registrant}}

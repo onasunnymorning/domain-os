@@ -77,6 +77,8 @@ func contactEntity(role rdappolicy.Role, c *entities.Contact, dec rdappolicy.Con
 		value[rdappolicy.FieldOrg] = string(pi.Org)
 	}
 
+	dec = effective(dec, value)
+
 	selector := "$.entities[?(@.roles[0]=='" + string(role) + "')]"
 	var redacted []redaction
 	// shown is the value a field is shown with, and whether it is shown.
@@ -159,6 +161,38 @@ func contactEntity(role rdappolicy.Role, c *entities.Contact, dec rdappolicy.Con
 
 	e.VCardArray = vcard(props...)
 	return e, redacted
+}
+
+// effective is dec as the jCard can carry it out, so the redacted members
+// describe the response as it is. A jCard always has fn, so a withheld name
+// is kept empty, never removed. The address is one property: once any part
+// of it is shown, the withheld parts with a value are kept empty too.
+func effective(dec rdappolicy.ContactDecision, value map[rdappolicy.Field]string) rdappolicy.ContactDecision {
+	out := rdappolicy.ContactDecision{Serve: dec.Serve, Fields: make(map[rdappolicy.Field]rdappolicy.FieldDecision, len(dec.Fields))}
+	for f, d := range dec.Fields {
+		out.Fields[f] = d
+	}
+	empty := func(f rdappolicy.Field) {
+		if d := out.Fields[f]; !d.Publish && d.Method == rdappolicy.Removal {
+			out.Fields[f] = rdappolicy.FieldDecision{Method: rdappolicy.EmptyValue}
+		}
+	}
+	empty(rdappolicy.FieldName)
+	shown := false
+	for _, f := range []rdappolicy.Field{rdappolicy.FieldStreet, rdappolicy.FieldCity, rdappolicy.FieldSP, rdappolicy.FieldPC, rdappolicy.FieldCC} {
+		d := out.Fields[f]
+		if value[f] != "" && (d.Publish || d.Method == rdappolicy.EmptyValue) {
+			shown = true
+		}
+	}
+	if shown {
+		// The country lives in the address's parameters, so it can still
+		// be left out: only the value slots are kept.
+		for _, f := range []rdappolicy.Field{rdappolicy.FieldStreet, rdappolicy.FieldCity, rdappolicy.FieldSP, rdappolicy.FieldPC} {
+			empty(f)
+		}
+	}
+	return out
 }
 
 // redactionType is the gTLD profile's name for a redacted field: "Registry
