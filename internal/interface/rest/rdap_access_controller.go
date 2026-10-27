@@ -137,7 +137,7 @@ func (ctrl *RDAPAccessController) ListNetworks(ctx *gin.Context) {
 
 // AssignNetwork godoc
 // @Summary Assign a network an RDAP access policy
-// @Description network is a CIDR or a single address. An empty policy removes the assignment, so the network's clients are anonymous.
+// @Description network is a CIDR or a single address. policy is required: an empty one removes the assignment, so the network's clients are anonymous; a missing or null one is refused.
 // @Tags RDAP
 // @Accept json
 // @Produce json
@@ -147,12 +147,22 @@ func (ctrl *RDAPAccessController) ListNetworks(ctx *gin.Context) {
 // @Failure 404
 // @Router /rdap/access-networks [put]
 func (ctrl *RDAPAccessController) AssignNetwork(ctx *gin.Context) {
-	var cmd commands.AssignRDAPAccessNetworkCommand
-	if err := ctx.ShouldBindJSON(&cmd); err != nil {
+	// policy must be present and a string: an empty one removes the
+	// assignment, which would drop a monitoring network to anonymous limits,
+	// so a body that merely misspells or omits it must not.
+	var body struct {
+		Network string  `json:"network" binding:"required"`
+		Policy  *string `json:"policy"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	n, err := ctrl.svc.AssignNetwork(ctx.Request.Context(), cmd)
+	if body.Policy == nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": `the body needs a "policy" member: a policy name, or "" to remove the assignment`})
+		return
+	}
+	n, err := ctrl.svc.AssignNetwork(ctx.Request.Context(), commands.AssignRDAPAccessNetworkCommand{Network: body.Network, Policy: *body.Policy})
 	if err != nil {
 		rdapAccessError(ctx, err)
 		return

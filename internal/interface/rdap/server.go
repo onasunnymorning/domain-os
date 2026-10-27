@@ -61,6 +61,11 @@ type Server struct {
 	startOnce sync.Once
 	serving   atomic.Bool
 	draining  atomic.Bool
+
+	// life is the server's lifetime: Shutdown cancels it, which stops the
+	// first policy load and the background reloads with the HTTP server.
+	life context.Context
+	end  context.CancelFunc
 }
 
 // NewServer builds a server. It loads the certificate, so a missing or
@@ -135,6 +140,7 @@ func NewServer(opts Options) (*Server, error) {
 		// routine; they are not errors of this server.
 		ErrorLog: slog.NewLogLogger(s.logger.Handler(), slog.LevelDebug),
 	}
+	s.life, s.end = context.WithCancel(context.Background())
 	return s, nil
 }
 
@@ -160,15 +166,19 @@ func (s *Server) Serve(l net.Listener) error {
 
 	// The publication policies decide what a response may show, so the
 	// node serves nothing until it holds the stored set: built-ins could
-	// publish what a stricter stored policy withholds. The access policies
-	// are loaded with them.
-	if err := s.loadPolicies(context.Background()); err != nil {
+	// publish what a stricter stored policy withholds. Shutdown cancels the
+	// load, so a stalled database cannot hold a draining node past its
+	// drain timeout. The access policies are loaded with them.
+	if err := s.loadPolicies(s.life); err != nil {
+		if s.life.Err() != nil {
+			return nil
+		}
 		return fmt.Errorf("rdap: load the publication policies before serving: %w", err)
 	}
 
 	// The certificate watch lives as long as Serve: shutting the HTTP
 	// server down returns ServeTLS, which stops it.
-	watchCtx, stop := context.WithCancel(context.Background())
+	watchCtx, stop := context.WithCancel(s.life)
 	defer stop()
 	go s.certs.Watch(watchCtx)
 	go s.watchPolicies(watchCtx)
@@ -201,6 +211,7 @@ func (s *Server) Serve(l net.Listener) error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.draining.Store(true)
 	s.metrics.draining.Set(1)
+	s.end()
 	return s.http.Shutdown(ctx)
 }
 

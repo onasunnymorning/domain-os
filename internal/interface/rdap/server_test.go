@@ -302,4 +302,29 @@ func TestPublicationPoliciesAreReloaded(t *testing.T) {
 		assert.ErrorContains(t, err, "load the publication policies before serving")
 		assert.False(t, srv.Ready(), "never ready")
 	})
+
+	t.Run("shutdown stops a first load that has stalled", func(t *testing.T) {
+		slow := cfg
+		slow.PolicyRefresh = time.Minute
+		lookups := registry()
+		lookups.stallRefresh = true
+		srv, err := NewServer(Options{Config: slow, Lookups: lookups})
+		require.NoError(t, err)
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		defer func() { _ = l.Close() }()
+		served := make(chan error, 1)
+		go func() { served <- srv.Serve(l) }()
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, srv.Shutdown(ctx))
+		select {
+		case err := <-served:
+			assert.NoError(t, err, "a shutdown is not a failure to start")
+		case <-time.After(2 * time.Second):
+			t.Fatal("Serve still waiting on the policy load after Shutdown")
+		}
+		assert.False(t, srv.Ready())
+	})
 }

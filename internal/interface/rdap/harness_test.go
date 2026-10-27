@@ -39,6 +39,8 @@ type fakeLookups struct {
 	refreshErr error
 	// failAfter is how many loads succeed before refreshErr is returned.
 	failAfter int
+	// stallRefresh makes a policy load wait until its context is done.
+	stallRefresh bool
 }
 
 func (f *fakeLookups) Domain(ctx context.Context, name string) (*interfaces.RDAPDomain, error) {
@@ -90,7 +92,11 @@ func (f *fakeLookups) Registrar(_ context.Context, ianaID int) (*entities.Regist
 	return rr, nil
 }
 
-func (f *fakeLookups) RefreshPolicies(context.Context) error {
+func (f *fakeLookups) RefreshPolicies(ctx context.Context) error {
+	if f.stallRefresh {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.refreshes++
