@@ -26,7 +26,7 @@ Redaction methods (RFC 9537): `removal` (the member is left out), `emptyValue` (
 
 A role a policy does not list is **not published**: no entity is served for it and nothing about it is listed in `redacted`, the same as a role the TLD prohibits.
 
-Until Phase 3 lets a policy be assigned to a TLD, a generic TLD has `gtld-rdp-2024` and any other TLD has `cctld-minimal` (`rdappolicy.BuiltInFor`). The policies are code in `internal/application/rdappolicy/policy.go` and must match this page.
+Until Phase 3 lets a policy be assigned to a TLD, a generic TLD has `gtld-rdp-2024` and any other TLD has `cctld-minimal` (`rdappolicy.BuiltInFor`). The policies are code in `internal/application/rdappolicy/policy.go` and must match this page. An IDN TLD (`xn--…`) has `cctld-minimal` whatever its stored type: the registry infers the type from the name and files IDN ccTLDs as generic, so when the type is uncertain the less revealing policy applies. An IDN gTLD is assigned `gtld-rdp-2024` explicitly once Phase 3b lets policies be assigned.
 
 ### `gtld-rdp-2024`: ICANN Registration Data Policy baseline
 

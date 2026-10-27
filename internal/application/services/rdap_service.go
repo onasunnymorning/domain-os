@@ -59,7 +59,7 @@ func (s *RDAPService) Domain(ctx context.Context, name string) (*interfaces.RDAP
 		return nil, fmt.Errorf("TLD of %s: %w", d.Name, err)
 	}
 	out.TLDType = tld.Type
-	out.Publication = rdappolicy.BuiltInFor(tld.Type)
+	out.Publication = rdappolicy.BuiltInFor(tld.Name, tld.Type)
 	if phase, err := tld.GetCurrentGAPhase(); err == nil {
 		cdp := phase.Policy.ContactDataPolicy
 		out.ContactPolicy = &cdp

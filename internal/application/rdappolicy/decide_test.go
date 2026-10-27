@@ -1,9 +1,11 @@
 package rdappolicy
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
@@ -112,8 +114,15 @@ func TestCCTLDMinimalPublishesOnlyTheCountry(t *testing.T) {
 }
 
 func TestBuiltInFor(t *testing.T) {
-	assert.Equal(t, "gtld-rdp-2024", BuiltInFor(entities.TLDTypeGTLD).Name)
-	assert.Equal(t, "cctld-minimal", BuiltInFor(entities.TLDTypeCCTLD).Name)
+	assert.Equal(t, "gtld-rdp-2024", BuiltInFor("example", entities.TLDTypeGTLD).Name)
+	assert.Equal(t, "cctld-minimal", BuiltInFor("cc", entities.TLDTypeCCTLD).Name)
+
+	// NewTLD files an IDN ccTLD as generic; it must not get the gTLD policy.
+	idn, err := entities.NewTLD("xn--p1ai", "ry-test")
+	require.NoError(t, err)
+	assert.Equal(t, entities.TLDType(entities.TLDTypeGTLD), idn.Type, "the misclassification this guards against")
+	assert.Equal(t, "cctld-minimal", BuiltInFor(idn.Name, idn.Type).Name)
+	assert.Equal(t, "cctld-minimal", BuiltInFor("XN--P1AI", entities.TLDTypeGTLD).Name)
 }
 
 func TestEveryBuiltInNamesEveryField(t *testing.T) {
@@ -122,6 +131,93 @@ func TestEveryBuiltInNamesEveryField(t *testing.T) {
 			for _, f := range Fields {
 				_, ok := rules[f]
 				assert.True(t, ok, "%s %s has no rule for %s", p.Name, role, f)
+			}
+		}
+	}
+}
+
+// flagFor is, independently of Decide, which disclose flag covers a field
+// in each postal form.
+var flagFor = map[Field]func(d entities.ContactDisclose, intForm bool) bool{
+	FieldName: func(d entities.ContactDisclose, i bool) bool { return (i && d.NameInt) || (!i && d.NameLoc) },
+	FieldOrg:  func(d entities.ContactDisclose, i bool) bool { return (i && d.OrgInt) || (!i && d.OrgLoc) },
+	FieldStreet: func(d entities.ContactDisclose, i bool) bool {
+		return (i && d.AddrInt) || (!i && d.AddrLoc)
+	},
+	FieldCity:   func(d entities.ContactDisclose, i bool) bool { return (i && d.AddrInt) || (!i && d.AddrLoc) },
+	FieldSP:     func(d entities.ContactDisclose, i bool) bool { return (i && d.AddrInt) || (!i && d.AddrLoc) },
+	FieldPC:     func(d entities.ContactDisclose, i bool) bool { return (i && d.AddrInt) || (!i && d.AddrLoc) },
+	FieldCC:     func(d entities.ContactDisclose, i bool) bool { return (i && d.AddrInt) || (!i && d.AddrLoc) },
+	FieldVoice:  func(d entities.ContactDisclose, _ bool) bool { return d.Voice },
+	FieldFax:    func(d entities.ContactDisclose, _ bool) bool { return d.Fax },
+	FieldEmail:  func(d entities.ContactDisclose, _ bool) bool { return d.Email },
+	FieldHandle: func(entities.ContactDisclose, bool) bool { return false },
+}
+
+// TestDecisionTable checks every role, collection state, rule, disclose set
+// and postal form, on every field (ADR 0021 decision 3).
+func TestDecisionTable(t *testing.T) {
+	collections := map[string]*entities.ContactDataPolicy{"no current GA phase": nil}
+	for _, typ := range []entities.ContactDataPolicyType{entities.ContactDataPolicyTypeMandatory, entities.ContactDataPolicyTypeOptional, entities.ContactDataPolicyTypeProhibited} {
+		collections[string(typ)] = &entities.ContactDataPolicy{
+			RegistrantContactDataPolicy: typ, AdminContactDataPolicy: typ, TechContactDataPolicy: typ, BillingContactDataPolicy: typ,
+		}
+	}
+	rules := map[string]FieldRule{
+		"publish":              {Rule: Publish},
+		"publish-if-disclosed": {Rule: PublishIfDisclosed},
+		"withhold emptied":     {Rule: Withhold, Method: EmptyValue},
+		"withhold removed":     {Rule: Withhold, Method: Removal},
+		"withhold replaced":    {Rule: Withhold, Method: ReplacementValue},
+	}
+	discloses := map[string]entities.ContactDisclose{
+		"nothing":    {},
+		"int only":   {NameInt: true, OrgInt: true, AddrInt: true},
+		"loc only":   {NameLoc: true, OrgLoc: true, AddrLoc: true},
+		"everything": *entities.NewDiscloseStruct(true),
+	}
+	for _, uri := range []string{"", "https://registry.example/contact"} {
+		for cname, cdp := range collections {
+			for rname, rule := range rules {
+				p := Policy{Roles: map[Role]map[Field]FieldRule{}, ContactFormURI: uri}
+				for _, role := range Roles {
+					p.Roles[role] = map[Field]FieldRule{}
+					for _, f := range Fields {
+						p.Roles[role][f] = rule
+					}
+				}
+				for dname, d := range discloses {
+					for _, form := range []entities.PostalInfoEnumType{"int", "loc"} {
+						for _, role := range Roles {
+							got := Decide(Anonymous(), cdp, p, role, d, form)
+							serve := cdp != nil && (cname == "mandatory" || cname == "optional")
+							name := fmt.Sprintf("%s/%s/%s/%s/%s/uri=%t", role, cname, rname, dname, form, uri != "")
+							require.Equal(t, serve, got.Serve, name)
+							if !serve {
+								assert.Empty(t, got.Fields, name)
+								continue
+							}
+							for _, f := range Fields {
+								fd := got.Fields[f]
+								want := rule.Rule == Publish || (rule.Rule == PublishIfDisclosed && flagFor[f](d, form == "int"))
+								assert.Equal(t, want, fd.Publish, "%s %s", name, f)
+								if want {
+									continue
+								}
+								switch {
+								case rule.Rule == PublishIfDisclosed, rule.Method == Removal:
+									assert.Equal(t, Removal, fd.Method, "%s %s", name, f)
+								case rule.Method == EmptyValue:
+									assert.Equal(t, EmptyValue, fd.Method, "%s %s", name, f)
+								case f == FieldEmail && uri != "":
+									assert.Equal(t, FieldDecision{Method: ReplacementValue, Replacement: uri}, fd, "%s %s", name, f)
+								default: // only an email can be replaced, and only with a URI
+									assert.Equal(t, Removal, fd.Method, "%s %s", name, f)
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 	}
