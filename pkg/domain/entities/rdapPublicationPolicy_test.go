@@ -72,3 +72,8 @@ func TestRDAPPublicationSetForTLD(t *testing.T) {
 	assert.Len(t, s.Policies(), 3, "the built-ins are always present")
 	assert.Equal(t, RDAPPolicyCCTLDMinimal, DefaultRDAPPublicationSet().ForTLD("x", TLDTypeCCTLD).Name)
 }
+
+func TestUnresolvedAssignments(t *testing.T) {
+	s := NewRDAPPublicationSet(nil, map[DomainName]string{"a": RDAPPolicyCCTLDMinimal, "b": "created-later"}, time.Time{})
+	assert.Equal(t, []string{"b=created-later"}, s.UnresolvedAssignments(), "a built-in always resolves; a missing policy does not")
+}

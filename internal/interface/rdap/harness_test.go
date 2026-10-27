@@ -37,6 +37,8 @@ type fakeLookups struct {
 	mu         sync.Mutex
 	refreshes  int
 	refreshErr error
+	// failAfter is how many loads succeed before refreshErr is returned.
+	failAfter int
 }
 
 func (f *fakeLookups) Domain(ctx context.Context, name string) (*interfaces.RDAPDomain, error) {
@@ -92,6 +94,9 @@ func (f *fakeLookups) RefreshPolicies(context.Context) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.refreshes++
+	if f.refreshes <= f.failAfter {
+		return nil
+	}
 	return f.refreshErr
 }
 

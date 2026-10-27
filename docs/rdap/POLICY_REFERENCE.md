@@ -38,7 +38,7 @@ Durations use Go syntax (`30s`, `10m`). Every value is checked at start. A bad v
 | `DB_*`, `SCHEMA_GUARD`, `LOG_LEVEL` | as the other services | Database connection, schema check and log level. The RDAP server only connects to an existing database: unlike the admin API, it never creates one | 1 |
 | `RDAP_MAX_IN_FLIGHT` | `200` | Requests a node serves at once. More are answered 503 with `Retry-After: 1` at once, not queued, and counted in `rdap_shed_total{reason="in_flight"}` | 4 |
 | `RDAP_MAX_CONNECTIONS` | `5000` | Open connections per node. More are closed at accept and counted in `rdap_shed_total{reason="connections"}`. At least `RDAP_MAX_IN_FLIGHT` | 4 |
-| `RDAP_POLICY_REFRESH_INTERVAL` | `30s` | How often a node reloads the publication policies (and, from Phase 4, access policies). A failed reload keeps the set last loaded; before the first, every TLD has its built-in | 3b |
+| `RDAP_POLICY_REFRESH_INTERVAL` | `30s` | How often a node reloads the publication and access policies. A node does not serve until its first load of both succeeds (built-ins could publish what a stored policy withholds); a later reload that fails keeps the set last loaded. Policies and assignments are read in one snapshot, and a set with an assignment to a missing policy is refused | 3b |
 | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | as EPP | The limiter's store; RDAP's keys start `rdap:`. Without it the limiter fails open to per-node buckets and `rdap_ratelimit_degraded` is 1 | 4 |
 
 A read replica for lookups is not offered yet. It is added if load testing (Phase 6) shows the primary is the bottleneck.

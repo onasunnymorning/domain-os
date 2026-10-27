@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -280,12 +281,25 @@ func TestPublicationPoliciesAreReloaded(t *testing.T) {
 
 	t.Run("a failed reload is counted and the server keeps serving", func(t *testing.T) {
 		lookups := registry()
-		lookups.refreshErr = errors.New("database unavailable")
+		lookups.refreshErr, lookups.failAfter = errors.New("database unavailable"), 1
 		ts := startServer(t, cfg, lookups)
 		require.Eventually(t, func() bool {
 			return strings.Contains(opsGet(ts.Server, "/metrics").Body.String(), "rdap_policy_refresh_errors_total 2")
 		}, 2*time.Second, 5*time.Millisecond)
 		resp, _ := ts.do(t, http.MethodGet, "domain/example.tld")
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("no first load, no serving", func(t *testing.T) {
+		lookups := registry()
+		lookups.refreshErr = errors.New("database unavailable")
+		srv, err := NewServer(Options{Config: cfg, Lookups: lookups})
+		require.NoError(t, err)
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		defer func() { _ = l.Close() }()
+		err = srv.Serve(l)
+		assert.ErrorContains(t, err, "load the publication policies before serving")
+		assert.False(t, srv.Ready(), "never ready")
 	})
 }

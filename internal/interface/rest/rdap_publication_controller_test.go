@@ -71,6 +71,12 @@ func (f *fakeRDAPPublication) DeletePolicy(_ context.Context, name string, event
 	return nil
 }
 
+func (f *fakeRDAPPublication) Snapshot(ctx context.Context) ([]*entities.RDAPPublicationPolicy, map[entities.DomainName]string, error) {
+	p, _ := f.ListPolicies(ctx)
+	a, _ := f.ListAssignments(ctx)
+	return p, a, nil
+}
+
 func (f *fakeRDAPPublication) ListAssignments(context.Context) (map[entities.DomainName]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

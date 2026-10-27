@@ -23,6 +23,11 @@ type RDAPPublicationPolicyRepository interface {
 	// entities.ErrRDAPPublicationPolicyNotFound if there is none).
 	DeletePolicy(ctx context.Context, name string, events func(before *entities.RDAPPublicationPolicy) []entities.DomainEvent) error
 
+	// Snapshot returns every stored policy and every assignment, read from
+	// one consistent view of the database, so no assignment names a policy
+	// created after the policies were read.
+	Snapshot(ctx context.Context) ([]*entities.RDAPPublicationPolicy, map[entities.DomainName]string, error)
+
 	// ListAssignments returns every TLD's assigned policy.
 	ListAssignments(ctx context.Context) (map[entities.DomainName]string, error)
 	// AssignPolicy assigns policy, which must exist, to tld, which must be
