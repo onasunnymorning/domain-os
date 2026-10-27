@@ -91,14 +91,20 @@ func (p *ImportPool) Close() error { return p.db.Close() }
 // database the environment names: DATABASE_URL (Neon/Render), else the
 // DB_* variables (the production credential path on AWS ECS, also used
 // locally), on a pool of its own that the caller closes (importer.PG). The
-// CLI import path uses it; the worker opens one ImportPool and builds its
-// importers on it with NewDirectDBImporterWith.
+// CLI import path uses it, where this pool is the process's only one, so
+// it is bounded by DB_MAX_OPEN_CONNS as well as by DefaultImportConns. The
+// worker opens one ImportPool out of its budget and builds its importers
+// on it with NewDirectDBImporterWith.
 func NewDirectDBImporter(repository entities.RepositoryID) (*DirectDBImporter, error) {
 	pgURL := os.Getenv("DATABASE_URL")
 	if pgURL == "" {
 		pgURL = fallbackPGURL()
 	}
-	pool, err := OpenImportPool(pgURL, DefaultImportConns)
+	conns := DefaultImportConns
+	if budget, err := strconv.Atoi(getEnv("DB_MAX_OPEN_CONNS", "")); err == nil && budget > 0 && budget < conns {
+		conns = budget
+	}
+	pool, err := OpenImportPool(pgURL, conns)
 	if err != nil {
 		return nil, err
 	}

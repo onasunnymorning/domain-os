@@ -160,7 +160,7 @@ linters:
       - linters: [forbidigo]
         path: internal/application/activities/verify_ingestion\.go              # 3
       - linters: [forbidigo]
-        path: internal/application/services/direct_db_importer\.go              # 2
+        path: internal/application/services/direct_db_importer\.go              # 3
       - linters: [forbidigo]
         path: internal/infrastructure/auth/token_manager\.go                    # 2
       - linters: [forbidigo]
