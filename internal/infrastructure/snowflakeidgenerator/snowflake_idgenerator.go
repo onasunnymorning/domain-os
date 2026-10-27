@@ -2,6 +2,7 @@ package snowflakeidgenerator
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"os/exec"
@@ -39,7 +40,35 @@ var (
 	nodeErr  error
 )
 
-// NewIDGenerator returns an IDGenerator on the process's snowflake node.
+// MaxNodeID is the largest node ID: the snowflake node field is ten bits.
+const MaxNodeID = 1023
+
+// SetNodeID fixes the process's snowflake node to id, 0 to MaxNodeID, before
+// the first generator is built. The composition root calls it with
+// SNOWFLAKE_NODE_ID when that is set: a node derived from the host (see
+// NewIDGenerator) is a gamble for a fleet, and two processes on one node can
+// mint the same ROID in the same millisecond. A second call, or a call after
+// a generator was built on a derived node, is an error unless it names the
+// node the process already has.
+func SetNodeID(id int64) error {
+	if id < 0 || id > MaxNodeID {
+		return fmt.Errorf("snowflake node %d is not in 0 to %d", id, MaxNodeID)
+	}
+	nodeOnce.Do(func() {
+		node, nodeErr = snowflake.NewNode(id)
+		nodeID = id
+	})
+	if nodeErr != nil {
+		return nodeErr
+	}
+	if nodeID != id {
+		return fmt.Errorf("the process is already on snowflake node %d, not %d", nodeID, id)
+	}
+	return nil
+}
+
+// NewIDGenerator returns an IDGenerator on the process's snowflake node: the
+// one SetNodeID fixed, or else one derived from the host on first use.
 func NewIDGenerator() (*IDGenerator, error) {
 	nodeOnce.Do(func() {
 		node, nodeErr = NewSnowflakeNode()
@@ -53,29 +82,27 @@ func NewIDGenerator() (*IDGenerator, error) {
 	return &IDGenerator{node: node, nodeID: nodeID}, nil
 }
 
-// NewSnowflakeNode creates a new instance of SnowflakeNode with a unique host
-// ID. NewIDGenerator calls it once per process; a caller that builds nodes
-// of its own must not do so concurrently with any Generate (see above).
+// NewSnowflakeNode creates a snowflake node on an ID derived from the host.
+// NewIDGenerator calls it once per process; a caller that builds nodes of
+// its own must not do so concurrently with any Generate (see above).
 func NewSnowflakeNode() (*snowflake.Node, error) {
 	return snowflake.NewNode(int64(generateHostID()))
 }
 
-// generateHostID generates a unique host ID based on the container ID, hostname, and MAC address
-// The generated host ID is a number between 0 and 1023 and is used to identify the host in a distributed system
-// This should be used as the host ID for the snowflake ID generation algorithm
+// generateHostID derives a node ID, 0 to MaxNodeID, from the container ID,
+// hostname and MAC address. It is a hash, so two hosts can share one: with
+// ten replicas the odds are about one in twenty. A fleet sets
+// SNOWFLAKE_NODE_ID instead.
 func generateHostID() int {
-	containerID := getContainerID()
-	hostname := getHostname()
-	macAddress := getMACAddress()
+	return hostIDFromParts(getContainerID(), getHostname(), getMACAddress())
+}
 
-	// Combine container ID, hostname, and MAC address
-	combinedStr := fmt.Sprintf("%s-%s-%s", containerID, hostname, macAddress)
-
-	// Hash the combined string using SHA-256
-	hash := sha256.Sum256([]byte(combinedStr))
-
-	// Convert the hashed value to an integer within the desired range (0-1023)
-	return int(hash[0]) % 1024
+// hostIDFromParts is generateHostID on the given parts: ten bits of their
+// SHA-256. Until 2026-10-27 it was one byte of the hash, so only
+// 256 of the 1024 node IDs could ever be used.
+func hostIDFromParts(containerID, hostname, macAddress string) int {
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%s-%s-%s", containerID, hostname, macAddress)))
+	return int(binary.BigEndian.Uint16(hash[:2]) % (MaxNodeID + 1))
 }
 
 // getContainerID retrieves the ID of the container in which the application is running
