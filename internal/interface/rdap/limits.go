@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -32,18 +33,22 @@ const (
 	actionRefused = "refused"
 )
 
-// notFoundDebtWait is how long a not-found's extra tokens may be owed. The
-// lookup has already been answered, so they are always taken: they only
-// push the client's next requests back.
-const notFoundDebtWait = time.Hour
+// notFoundDebtWait is how long a not-found's extra tokens may be owed:
+// without limit. The lookup has already been answered, so they are always
+// taken, however far they push the client's next requests back; a bounded
+// wait would drop the surcharge for a policy with a slow rate and a large
+// cost.
+const notFoundDebtWait = time.Duration(math.MaxInt64)
 
-// clientBuckets are the buckets a request from addr takes from under p.
+// clientBuckets are the buckets a request from addr takes from under p. The
+// keys carry the policy: a monitoring /128 inside an anonymous /64 has its
+// own allowance, not a share of its neighbours'.
 func clientBuckets(addr netip.Addr, p *entities.RDAPAccessPolicy) ([]entities.EPPRateBucket, []string) {
 	address, aggregate := entities.RDAPAddressBuckets(addr)
-	buckets := []entities.EPPRateBucket{{Key: "addr:" + address.String(), Rate: p.Limits.PerAddress}}
+	buckets := []entities.EPPRateBucket{{Key: "addr:" + p.Name + ":" + address.String(), Rate: p.Limits.PerAddress}}
 	scopes := []string{scopeAddress}
 	if p.Limits.PerAggregate.PerSecond > 0 {
-		buckets = append(buckets, entities.EPPRateBucket{Key: "agg:" + aggregate.String(), Rate: p.Limits.PerAggregate})
+		buckets = append(buckets, entities.EPPRateBucket{Key: "agg:" + p.Name + ":" + aggregate.String(), Rate: p.Limits.PerAggregate})
 		scopes = append(scopes, scopeAggregate)
 	}
 	return buckets, scopes
@@ -61,8 +66,11 @@ func clientAddr(r *http.Request) (netip.Addr, bool) {
 
 // admit takes the request's tokens. It answers 429 and returns false when
 // the client is over a limit; the request then costs nothing more.
-func (s *Server) admit(w http.ResponseWriter, r *http.Request) (charge func(extra int), ok bool) {
-	none := func(int) {}
+// notFound charges what a lookup that found nothing owes on top, under the
+// policy and buckets the request was admitted with, not those of a reload
+// that happened during the lookup.
+func (s *Server) admit(w http.ResponseWriter, r *http.Request) (notFound func(), ok bool) {
+	none := func() {}
 	if s.limiter == nil {
 		return none, true
 	}
@@ -72,12 +80,25 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request) (charge func(extr
 	}
 	p := s.lookups.AccessPolicy(addr)
 	buckets, scopes := clientBuckets(addr, p)
-	res, err := s.limiter.Take(r.Context(), buckets, 1, 0)
+	// A client that disconnects must not look like a Redis outage to the
+	// fail-open breaker, so the call does not inherit the request's
+	// cancellation; the shared limiter bounds it with its own timeout.
+	ctx := context.WithoutCancel(r.Context())
+	res, err := s.limiter.Take(ctx, buckets, 1, 0)
 	if err != nil || res.Taken {
 		s.metrics.policyDecisions.WithLabelValues(p.Name, "", actionAllowed).Inc()
-		return func(extra int) {
-			if extra > 0 {
-				_, _ = s.limiter.Take(context.WithoutCancel(r.Context()), buckets, extra, notFoundDebtWait)
+		extra := p.Limits.NotFoundCost - 1
+		return func() {
+			if extra <= 0 {
+				return
+			}
+			// Each bucket owes its share from its own time. Taken together,
+			// every bucket would be charged from the slowest one's: the
+			// address's debt would push the aggregate into the future and
+			// refuse the client's neighbours. With no limit on the wait, a
+			// take from one bucket is a plain debit.
+			for _, b := range buckets {
+				_, _ = s.limiter.Take(ctx, []entities.EPPRateBucket{b}, extra, notFoundDebtWait)
 			}
 		}, true
 	}
@@ -130,13 +151,12 @@ func (l *connLimitListener) Accept() (net.Conn, error) {
 type limitedConn struct {
 	net.Conn
 	release func()
-	closed  bool
+	once    sync.Once
 }
 
+// Close gives the connection's slot back once, however many times and from
+// however many goroutines it is called.
 func (c *limitedConn) Close() error {
-	if !c.closed {
-		c.closed = true
-		c.release()
-	}
+	c.once.Do(c.release)
 	return c.Conn.Close()
 }

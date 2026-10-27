@@ -35,7 +35,7 @@ RDAP has no logged-in identity, so its unit is the client's network, not a regis
    - Policies are assigned to CIDR ranges (`rdap_policy_assignments`). The most specific range that contains the client wins, and a client in no range has `anonymous`.
    - There are no per-network overrides: a network that needs different limits gets its own policy.
    - Changes go through the admin API under `rdap:policy:admin`, serialised by an advisory lock, with an outbox event carrying before and after.
-   - Nodes reload the whole set every `RDAP_POLICY_REFRESH_INTERVAL`, keep the last good set if a load fails, and use the built-in starting limits before the first load.
+   - Nodes reload the whole set every `RDAP_POLICY_REFRESH_INTERVAL`, and keep the last good set if a load fails. They are loaded with the publication policies, and a node serves nothing until that first load succeeds (ADR 0021, amendment of 2026-10-27), so the built-in starting limits apply only to a node built without a policy store.
 
 3. **Two policies are built in**, seeded from code. They can be edited but not deleted:
    - `anonymous`, which every client has unless assigned another;

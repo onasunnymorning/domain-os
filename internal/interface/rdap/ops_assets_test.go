@@ -156,3 +156,21 @@ func hasAnchor(markdown, anchor string) bool {
 	}
 	return false
 }
+
+func TestAlertedCountersStartAtZero(t *testing.T) {
+	// An alert on increase() misses the first event of a series that
+	// appears with it, so these are exposed before any traffic.
+	ts := startServer(t, testConfig("https://rdap.example.test/"), registry())
+	metrics := opsGet(ts.Server, "/metrics").Body.String()
+	for _, series := range []string{
+		`rdap_lookup_errors_total{route="domain"} 0`,
+		`rdap_lookup_errors_total{route="nameserver"} 0`,
+		`rdap_lookup_errors_total{route="entity"} 0`,
+		`rdap_shed_total{reason="in_flight"} 0`,
+		`rdap_shed_total{reason="connections"} 0`,
+		`rdap_policy_decisions_total{action="refused",policy="monitoring",scope="address"} 0`,
+		`rdap_policy_decisions_total{action="refused",policy="monitoring",scope="aggregate"} 0`,
+	} {
+		assert.Contains(t, metrics, series)
+	}
+}

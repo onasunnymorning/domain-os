@@ -128,15 +128,26 @@ type RDAPAccessNetwork struct {
 }
 
 // ParseRDAPAccessNetwork reads a CIDR, or a single address as its /32 or
-// /128, in its canonical (masked) form.
+// /128, in its canonical (masked) form. An IPv4-mapped IPv6 prefix
+// (::ffff:192.0.2.0/120) is read as the IPv4 prefix it covers, since client
+// addresses are matched unmapped.
 func ParseRDAPAccessNetwork(s string) (netip.Prefix, error) {
 	if p, err := netip.ParsePrefix(s); err == nil {
-		return p.Masked(), nil
+		return canonicalRDAPNetwork(p), nil
 	}
 	if a, err := netip.ParseAddr(s); err == nil {
 		return netip.PrefixFrom(a.Unmap(), a.Unmap().BitLen()), nil
 	}
 	return netip.Prefix{}, fmt.Errorf("%w: %q is neither a CIDR nor an address", ErrInvalidRDAPAccessNetwork, s)
+}
+
+// canonicalRDAPNetwork is p masked, with an IPv4-mapped prefix that covers
+// only IPv4 addresses written as IPv4 (as ParseEPPAllowedPrefix does).
+func canonicalRDAPNetwork(p netip.Prefix) netip.Prefix {
+	if p.Addr().Is4In6() && p.Bits() >= 96 {
+		p = netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
+	}
+	return p.Masked()
 }
 
 // RDAPAccessSet is every access policy and network assignment, as an RDAP
@@ -157,7 +168,10 @@ func NewRDAPAccessSet(policies []*RDAPAccessPolicy, networks []RDAPAccessNetwork
 	for _, p := range policies {
 		s.policies[p.Name] = p
 	}
-	s.networks = append(s.networks, networks...)
+	for _, n := range networks {
+		n.Network = canonicalRDAPNetwork(n.Network)
+		s.networks = append(s.networks, n)
+	}
 	sort.SliceStable(s.networks, func(i, j int) bool { return s.networks[i].Network.Bits() > s.networks[j].Network.Bits() })
 	return s
 }
@@ -178,6 +192,20 @@ func (s *RDAPAccessSet) ForAddress(addr netip.Addr) *RDAPAccessPolicy {
 		}
 	}
 	return s.policies[RDAPAccessAnonymous]
+}
+
+// UnresolvedNetworks lists, as "network=policy", every network assigned a
+// policy the set does not hold. A set with any is inconsistent and must not
+// replace the one in force.
+func (s *RDAPAccessSet) UnresolvedNetworks() []string {
+	var out []string
+	for _, n := range s.networks {
+		if _, ok := s.policies[n.Policy]; !ok {
+			out = append(out, n.Network.String()+"="+n.Policy)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Policies returns every policy, by name.

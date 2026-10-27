@@ -523,7 +523,8 @@
     },
     {
       "type": "stat",
-      "title": "Policies last reloaded",
+      "description": "Age of the stalest node's policy load: one node that stopped reloading still applies obsolete publication and access policies.",
+      "title": "Policies last reloaded (stalest node)",
       "id": 17,
       "datasource": {
         "type": "prometheus",
@@ -549,7 +550,7 @@
             "uid": "prometheus"
           },
           "refId": "A",
-          "expr": "time() - max(rdap_policies_refreshed_timestamp_seconds{instance=~\"$instance\"})",
+          "expr": "time() - min(rdap_policies_refreshed_timestamp_seconds{instance=~\"$instance\"})",
           "legendFormat": "ago"
         }
       ]

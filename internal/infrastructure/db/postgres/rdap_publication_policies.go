@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -160,6 +161,29 @@ func (r *RDAPPublicationPolicyRepository) DeletePolicy(ctx context.Context, name
 		}
 		return writeEvents(tx, events(before))
 	})
+}
+
+// Snapshot implements repositories.RDAPPublicationPolicyRepository: both
+// tables read in one read-only, repeatable-read transaction, so they agree.
+func (r *RDAPPublicationPolicyRepository) Snapshot(ctx context.Context) ([]*entities.RDAPPublicationPolicy, map[entities.DomainName]string, error) {
+	var (
+		policies    []*entities.RDAPPublicationPolicy
+		assignments map[entities.DomainName]string
+	)
+	opts := &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true}
+	if r.db.Dialector.Name() != "postgres" {
+		opts = nil
+	}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		in := &RDAPPublicationPolicyRepository{db: tx}
+		var err error
+		if policies, err = in.ListPolicies(ctx); err != nil {
+			return err
+		}
+		assignments, err = in.ListAssignments(ctx)
+		return err
+	}, opts)
+	return policies, assignments, err
 }
 
 // ListAssignments implements repositories.RDAPPublicationPolicyRepository.

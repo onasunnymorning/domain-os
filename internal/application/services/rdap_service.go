@@ -44,7 +44,8 @@ type RDAPServiceDeps struct {
 }
 
 // NewRDAPService returns an RDAPService reading from deps. Until the first
-// RefreshPublicationPolicies, every TLD has the built-in for its type.
+// RefreshPolicies, every TLD has the built-in for its type and every client
+// is anonymous; the server serves nothing before that load succeeds.
 func NewRDAPService(deps RDAPServiceDeps) *RDAPService {
 	s := &RDAPService{domains: deps.Domains, hosts: deps.Hosts, registrars: deps.Registrars, tlds: deps.TLDs, contacts: deps.Contacts, publication: deps.Publication, access: deps.Access}
 	s.set.Store(entities.DefaultRDAPPublicationSet())

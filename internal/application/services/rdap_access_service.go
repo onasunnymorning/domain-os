@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/appcontext"
@@ -25,17 +26,20 @@ func NewRDAPAccessPolicyService(repo repositories.RDAPAccessPolicyRepository) *R
 	return &RDAPAccessPolicyService{repo: repo, now: time.Now}
 }
 
-// AccessSet returns every policy and network, for an RDAP node.
+// AccessSet returns every policy and network, for an RDAP node. Both are
+// read in one snapshot, and a set in which a network names a policy it does
+// not hold is refused, so a node keeps the set in force rather than give a
+// network anonymous limits by mistake.
 func (s *RDAPAccessPolicyService) AccessSet(ctx context.Context) (*entities.RDAPAccessSet, error) {
-	policies, err := s.repo.ListPolicies(ctx)
+	policies, networks, err := s.repo.Snapshot(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list RDAP access policies: %w", err)
+		return nil, fmt.Errorf("read the RDAP access policies: %w", err)
 	}
-	networks, err := s.repo.ListNetworks(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list RDAP access networks: %w", err)
+	set := entities.NewRDAPAccessSet(policies, networks, s.now().UTC())
+	if missing := set.UnresolvedNetworks(); len(missing) > 0 {
+		return nil, fmt.Errorf("%w: %s", entities.ErrRDAPAccessPolicyNotFound, strings.Join(missing, ", "))
 	}
-	return entities.NewRDAPAccessSet(policies, networks, s.now().UTC()), nil
+	return set, nil
 }
 
 // ListPolicies returns every policy, the built-in ones included.
@@ -113,7 +117,10 @@ func (s *RDAPAccessPolicyService) AssignNetwork(ctx context.Context, cmd command
 		}
 		// A built-in not yet stored is stored first, so the foreign key holds.
 		if _, err := s.repo.GetPolicy(ctx, cmd.Policy); errors.Is(err, entities.ErrRDAPAccessPolicyNotFound) {
-			b, _ := s.GetPolicy(ctx, cmd.Policy)
+			b, err := s.GetPolicy(ctx, cmd.Policy)
+			if err != nil {
+				return nil, err
+			}
 			if _, err := s.SavePolicy(ctx, b.Name, commands.SaveRDAPAccessPolicyCommand{Description: b.Description, Limits: b.Limits}); err != nil {
 				return nil, err
 			}

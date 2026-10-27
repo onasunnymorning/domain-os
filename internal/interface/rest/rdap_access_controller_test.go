@@ -70,6 +70,15 @@ func (f *fakeRDAPAccess) DeletePolicy(_ context.Context, name string, events fun
 	return nil
 }
 
+func (f *fakeRDAPAccess) Snapshot(ctx context.Context) ([]*entities.RDAPAccessPolicy, []entities.RDAPAccessNetwork, error) {
+	policies, err := f.ListPolicies(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	networks, err := f.ListNetworks(ctx)
+	return policies, networks, err
+}
+
 func (f *fakeRDAPAccess) ListNetworks(context.Context) ([]entities.RDAPAccessNetwork, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -140,6 +149,13 @@ func TestRDAPAccessAPI(t *testing.T) {
 		assert.JSONEq(t, `{"network":"192.0.2.0/24","policy":"partner"}`, w.Body.String(), "stored masked")
 		assert.Equal(t, http.StatusConflict, do(r, http.MethodDelete, "/rdap/access-policies/partner", "").Code)
 		assert.Equal(t, http.StatusBadRequest, do(r, http.MethodPut, "/rdap/access-networks", `{"network":"nope","policy":"partner"}`).Code)
+	})
+
+	t.Run("an assignment without a policy member is refused, not read as removal", func(t *testing.T) {
+		for _, body := range []string{`{"network":"192.0.2.0/24"}`, `{"network":"192.0.2.0/24","polciy":"partner"}`, `{"network":"192.0.2.0/24","policy":null}`, `null`} {
+			assert.Equal(t, http.StatusBadRequest, do(r, http.MethodPut, "/rdap/access-networks", body).Code, body)
+		}
+		assert.Equal(t, "partner", repo.networks[netip.MustParsePrefix("192.0.2.0/24")], "the assignment is untouched")
 	})
 
 	t.Run("assigning a built-in stores it first", func(t *testing.T) {
