@@ -24,9 +24,9 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/lockout"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/ratelimit"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/sessionstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/ratelimit"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/interface/epp"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -111,10 +111,14 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		logger.Info("Connected to Redis", "addr", cfg.Redis.Addr())
 	}
 
+	if err := fixSnowflakeNode(); err != nil {
+		return err
+	}
 	ids, err := snowflakeidgenerator.NewIDGenerator()
 	if err != nil {
 		return fmt.Errorf("id generator: %w", err)
 	}
+	logger.Info("Snowflake node", "node", ids.ListNode(), "from", snowflakeNodeSource())
 
 	credentials := postgres.NewEPPCredentialRepository(db)
 	uses := services.NewEPPCredentialUseRecorder(credentials)
@@ -328,4 +332,24 @@ func pruneAudit(ctx context.Context, audit *services.EPPAuditService, retention 
 			return
 		}
 	}
+}
+
+// fixSnowflakeNode puts the process on SNOWFLAKE_NODE_ID when it is set.
+func fixSnowflakeNode() error {
+	id, set, err := config.LoadSnowflakeNodeID()
+	if err != nil {
+		return err
+	}
+	if !set {
+		return nil
+	}
+	return snowflakeidgenerator.SetNodeID(id)
+}
+
+// snowflakeNodeSource says where the process's node came from, for the log.
+func snowflakeNodeSource() string {
+	if _, set, _ := config.LoadSnowflakeNodeID(); set {
+		return "SNOWFLAKE_NODE_ID"
+	}
+	return "derived from the host; set SNOWFLAKE_NODE_ID per replica"
 }

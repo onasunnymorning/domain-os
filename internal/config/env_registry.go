@@ -93,6 +93,7 @@ var Registry = []EnvVar{
 	// without it, or with one other than the installation recorded on its
 	// first start (ADR 0017).
 	{Name: "ROID_REPOSITORY_ID", Services: []Service{ServiceAPI, ServiceWorker, ServiceEPP, ServiceMCP, ServiceWhois, ServiceCLI, ServiceRDAP}, Required: true, Description: "The registry's EPP repository ID, registered with IANA (https://www.iana.org/assignments/epp-repository-ids): 1 to 8 letters or digits. Every ROID ends in it (e.g. 123_DOM-XYZ): only the number is stored, and the ID is appended when a ROID is read. Set it once, before the first start: the database records it then, and a process configured with a different one refuses to start. Any value will do for local development"},
+	{Name: "SNOWFLAKE_NODE_ID", Services: []Service{ServiceAPI, ServiceWorker, ServiceEPP, ServiceCLI}, Description: "The snowflake node this process mints ROIDs on, 0 to 1023; every ROID carries it. Give each replica that mints (API, worker, EPP node, importer) a node of its own, such as its StatefulSet ordinal: two processes on one node can mint the same ROID in the same millisecond, and the second create then fails. Unset, the node is derived from the host, which is fine for one process and a gamble for a fleet"},
 
 	// ═══════════════════════════════════════════
 	// API SERVER

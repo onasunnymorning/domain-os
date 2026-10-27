@@ -116,6 +116,9 @@ func runSeed(cfg *config.AdminApiConfig, repositoryID entities.RepositoryID, log
 
 	faker := gofakeit.New(seedFakerSeed)
 
+	if err := fixSnowflakeNode(); err != nil {
+		logger.Fatal("seed: snowflake node", zap.Error(err))
+	}
 	idGenerator, err := snowflakeidgenerator.NewIDGenerator()
 	if err != nil {
 		logger.Fatal("seed: failed to create ID generator", zap.Error(err))
