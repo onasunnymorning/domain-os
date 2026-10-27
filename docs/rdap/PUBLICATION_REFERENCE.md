@@ -18,13 +18,19 @@ It is not a registrar baseline. Some Registration Data Policy obligations fall o
    | Rule | Meaning |
    |---|---|
    | `publish` | Published |
-   | `publish-if-disclosed` | Published only if the contact's stored disclose setting for the field is true. Otherwise **removed, and listed in `redacted`** (method `removal`) |
+   | `publish-if-disclosed` | Published only if the contact's stored disclose setting for the field is true. Otherwise **not published, and listed in `redacted`**, with method `removal` except as in step 5 |
    | `withhold` | Not published, and listed in `redacted` |
 
 3. **Disclose settings** can only narrow a `publish-if-disclosed` field. They never widen a `withhold`. For the name, organisation and address, the setting that counts is that of the postal form shown (the internationalised one when a contact has both).
 
    The stored setting is not the raw EPP flag. The registry's default is **not disclosed**: a new contact discloses nothing. A `<contact:disclose flag="1">` from the sponsoring registrar sets the listed elements to disclosed, and `flag="0"` sets them back (RFC 5733 §2.9 flags are exceptions to the server's default). A missing setting therefore means not disclosed. The server reads a disclosed setting as the contact's agreement to **public** RDAP publication of that field; the policy owner confirms that reading at sign-off.
 4. **Absent data** (for example no fax number) is simply absent, and is not listed in `redacted`. The jCard can still hold an empty slot for it where its structure requires one: an `adr` property has seven parts, so a published country keeps the other parts as empty strings, and a jCard always has an `fn`. An empty slot for absent data is not a redaction and has no `redacted` entry.
+
+5. **Kept jCard structure.** Some withheld fields are emptied rather than removed even where their rule says `removal` (or where an undisclosed `publish-if-disclosed` field would be removed), because the jCard keeps a slot for them:
+   - The **name** is always `emptyValue` when withheld: a jCard always has an `fn`.
+   - The **street, city, state or province and postal code** are `emptyValue` when withheld, if any part of the address is shown or emptied (the `adr` property is then present, and its value slots stay as empty strings). The **country** is not affected: it is carried in the address's parameters, so it can still be removed.
+
+   The `redacted` entry then records `emptyValue`, so it matches the response.
 
 Redaction methods (RFC 9537): `removal` (the member is left out), `emptyValue` (the member is present but empty), and `replacementValue` (the member is left out and another member carries a substitute value). The only replacement in use is for email: the `email` property is removed, the contact form URI is published in a separate `contact-uri` jCard property, and the `redacted` entry's `replacementPath` points at that property. A URL is never placed in an `email` property.
 
@@ -72,9 +78,9 @@ Only the registrant role is published. The country is `P`. The name, street, cit
 
 ## Sign-off
 
-A sign-off approves **one revision** of a policy, not its name. The policies can be edited after seeding, so record what was approved: the policy's `updatedAt` or a hash of its rules as the admin API returns them (`GET /rdap/publication-policies/{name}`), the TLDs or TLD class it covers, the approver and the date.
+A sign-off approves **one revision** of a policy, not its name. The policies can be edited after seeding, so record what was approved: the policy's `updatedAt` as the admin API returns it (`GET /rdap/publication-policies/{name}`), which every save through the API sets, or a hash over **both** of its publication-affecting members, the field rules (`roles`) and the contact form URI (`contactFormUri`), the TLDs or TLD class it covers, the approver and the date.
 
-**Any change to a signed-off policy's rules needs a new sign-off** before it is served on a live TLD. A row whose revision no longer matches the stored policy is not a sign-off.
+**Any change to a signed-off policy's rules or contact form URI needs a new sign-off** before it is served on a live TLD. A row whose revision no longer matches the stored policy is not a sign-off.
 
 The policy owner also records, for each policy:
 
@@ -82,7 +88,7 @@ The policy owner also records, for each policy:
 - that a disclosed setting is treated as agreement to public publication (see [How a field is decided](#how-a-field-is-decided), step 3);
 - the privacy and proxy gap ([Not supported](#not-supported-privacy-and-proxy-services)), and whether it blocks the TLDs in scope.
 
-| Policy | Revision (`updatedAt` or rules hash) | Scope (TLDs) | §9.2.1 basis | Confirmed by | Date | Notes |
+| Policy | Revision (`updatedAt`, or hash of `roles` and `contactFormUri`) | Scope (TLDs) | §9.2.1 basis | Confirmed by | Date | Notes |
 |---|---|---|---|---|---|---|
 | `gtld-rdp-2024` | | | | | | |
 | `cctld-minimal` | | | | | | |
