@@ -124,13 +124,29 @@ func TestARedirectIsNotA200(t *testing.T) {
 			answer(0)(w, r)
 			return
 		}
-		http.Redirect(w, r, r.URL.Path+"/moved", http.StatusFound)
+		http.Redirect(w, r, r.URL.Path+"/moved", http.StatusFound) // #nosec G710 -- test server redirecting to its own fixed path
 	}
 	r := check(context.Background(), servers(t, answer(0), moved))
 	var out bytes.Buffer
 	r.write(&out)
 	assert.False(t, r.ok())
 	assert.Contains(t, out.String(), "status 302", "the answer at the URL asked for is graded, not where it points")
+}
+
+func TestAnOversizedAnswerIsRefused(t *testing.T) {
+	// A clean object, padding to the read limit, then more: cut off at the
+	// limit it would look clean.
+	padded := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rdap+json")
+		_, _ = w.Write([]byte(`{"objectClassName":"domain"}`))
+		_, _ = w.Write(bytes.Repeat([]byte(" "), maxBody))
+		_, _ = w.Write([]byte(`{"objectClassName":"other"}`))
+	}
+	r := check(context.Background(), servers(t, answer(0), padded))
+	var out bytes.Buffer
+	r.write(&out)
+	assert.False(t, r.ok())
+	assert.Contains(t, out.String(), "larger than", out.String())
 }
 
 func TestCLIValidates(t *testing.T) {

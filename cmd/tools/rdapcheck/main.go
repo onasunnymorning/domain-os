@@ -313,6 +313,9 @@ func errOrOK(err error) string {
 	return "ok"
 }
 
+// maxBody is the largest answer fetch reads; an RDAP object is far smaller.
+const maxBody = 1 << 20
+
 // fetch GETs url and returns its body, canonicalised, or an error for any
 // status but 200.
 func fetch(ctx context.Context, client *http.Client, url string, timeout time.Duration) (string, error) {
@@ -328,9 +331,14 @@ func fetch(ctx context.Context, client *http.Client, url string, timeout time.Du
 		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	// One byte past the limit tells a body that fits from one cut short,
+	// which could hide what follows it.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
 		return "", err
+	}
+	if len(body) > maxBody {
+		return "", fmt.Errorf("answer larger than %d bytes", maxBody)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("status %d", resp.StatusCode)
