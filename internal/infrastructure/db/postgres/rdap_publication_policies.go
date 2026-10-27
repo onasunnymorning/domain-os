@@ -274,5 +274,29 @@ func seedRDAPPublicationPolicies(db *gorm.DB) error {
 			return fmt.Errorf("seed RDAP publication policy %s: %w", p.Name, err)
 		}
 	}
+	return upgradeRDAPPublicationPolicies(db)
+}
+
+// upgradeRDAPPublicationPolicies brings stored policies up to rules added
+// since they were saved: a withheld phone or fax is removed, never emptied
+// (an empty tel is not valid jCard). It changes only those rules, and only
+// in policies that need it, so it is safe on every start.
+func upgradeRDAPPublicationPolicies(db *gorm.DB) error {
+	var recs []RDAPPublicationPolicyRecord
+	if err := db.Find(&recs).Error; err != nil {
+		return fmt.Errorf("read RDAP publication policies to upgrade: %w", err)
+	}
+	for i := range recs {
+		p := recs[i].toEntity()
+		if !p.RemoveEmptiedPhones() {
+			continue
+		}
+		p.UpdatedAt, p.UpdatedBy = time.Now().UTC(), "migrate"
+		err := db.Model(&RDAPPublicationPolicyRecord{}).Where("name = ?", p.Name).
+			Select("roles", "updated_at", "updated_by").Updates(toRDAPPublicationRecord(p)).Error
+		if err != nil {
+			return fmt.Errorf("upgrade RDAP publication policy %s: %w", p.Name, err)
+		}
+	}
 	return nil
 }

@@ -376,3 +376,21 @@ func (s *RDAPPublicationSet) Policies() []*RDAPPublicationPolicy {
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
+
+// RemoveEmptiedPhones turns every withheld phone or fax redacted by
+// emptyValue into one redacted by removal: an empty tel is not valid jCard.
+// Policies stored before that rule are upgraded with it. It reports whether
+// anything changed.
+func (p *RDAPPublicationPolicy) RemoveEmptiedPhones() bool {
+	changed := false
+	for _, fields := range p.Roles {
+		for _, f := range []RDAPField{RDAPFieldVoice, RDAPFieldFax} {
+			if r, ok := fields[f]; ok && r.Rule == RDAPWithhold && r.Method == RDAPEmptyValue {
+				r.Method = RDAPRemoval
+				fields[f] = r
+				changed = true
+			}
+		}
+	}
+	return changed
+}

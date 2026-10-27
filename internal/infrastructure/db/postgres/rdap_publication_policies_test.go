@@ -40,6 +40,30 @@ func TestRDAPPublicationPolicyRepository(t *testing.T) {
 		return n
 	}
 
+	t.Run("the migration upgrades a policy stored with an emptied phone", func(t *testing.T) {
+		// A row as saved before a withheld phone had to be removed.
+		old := entities.BuiltInRDAPPublicationPolicies()[0]
+		old.Name, old.Description, old.UpdatedBy = "pre-tel-rule", "kept as is", "ops"
+		old.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldVoice] = entities.RDAPFieldRule{Rule: entities.RDAPWithhold, Method: entities.RDAPEmptyValue}
+		old.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldFax] = entities.RDAPFieldRule{Rule: entities.RDAPWithhold, Method: entities.RDAPEmptyValue}
+		require.NoError(t, tx.Create(toRDAPPublicationRecord(old)).Error)
+
+		require.NoError(t, seedRDAPPublicationPolicies(tx))
+		got, err := repo.GetPolicy(ctx, "pre-tel-rule")
+		require.NoError(t, err)
+		removed := entities.RDAPFieldRule{Rule: entities.RDAPWithhold, Method: entities.RDAPRemoval}
+		assert.Equal(t, removed, got.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldVoice])
+		assert.Equal(t, removed, got.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldFax])
+		assert.Equal(t, old.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldStreet], got.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldStreet], "other rules kept")
+		assert.Equal(t, "kept as is", got.Description)
+		assert.NoError(t, got.Validate())
+
+		require.NoError(t, seedRDAPPublicationPolicies(tx), "running again changes nothing")
+		again, err := repo.GetPolicy(ctx, "pre-tel-rule")
+		require.NoError(t, err)
+		assert.Equal(t, got, again)
+	})
+
 	t.Run("the migration seeded the built-in policies", func(t *testing.T) {
 		require.NoError(t, seedRDAPPublicationPolicies(tx), "seeding again keeps what is there")
 		for _, b := range entities.BuiltInRDAPPublicationPolicies() {

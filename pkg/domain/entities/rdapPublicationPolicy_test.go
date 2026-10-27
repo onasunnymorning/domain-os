@@ -78,3 +78,18 @@ func TestUnresolvedAssignments(t *testing.T) {
 	s := NewRDAPPublicationSet(nil, map[DomainName]string{"a": RDAPPolicyCCTLDMinimal, "b": "created-later"}, time.Time{})
 	assert.Equal(t, []string{"b=created-later"}, s.UnresolvedAssignments(), "a built-in always resolves; a missing policy does not")
 }
+
+func TestRemoveEmptiedPhones(t *testing.T) {
+	p := BuiltInRDAPPublicationPolicies()[0]
+	p.Roles[RDAPRoleRegistrant][RDAPFieldVoice] = RDAPFieldRule{Rule: RDAPWithhold, Method: RDAPEmptyValue}
+	p.Roles[RDAPRoleRegistrant][RDAPFieldFax] = RDAPFieldRule{Rule: RDAPWithhold, Method: RDAPEmptyValue}
+	street := p.Roles[RDAPRoleRegistrant][RDAPFieldStreet]
+	require.Error(t, p.Validate(), "as stored before the rule")
+
+	assert.True(t, p.RemoveEmptiedPhones())
+	assert.Equal(t, RDAPFieldRule{Rule: RDAPWithhold, Method: RDAPRemoval}, p.Roles[RDAPRoleRegistrant][RDAPFieldVoice])
+	assert.Equal(t, RDAPFieldRule{Rule: RDAPWithhold, Method: RDAPRemoval}, p.Roles[RDAPRoleRegistrant][RDAPFieldFax])
+	assert.Equal(t, street, p.Roles[RDAPRoleRegistrant][RDAPFieldStreet], "nothing else changes")
+	assert.NoError(t, p.Validate())
+	assert.False(t, p.RemoveEmptiedPhones(), "idempotent")
+}

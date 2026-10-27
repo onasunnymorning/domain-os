@@ -185,6 +185,12 @@ jobs:
       - name: Install the RDAP Conformance Tool
         run: make rdapct
 
+      - name: Name the RDAP conformance test server
+        # The tool refuses localhost and IP addresses as web URIs, and looks
+        # the server's name up in DNS with its own client before validating
+        # anything. systemd-resolved serves /etc/hosts entries over DNS.
+        run: echo "127.0.0.1 rdap.conformance.internal" | sudo tee -a /etc/hosts
+
       - name: Run All Tests
         run: |
           go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...

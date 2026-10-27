@@ -70,3 +70,16 @@ func TestCLI(t *testing.T) {
 	assert.Error(t, cli([]string{"-base", srv.URL}, &out), "names are required")
 	assert.Error(t, cli([]string{"-name", "a.example", "-miss", "2"}, &out))
 }
+
+func TestTruncatedBodyIsAFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("only ten b")) // then the connection ends
+	}))
+	defer srv.Close()
+
+	s := lookup(context.Background(), srv.Client(), srv.URL)
+	assert.Zero(t, s.code, "a 200 whose body never arrived is not a 200")
+	assert.Positive(t, s.latency, "its time is still counted")
+}

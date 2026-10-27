@@ -201,8 +201,13 @@ func lookup(ctx context.Context, client *http.Client, url string) sample {
 	if err != nil {
 		return sample{latency: time.Since(start)}
 	}
-	_, _ = io.Copy(io.Discard, resp.Body)
+	_, err = io.Copy(io.Discard, resp.Body)
 	_ = resp.Body.Close()
+	if err != nil {
+		// Headers and then a truncated or timed-out body is a failure, not
+		// the status it began with.
+		return sample{latency: time.Since(start)}
+	}
 	return sample{code: resp.StatusCode, latency: time.Since(start)}
 }
 

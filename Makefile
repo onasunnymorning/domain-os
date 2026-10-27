@@ -370,7 +370,7 @@ rdapct: ## Fetch the pinned RDAP Conformance Tool and its IANA datasets into .ca
 	fi
 	@echo "rdapct $(RDAPCT_VERSION) and its datasets are in $(RDAPCT_DIR)"
 
-rst-rdap-docker: ## make rst-rdap, with the conformance tool run in a Java container
+rst-rdap-docker: ## make rst-rdap, with the conformance tool run in a Java container (Docker Desktop: it reaches the server as host.docker.internal)
 	@RDAPCT_DOCKER=1 $(MAKE) rdapct
 	@RDAPCT_DOCKER=1 $(MAKE) rst-rdap
 
