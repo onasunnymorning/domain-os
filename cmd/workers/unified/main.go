@@ -18,22 +18,23 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
+	"gorm.io/gorm"
 )
 
 func main() {
 	log.Printf("unified-worker version=%s sha=%s", buildinfo.Version, buildinfo.GitSHA)
 
-	// Refuse to run activities against a schema older than this build. The
-	// worker opens its real connections inside activities, so this check gets
-	// a short-lived connection of its own, before anything polls a queue.
-	// The lifecycle, TLD-cleanup and escrow-import activities mint or show
-	// ROIDs, so the worker does not start without the installation's
-	// repository ID (ADR 0017).
+	// Refuse to run activities against a schema older than this build,
+	// before anything polls a queue. The lifecycle, TLD-cleanup and
+	// escrow-import activities mint or show ROIDs, so the worker does not
+	// start without the installation's repository ID (ADR 0017). The one
+	// pool opened here is shared by every activity: each constructor used to
+	// open its own, a dozen unbounded pools on one database.
 	repositoryID, err := config.LoadRepositoryID()
 	if err != nil {
 		log.Fatalf("Refusing to start: %v", err)
 	}
-	checkSchema(repositoryID)
+	db := openDB(repositoryID)
 	log.Printf("unified-worker ROID repository ID %s", repositoryID)
 	// Create a shared Temporal client
 	cfg := temporal.NewClientConfigFromEnv("")
@@ -167,7 +168,7 @@ func main() {
 	drainDataWorker.RegisterActivity(activities.UpdateFX) //nolint:staticcheck // SA1019: registering the deprecated activity is the point — in-flight executions on the drain queues cannot complete without it.
 
 	// FX Rates Activities (Fast Ops + Drain Data)
-	fxActs, err := activities.NewFXActivities()
+	fxActs, err := activities.NewFXActivities(db)
 	if err != nil {
 		log.Printf("WARNING: FX activities not available (DB not configured): %v", err)
 	} else {
@@ -187,7 +188,7 @@ func main() {
 	// Escrow Validation / EVE (Heavy Batch). Declines to register when its
 	// database or object stores are not configured; keys come from the key
 	// registry per run (issue #412, ADR-0007; issue #429, ADR-0009).
-	eveActs, err := activities.NewEscrowValidationActivities()
+	eveActs, err := activities.NewEscrowValidationActivities(db)
 	if err != nil {
 		log.Printf("WARNING: escrow validation activities not available: %v", err)
 	} else {
@@ -198,7 +199,7 @@ func main() {
 	// claims and settles its pair on Heavy Batch, beside the validation it
 	// starts. Registered even when ESCROW_INTAKE_SFTP_ENABLED is off, so the
 	// always-present schedule finds nothing to do rather than failing.
-	if intakeActs, err := newEscrowIntakeActivities(); err != nil {
+	if intakeActs, err := newEscrowIntakeActivities(db); err != nil {
 		log.Printf("WARNING: escrow intake activities not available: %v", err)
 	} else {
 		scheduledWorker.RegisterActivity(intakeActs)
@@ -208,7 +209,7 @@ func main() {
 	// Escrow key registry probe (Heavy Batch, where the escrow activities that
 	// use the keys run). Registers without a key store: public keys still
 	// probe, and a private one records KEY_STORE_NOT_CONFIGURED (issue #429).
-	keyActs, err := activities.NewEscrowKeyActivities()
+	keyActs, err := activities.NewEscrowKeyActivities(db)
 	if err != nil {
 		log.Printf("WARNING: escrow key activities not available: %v", err)
 	} else {
@@ -218,7 +219,7 @@ func main() {
 	// Escrow derivative sanitization (Heavy Batch). The pseudonymisation key is
 	// resolved per run from the key registry (issue #429); a run that finds no
 	// usable key records TOKEN_KEY_UNAVAILABLE rather than producing anything.
-	sanitizeActs, err := activities.NewEscrowSanitizeActivities()
+	sanitizeActs, err := activities.NewEscrowSanitizeActivities(db)
 	if err != nil {
 		log.Printf("WARNING: escrow sanitization activities not available: %v", err)
 	} else {
@@ -275,7 +276,7 @@ func main() {
 	// 2. Resource-Dependent Activities (requiring DB and/or S3)
 
 	// Lifecycle Batch Activities (Lifecycle + Drain Lifecycle)
-	lifecycleActs, err := activities.NewLifecycleActivities(repositoryID)
+	lifecycleActs, err := activities.NewLifecycleActivities(db, repositoryID)
 	if err != nil {
 		log.Printf("WARNING: Lifecycle batch activities not available (DB not configured): %v", err)
 	} else {
@@ -284,7 +285,7 @@ func main() {
 	}
 
 	// TLD Cleanup Activities (Heavy Batch + Drain Data)
-	tldActs, err := activities.NewTLDCleanupActivities(repositoryID)
+	tldActs, err := activities.NewTLDCleanupActivities(db, repositoryID)
 	if err != nil {
 		log.Printf("WARNING: TLD cleanup activities not available (DB/S3 not configured): %v", err)
 	} else {
@@ -300,7 +301,7 @@ func main() {
 	}
 
 	// Spec5 Sweep Activities (Scheduled + Drain Data)
-	spec5SweepActs, err := activities.NewSpec5SweepActivities()
+	spec5SweepActs, err := activities.NewSpec5SweepActivities(db)
 	if err != nil {
 		log.Printf("WARNING: Spec5 sweep activities not available (DB/S3 not configured): %v", err)
 	} else {
@@ -309,7 +310,7 @@ func main() {
 	}
 
 	// Event Relay Activities (Scheduled + Drain Data)
-	eventRelayActs, err := activities.NewEventRelayActivities()
+	eventRelayActs, err := activities.NewEventRelayActivities(db)
 	if err != nil {
 		log.Printf("WARNING: Event relay activities not available (DB/S3 not configured): %v", err)
 	} else {
@@ -318,7 +319,7 @@ func main() {
 	}
 
 	// Tombstone Backfill Activities (Lifecycle + Drain Data)
-	backfillActs, err := activities.NewTombstoneBackfillActivities()
+	backfillActs, err := activities.NewTombstoneBackfillActivities(db)
 	if err != nil {
 		log.Printf("WARNING: Tombstone backfill activities not available (DB not configured): %v", err)
 	} else {
@@ -327,7 +328,7 @@ func main() {
 	}
 
 	// Serial Drift Activities (Fast Ops + Drain Data)
-	driftActs, err := activities.NewSerialDriftActivities()
+	driftActs, err := activities.NewSerialDriftActivities(db)
 	if err != nil {
 		log.Printf("WARNING: Serial drift activities not available (DB not configured): %v", err)
 	} else {
@@ -357,21 +358,13 @@ func main() {
 	}
 }
 
-// checkSchema runs the schema guard (docs/adr/0010-database-migrations.md) and
-// exits when it refuses. A connection failure is fatal too: a worker that
-// cannot reach the database cannot do useful work, and failing here names the
-// cause instead of failing every activity later.
 // newEscrowIntakeActivities wires the sFTP intake activities from the
 // environment (INV-17): its configuration, the database holding validation
 // runs, and the escrow bucket.
-func newEscrowIntakeActivities() (*activities.EscrowIntakeActivities, error) {
+func newEscrowIntakeActivities(db *gorm.DB) (*activities.EscrowIntakeActivities, error) {
 	cfg, err := config.LoadEscrowIntake()
 	if err != nil {
 		return nil, err
-	}
-	db, err := postgres.NewConnectionFromEnv()
-	if err != nil {
-		return nil, fmt.Errorf("database: %w", err)
 	}
 	store, err := storage.NewS3ClientFromEnv()
 	if err != nil {
@@ -382,23 +375,23 @@ func newEscrowIntakeActivities() (*activities.EscrowIntakeActivities, error) {
 	})
 }
 
-func checkSchema(repositoryID entities.RepositoryID) {
+// openDB opens the worker's one database pool and runs the schema guard
+// (docs/adr/0010-database-migrations.md) on it, exiting when the guard
+// refuses. A connection failure is fatal too: a worker that cannot reach the
+// database cannot do useful work, and failing here names the cause instead of
+// failing every activity later.
+func openDB(repositoryID entities.RepositoryID) *gorm.DB {
 	db, err := postgres.NewConnectionFromEnv()
 	if err != nil {
 		log.Fatalf("schema guard: cannot connect to the database: %v", err)
 	}
-	guardErr := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), log.Printf)
-	if guardErr == nil {
-		if guardErr = postgres.CheckRepositoryID(context.Background(), db, repositoryID); guardErr != nil {
-			log.Printf("Refusing to start: %v", guardErr)
-		}
-	}
-	// Close explicitly rather than with defer: the refusal path exits, and a
-	// deferred close would never run.
-	if sqlDB, err := db.DB(); err == nil {
-		_ = sqlDB.Close()
-	}
-	if guardErr != nil {
+	// The guard logs its own refusal.
+	if err := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), log.Printf); err != nil {
 		os.Exit(1)
 	}
+	if err := postgres.CheckRepositoryID(context.Background(), db, repositoryID); err != nil {
+		log.Printf("Refusing to start: %v", err)
+		os.Exit(1)
+	}
+	return db
 }

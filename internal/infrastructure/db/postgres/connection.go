@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -237,12 +238,69 @@ func buildDSN(cfg Config) string {
 	return u.String()
 }
 
+// Pool bounds, applied to every connection this package opens. database/sql
+// defaults to an unbounded pool that keeps two idle connections: a burst
+// opens as many connections as it has goroutines, each with a TLS
+// handshake, and drops them again a moment later. On a managed Postgres the
+// connection slots are the scarce, priced resource, and one process's burst
+// starves the others. DB_MAX_OPEN_CONNS bounds the pool; the rest follows
+// from it. The EPP and RDAP nodes bound theirs again from their own
+// settings, after this.
+const (
+	maxOpenConnsEnv     = "DB_MAX_OPEN_CONNS"
+	defaultMaxOpenConns = 20
+	connMaxLifetime     = 30 * time.Minute
+	connMaxIdleTime     = 5 * time.Minute
+)
+
+// maxOpenConnsFromEnv is DB_MAX_OPEN_CONNS, or the default when it is unset
+// or not a positive integer, which is logged rather than fatal: a pool of
+// the default size is better than no service.
+func maxOpenConnsFromEnv() int {
+	raw := os.Getenv(maxOpenConnsEnv)
+	if raw == "" {
+		return defaultMaxOpenConns
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		log.Printf("Warning: %s=%q is not a positive integer; using %d", maxOpenConnsEnv, raw, defaultMaxOpenConns) // #nosec G706 -- the value is quoted with %q, which escapes control characters
+		return defaultMaxOpenConns
+	}
+	return n
+}
+
+// configurePool bounds db's connection pool from DB_MAX_OPEN_CONNS.
+func configurePool(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("get sql.DB: %w", err)
+	}
+	maxOpen := maxOpenConnsFromEnv()
+	sqlDB.SetMaxOpenConns(maxOpen)
+	sqlDB.SetMaxIdleConns(max(2, maxOpen/4))
+	sqlDB.SetConnMaxLifetime(connMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(connMaxIdleTime)
+	return nil
+}
+
+// open connects to dsn with a bounded pool.
+func open(dsn string) (*gorm.DB, error) {
+	db, err := gorm.Open(postgres.Open(dsn))
+	if err != nil {
+		return nil, err
+	}
+	if err := configurePool(db); err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
 // OpenExisting connects to an existing database and changes nothing: no
 // database is created and nothing is migrated. A read-only process (the
 // RDAP server, ADR 0020) uses it, so a mistyped DB_NAME fails at start
 // instead of creating an empty database.
 func OpenExisting(cfg Config) (*gorm.DB, error) {
-	db, err := gorm.Open(postgres.Open(buildDSN(cfg)))
+	db, err := open(buildDSN(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
@@ -251,7 +309,7 @@ func OpenExisting(cfg Config) (*gorm.DB, error) {
 
 func NewConnection(cfg Config) (*gorm.DB, error) {
 	dsn := buildDSN(cfg)
-	gormDB, err := gorm.Open(postgres.Open(dsn))
+	gormDB, err := open(dsn)
 	if err != nil {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, fmt.Sprintf("database %q does not exist", cfg.DBName)) {
@@ -268,7 +326,7 @@ func NewConnection(cfg Config) (*gorm.DB, error) {
 				log.Printf("Database '%s' was created concurrently by another process", cfg.DBName)
 			}
 			// Retry the connection after creating the database
-			gormDB, err = gorm.Open(postgres.Open(dsn))
+			gormDB, err = open(dsn)
 			if err != nil {
 				// If there is still an issue establishing the connection, return the error
 				return nil, fmt.Errorf("failed to connect to database: %w, after creating it", err)
@@ -294,7 +352,7 @@ func NewConnection(cfg Config) (*gorm.DB, error) {
 // This is useful for managed database providers like Neon that provide a
 // single connection string.
 func NewConnectionFromURL(databaseURL string, autoMigrate bool) (*gorm.DB, error) {
-	gormDB, err := gorm.Open(postgres.Open(databaseURL))
+	gormDB, err := open(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}

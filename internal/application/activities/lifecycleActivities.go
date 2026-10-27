@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/appcontext"
@@ -26,29 +25,8 @@ type LifecycleActivities struct {
 }
 
 // NewLifecycleActivities creates a new LifecycleActivities with a fully wired
-// DomainService. Follows the same DB initialization pattern as TLDCleanupActivities
-// but wires up the full service layer to preserve DDD boundaries.
-func NewLifecycleActivities(repositoryID entities.RepositoryID) (*LifecycleActivities, error) {
-	// Initialize gorm DB
-	var gormDB *gorm.DB
-	var err error
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		gormDB, err = postgres.NewConnectionFromURL(dbURL, false)
-	} else {
-		dbCfg := postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: os.Getenv("DB_SSLMODE"),
-		}
-		gormDB, err = postgres.NewConnection(dbCfg)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize DB for lifecycle activities: %w", err)
-	}
-
+// DomainService on the worker's shared database pool.
+func NewLifecycleActivities(gormDB *gorm.DB, repositoryID entities.RepositoryID) (*LifecycleActivities, error) {
 	// Wire up repositories
 	domainRepo := postgres.NewDomainRepository(gormDB, repositoryID)
 	hostRepo := postgres.NewGormHostRepository(gormDB, repositoryID)
