@@ -174,9 +174,9 @@ func moveHostsWithDomain(tx *gorm.DB, dbDomain *Domain, t *entities.DomainTransf
 	// domain itself, or any name below it), but for a name the gaining
 	// registrar already has.
 	var subordinate []int64
-	if err := tx.Raw(`SELECT ro_id FROM hosts h WHERE h.cl_id = ? AND (h.name = ? OR h.name LIKE ?)
+	if err := tx.Raw(`SELECT ro_id FROM hosts h WHERE h.cl_id = ? AND (h.name = ? OR `+hostUnderDomainSQL+`)
 		AND NOT EXISTS (SELECT 1 FROM hosts g WHERE g.cl_id = ? AND g.name = h.name)`,
-		losing, dbDomain.Name, "%."+dbDomain.Name, gaining).Scan(&subordinate).Error; err != nil {
+		losing, dbDomain.Name, dbDomain.Name, gaining).Scan(&subordinate).Error; err != nil {
 		return err
 	}
 	// The gaining registrar's hosts already named as re-linked nameservers.

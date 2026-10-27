@@ -36,7 +36,7 @@ func TestAutoMigrateIndexes(t *testing.T) {
 		Indexname string
 		Indexdef  string
 	}
-	if err := db.Raw("SELECT indexname, indexdef FROM pg_indexes WHERE tablename IN ('domains', 'domain_events')").Scan(&rows).Error; err != nil {
+	if err := db.Raw("SELECT indexname, indexdef FROM pg_indexes WHERE tablename IN ('domains', 'domain_events', 'hosts')").Scan(&rows).Error; err != nil {
 		t.Fatalf("list indexes: %v", err)
 	}
 	defs := map[string]string{}
@@ -52,6 +52,7 @@ func TestAutoMigrateIndexes(t *testing.T) {
 		"idx_domain_events_unpublished":           "WHERE (published = false)",
 		"idx_domain_events_occurred_at":           "",
 		"idx_events_subject_occurred":             "",
+		"idx_hosts_name_reverse":                  "reverse(name) text_pattern_ops",
 	}
 	for name, predicate := range wantPresent {
 		def, ok := defs[name]
