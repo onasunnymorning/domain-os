@@ -180,7 +180,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .cache/rdapct
-          key: rdapct-3.1.0
+          # The datasets carry a completion marker since #523.
+          key: rdapct-3.1.0-datasets-marked
 
       - name: Name the RDAP conformance test server
         # The tool refuses localhost and IP addresses as web URIs, and looks

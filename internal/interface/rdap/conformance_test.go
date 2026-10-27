@@ -82,6 +82,11 @@ func findRDAPCT(t *testing.T) *rdapct {
 		if os.Getenv("CI") != "" {
 			t.Fatalf("RDAP Conformance Tool required in CI: %s", msg)
 		}
+		if os.Getenv("RDAPCT_FETCH_DATASETS") != "" {
+			// `make rdapct` asked for the datasets: a skip would report an
+			// install that did not happen.
+			t.Fatalf("cannot fetch the tool's datasets: %s", msg)
+		}
 		// The marker puts it on the `make rst-rdap` scoreboard: without the
 		// tool, rdap-01 to rdap-04 are not graded as RST grades them.
 		t.Skipf("RST pending: the RDAP Conformance Tool is not available, so rdap-01 to rdap-04 are ungraded: %s", msg)
@@ -97,8 +102,10 @@ func findRDAPCT(t *testing.T) *rdapct {
 	if hex.EncodeToString(sum[:]) != rdapctSHA256 {
 		t.Fatalf("%s does not have the pinned checksum; delete it and run `make rdapct`", rdapctJar)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "datasets")); err != nil && os.Getenv("RDAPCT_FETCH_DATASETS") == "" {
-		return missing("the tool's IANA datasets are not in %s/datasets", dir)
+	// `make rdapct` writes the marker only after a fetch succeeds, so a
+	// partial fetch is never taken for the datasets.
+	if _, err := os.Stat(filepath.Join(dir, "datasets", ".complete")); err != nil && os.Getenv("RDAPCT_FETCH_DATASETS") == "" {
+		return missing("the tool's IANA datasets are not complete in %s/datasets", dir)
 	}
 	r := &rdapct{dir: dir, host: conformanceHost}
 	if os.Getenv("RDAPCT_DOCKER") != "" {
@@ -290,8 +297,11 @@ func runConformance(t *testing.T, r *rdapct, tmp, url string, flags ...string) c
 	if os.Getenv("RDAPCT_VERBOSE") != "" {
 		t.Logf("rdapct output:\n%s", out)
 	}
+	// The tool exits 0 whatever it finds; any other exit is a run that
+	// failed, whatever its report says.
+	require.NoError(t, err, "the tool failed: %s", out)
 	raw, readErr := os.ReadFile(results) // #nosec G304 -- test-only: the results file this run named
-	require.NoError(t, readErr, "the tool wrote no results (exit %v): %s", err, out)
+	require.NoError(t, readErr, "the tool wrote no results: %s", out)
 
 	var file struct {
 		Results struct {

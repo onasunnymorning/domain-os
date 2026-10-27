@@ -364,9 +364,12 @@ rdapct: ## Fetch the pinned RDAP Conformance Tool and its IANA datasets into .ca
 	fi
 	@echo "$(RDAPCT_SHA256)  $(RDAPCT_DIR)/rdapct-$(RDAPCT_VERSION).jar" | shasum -a 256 -c - >/dev/null \
 		|| { echo "rdapct-$(RDAPCT_VERSION).jar does not match the pinned checksum"; rm -f $(RDAPCT_DIR)/rdapct-$(RDAPCT_VERSION).jar; exit 1; }
-	@if [ ! -d $(RDAPCT_DIR)/datasets ]; then \
+	@if [ ! -f $(RDAPCT_DIR)/datasets/.complete ]; then \
 		echo "Fetching the tool's IANA datasets..."; \
-		RDAPCT_FETCH_DATASETS=1 go test -count=1 -run 'TestRST_RDAPConformanceTool/rdap-04' ./internal/interface/rdap/ >/dev/null; \
+		rm -rf $(RDAPCT_DIR)/datasets; \
+		RDAPCT_FETCH_DATASETS=1 go test -count=1 -run 'TestRST_RDAPConformanceTool/rdap-04' ./internal/interface/rdap/ >/dev/null \
+			|| { echo "fetching the datasets failed; run again (needs Java 21 and rdap.conformance.internal, or RDAPCT_DOCKER=1)"; exit 1; }; \
+		touch $(RDAPCT_DIR)/datasets/.complete; \
 	fi
 	@echo "rdapct $(RDAPCT_VERSION) and its datasets are in $(RDAPCT_DIR)"
 

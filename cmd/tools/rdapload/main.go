@@ -29,6 +29,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
@@ -90,6 +91,11 @@ func cli(args []string, out io.Writer) error {
 	}
 	if o.Workers < 1 || o.Miss < 0 || o.Miss > 1 || o.Duration <= 0 {
 		return errors.New("-workers must be at least 1, -miss between 0 and 1, -duration positive")
+	}
+	// A negative rate would mean no pacing at all, and one so high that its
+	// interval rounds to zero would panic the ticker.
+	if o.Rate < 0 || math.IsNaN(o.Rate) || (o.Rate > 0 && time.Duration(float64(time.Second)/o.Rate) <= 0) {
+		return errors.New("-rate must be 0 (as fast as possible) or a positive rate of at most 1e9 per second")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)

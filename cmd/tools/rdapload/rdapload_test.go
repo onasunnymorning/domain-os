@@ -69,6 +69,9 @@ func TestCLI(t *testing.T) {
 
 	assert.Error(t, cli([]string{"-base", srv.URL}, &out), "names are required")
 	assert.Error(t, cli([]string{"-name", "a.example", "-miss", "2"}, &out))
+	for _, rate := range []string{"-1", "2e9", "NaN"} {
+		assert.Error(t, cli([]string{"-base", srv.URL, "-name", "a.example", "-rate", rate}, &out), "-rate %s is refused before any load", rate)
+	}
 }
 
 func TestTruncatedBodyIsAFailure(t *testing.T) {
