@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-27T14:30:23Z",
+  "generated": "2026-10-27T16:03:33Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -448,11 +448,6 @@
             "name": "EPP_MAX_SESSIONS_PER_SOURCE_IP",
             "default": "20",
             "description": "Live sessions from one source address, across every node. Over it, the connection is closed before the greeting"
-          },
-          {
-            "name": "EPP_CHECK_PARALLELISM",
-            "default": "8",
-            "description": "Availability lookups one \u003ccheck\u003e runs at once. Below EPP_DB_MAX_OPEN_CONNS"
           },
           {
             "name": "EPP_MAX_CREATES_IN_FLIGHT",

@@ -114,6 +114,17 @@ func (dr *DomainRepository) GetDomainsByNames(ctx context.Context, names []strin
 	return result, nil
 }
 
+// ExistingNames returns the names among names that are registered, from the
+// unique index on name alone: no row is read.
+func (dr *DomainRepository) ExistingNames(ctx context.Context, names []string) ([]string, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	var found []string
+	err := dbFrom(ctx, dr.db).Model(&Domain{}).Where("name IN ?", names).Pluck("name", &found).Error
+	return found, err
+}
+
 // UpdateDomain updates a domain in the database.
 //
 // It is an UPDATE, not a Save. Save() writes the row by primary key and inserts

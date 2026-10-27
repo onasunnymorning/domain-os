@@ -69,6 +69,14 @@ func (m *mockNNDNRepository) GetNNDN(ctx context.Context, name string) (*entitie
 	return args.Get(0).(*entities.NNDN), args.Error(1)
 }
 
+func (m *mockNNDNRepository) ExistingNames(ctx context.Context, names []string) ([]string, error) {
+	args := m.Called(ctx, names)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]string), args.Error(1)
+}
+
 func (m *mockNNDNRepository) UpdateNNDN(ctx context.Context, nndn *entities.NNDN) (*entities.NNDN, error) {
 	args := m.Called(ctx, nndn)
 	if args.Get(0) == nil {

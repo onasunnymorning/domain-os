@@ -149,12 +149,12 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	if !t.phase.Policy.LabelIsAllowed(dn.Label()) {
 		return nil, entities.ErrLabelNotValidInPhase
 	}
-	switch reason, err := s.registeredOrReserved(ctx, dn.String()); {
+	switch registered, reserved, err := s.registeredOrReserved(ctx, []string{dn.String()}); {
 	case err != nil:
 		return nil, err
-	case reason == CheckReasonInUse:
+	case registered[dn.String()]:
 		return nil, ErrDomainExists
-	case reason == CheckReasonReserved:
+	case reserved[dn.String()]:
 		return nil, ErrDomainBlocked
 	}
 	if err := c.assignContacts(cmd.Contacts); err != nil {
