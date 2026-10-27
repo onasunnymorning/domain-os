@@ -27,6 +27,9 @@ type Options struct {
 	// Lookups reads the registry. Required.
 	Lookups interfaces.RDAPLookups
 	Logger  *slog.Logger
+	// Now is the clock, for the "last update of RDAP database" event and
+	// grace-period statuses. Defaults to time.Now.
+	Now func() time.Time
 }
 
 // Server is the RDAP server: HTTPS on the node (ADR 0020), with health,
@@ -38,6 +41,7 @@ type Server struct {
 	metrics *metrics
 	certs   *tlsconfig.CertSource
 	http    *http.Server
+	now     func() time.Time
 
 	// baseURL is the public base, ending in "/". basePath is its path,
 	// decoded, which requests are routed by; escapedBasePath is the same
@@ -76,6 +80,10 @@ func NewServer(opts Options) (*Server, error) {
 		escapedBasePath: base.EscapedPath(),
 		origin:          base.Scheme + "://" + base.Host,
 		termsOfService:  opts.Config.Notices.TermsOfServiceURL,
+		now:             opts.Now,
+	}
+	if s.now == nil {
+		s.now = time.Now
 	}
 	if s.basePath == "" {
 		s.basePath, s.escapedBasePath = "/", "/"

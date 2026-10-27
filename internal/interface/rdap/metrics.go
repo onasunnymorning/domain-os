@@ -29,6 +29,7 @@ type metrics struct {
 	certReloadErrors prometheus.Counter
 	draining         prometheus.Gauge
 	lookupErrors     *prometheus.CounterVec
+	redactions       *prometheus.CounterVec
 }
 
 func newMetrics() *metrics {
@@ -64,9 +65,13 @@ func newMetrics() *metrics {
 			Name: "rdap_lookup_errors_total",
 			Help: "Lookups that failed reading the registry (answered 500), by route.",
 		}, []string{"route"}),
+		redactions: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "rdap_redactions_total",
+			Help: "Contact fields withheld from responses, by TLD, field and RFC 9537 method. Never the values.",
+		}, []string{"tld", "field", "method"}),
 	}
 	m.registry.MustRegister(
-		m.requests, m.requestDuration, m.inFlight, m.certNotAfter, m.certReloadErrors, m.draining, m.lookupErrors,
+		m.requests, m.requestDuration, m.inFlight, m.certNotAfter, m.certReloadErrors, m.draining, m.lookupErrors, m.redactions,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)

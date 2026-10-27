@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onasunnymorning/domain-os/internal/application/rdappolicy"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -59,8 +60,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, q query) {
 			s.fail(w, r, http.StatusNotFound)
 			return
 		}
-		_, err := s.lookups.Domain(r.Context(), q.arg)
-		s.answerLookup(w, r, routeDomain, err == nil, errors.Is(err, entities.ErrDomainNotFound), err)
+		rec, err := s.lookups.Domain(r.Context(), q.arg)
+		switch {
+		case err == nil:
+			writeJSON(w, http.StatusOK, s.buildDomain(r, rec, rdappolicy.Anonymous()))
+		default:
+			s.answerLookup(w, r, routeDomain, false, errors.Is(err, entities.ErrDomainNotFound), err)
+		}
 	case queryNameserver:
 		found, err := s.lookups.NameserverExists(r.Context(), q.arg)
 		s.answerLookup(w, r, routeNameserver, found, err == nil && !found, err)
@@ -81,9 +87,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, q query) {
 
 // answerLookup answers a lookup by whether the object was found.
 //
-// Phase 1 answers only for objects that do not exist. The responses for
-// those that do arrive with Phase 2 (domains) and Phase 3 (nameservers and
-// registrars); until then an existing object is answered 501.
+// Nameservers and registrars that exist are answered 501 until Phase 3
+// builds their responses.
 func (s *Server) answerLookup(w http.ResponseWriter, r *http.Request, route string, found, notFound bool, err error) {
 	switch {
 	case notFound:
@@ -98,8 +103,8 @@ func (s *Server) answerLookup(w http.ResponseWriter, r *http.Request, route stri
 }
 
 // notices are the gTLD profile's notices that every top-level response
-// carries. The Status Codes and RDDS Inaccuracy notices belong to domain
-// responses and arrive with them (Phase 2).
+// carries. Domain responses add the Status Codes and RDDS Inaccuracy
+// notices (domainNotices).
 func (s *Server) notices(r *http.Request) []notice {
 	if s.termsOfService == "" {
 		return nil

@@ -26,6 +26,19 @@ func NewGormTLDRepo(db *gorm.DB) *GormTLDRepository {
 // is true, it preloads additional associated phase and pricing and fee details. If no record
 // is found, it returns entities.ErrTLDNotFound; otherwise, it returns any encountered
 // error.
+// GetWithPhases implements repositories.TLDPhaseReader: the TLD and its
+// phases, with no prices, fees or counts.
+func (repo *GormTLDRepository) GetWithPhases(ctx context.Context, name string) (*entities.TLD, error) {
+	dbtld := &TLD{}
+	if err := dbFrom(ctx, repo.db).Preload("Phases").Where("name = ?", name).First(dbtld).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, entities.ErrTLDNotFound
+		}
+		return nil, err
+	}
+	return FromDBTLD(dbtld), nil
+}
+
 func (repo *GormTLDRepository) GetByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error) {
 	dbtld := &TLD{}
 	var err error
