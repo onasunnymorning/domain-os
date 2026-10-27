@@ -85,7 +85,7 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request) (charge func(extr
 	s.metrics.policyDecisions.WithLabelValues(p.Name, scope, actionRefused).Inc()
 	retry := int(math.Ceil(res.Wait.Seconds()))
 	w.Header().Set("Retry-After", strconv.Itoa(max(retry, 1)))
-	writeError(w, http.StatusTooManyRequests, fmt.Sprintf("rate limit exceeded; scope=%s; retry after %ds", scope, max(retry, 1)))
+	s.fail(w, r, http.StatusTooManyRequests, fmt.Sprintf("rate limit exceeded; scope=%s; retry after %ds", scope, max(retry, 1)))
 	return none, false
 }
 

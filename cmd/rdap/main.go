@@ -54,7 +54,8 @@ func run(cfg config.RDAP, repositoryID entities.RepositoryID, logger *slog.Logge
 		logger.Warn("RDAP server is presenting a self-signed certificate (RDAP_TLS_SELF_SIGNED=true); local development only")
 	}
 
-	db, err := postgres.NewConnection(postgres.Config{
+	// Read-only: an existing database, never created or migrated here.
+	db, err := postgres.OpenExisting(postgres.Config{
 		User: cfg.DB.User, Pass: cfg.DB.Pass, Host: cfg.DB.Host, Port: cfg.DB.Port,
 		DBName: cfg.DB.Name, SSLmode: cfg.DB.SSLMode,
 	})
@@ -71,7 +72,9 @@ func run(cfg config.RDAP, repositoryID entities.RepositoryID, logger *slog.Logge
 	if err := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), schemaLog); err != nil {
 		return err
 	}
-	if err := postgres.CheckRepositoryID(context.Background(), db, repositoryID); err != nil {
+	// Read-only (ADR 0020): verify the recorded repository ID, never
+	// record it, so the server runs on SELECT-only credentials.
+	if err := postgres.VerifyRepositoryID(context.Background(), db, repositoryID); err != nil {
 		return err
 	}
 	logger.Info("Connected to the database", "host", cfg.DB.Host, "name", cfg.DB.Name)
