@@ -15,14 +15,16 @@
 
 ## Where it stands today
 
-The server runs (Phase 1) and serves domains (Phase 2), but not yet nameservers or registrars:
+The server runs (Phase 1) and serves domains (Phase 2), nameservers and registrars (Phase 3a):
 - `cmd/rdap` terminates TLS on the node (TLS 1.2 and 1.3, the RFC 9325 suites, a hot-reloaded certificate), accepts PROXY protocol from trusted load balancers, and serves health, readiness and metrics on an ops port.
 - It routes the registry-wide base URL and each TLD's (`{base}{tld}/`), answers `/help`, and gives RDAP error objects with CORS on every response.
 - **Domain lookups answer with full domain objects** (Phase 2): statuses (RFC 8056), events, the registrar and its abuse contact, nameservers with glue, DS records, IDN names, ROID handles, the gTLD profile's notices, and contacts as the TLD's policy allows, redacted per RFC 9537.
-- A nameserver or registrar that exists is answered **501** until Phase 3. Anything that does not exist is a 404. Rate limiting is Phase 4, so the server must not be deployed publicly before then.
+- **Nameserver lookups** answer with the host, its addresses, statuses and sponsor. When several registrars hold a host with the name, the one sponsored by its superordinate domain's sponsor is served, otherwise the oldest, and `rdap_nameserver_ambiguous_total` counts it.
+- **Registrar lookups** by IANA ID answer with the registrar's name, address, phone, email and abuse contact. Any other entity handle is a 404 (contacts are served only inside a domain).
+- Anything that does not exist is a 404. Rate limiting is Phase 4, so the server must not be deployed publicly before then.
 - The TLD in a base URL is not yet checked against the TLDs the registry serves. Any label is accepted, and a domain outside that label is a 404.
 
-`make rst-rdap` reports rdap-01 and rdap-04 (shape; the conformance tool grades them from Phase 6), rdap-05, 08, 09, 10 and 91 passing. rdap-91's CA and chain requirements are operational. The port-43 `cmd/whois` stays as it is until the later phase that retires it.
+`make rst-rdap` reports rdap-01 to 04 (shape; the conformance tool grades them from Phase 6), rdap-05 to 10 and 91 passing; only rdap-92 is pending, a deployment check. rdap-91's CA and chain requirements are operational. The port-43 `cmd/whois` stays as it is until the later phase that retires it.
 
 ---
 
@@ -59,7 +61,7 @@ The server runs (Phase 1) and serves domains (Phase 2), but not yet nameservers 
 - Nameserver resolution: when several registrars hold a host with the same name, the host sponsored by its superordinate domain's sponsor is served, otherwise the oldest (ADR 0020 decision 5).
 - Entities: registrars are served by IANA ID. Contacts are served only inside a domain response, never by a direct lookup.
 
-*Today:* the surface is built (Phase 1): routing, `/help`, errors, CORS, HEAD, 501 for searches, 405 for other methods, 400 for paths that are not RDAP queries, and IDN names accepted as U-labels or A-labels. Existing objects are answered 501 until Phase 2 (domains) and Phase 3 (nameservers and entities). The `/help` and error responses carry `rdapConformance`; the Terms of Use notice comes from `RDAP_TERMS_OF_SERVICE_URL` until Phase 3 moves it into each TLD's policy.
+*Today:* the surface is built (Phase 1): routing, `/help`, errors, CORS, HEAD, 501 for searches, 405 for other methods, 400 for paths that are not RDAP queries, and IDN names accepted as U-labels or A-labels. Domains (Phase 2), nameservers and registrars (Phase 3a) answer with their objects. The `/help` and error responses carry `rdapConformance`; the Terms of Use notice comes from `RDAP_TERMS_OF_SERVICE_URL` until Phase 3 moves it into each TLD's policy.
 
 ## 3. Publication and redaction
 
@@ -112,7 +114,8 @@ Each phase is one or more PRs and can be shipped on its own.
 | 0 | Pin the RST v2.0 RDAP catalogue (`internal/interface/rdap/testdata/rst/`), its completeness test and `make rst-rdap`; ADRs 0020, 0021 and 0022; ADR 0006 amended with the public read plane; this page, the policy and publication references and the runbook as skeletons | **Done** |
 | 1 | Server skeleton: `cmd/rdap`, `internal/config/rdap.go` with its variables in the env registry and deployment contract, the EPP server's TLS moved to `internal/infrastructure/tlsconfig` and shared, PROXY protocol, the ops port and drain, routing per TLD base URL, RDAP error objects, CORS, HEAD, `/help`, `rdapConformance` and the Terms of Use notice, base metrics, `Dockerfile.rdap` in the CI image matrix, compose and Tilt | **Done**. rdap-04 (shape), 08, 09, 10 and 91 pass. Existing objects are answered 501 until Phases 2 and 3 |
 | 2 | Domain lookup through `RDAPService`: statuses (RFC 8056), events, the registrar and its abuse contact, nameservers with glue, DS data, IDN names, ROID handles, the gTLD notices; `rdappolicy.Decide` with built-in publication policies by TLD type, the current GA phase's contact roles, disclose flags and `redacted` (RFC 9537); golden responses for thick, thin and thick-to-thin TLDs | **Done**. rdap-01 (shape) and rdap-05 pass. Reserved and blocked names are served as stored domains; there is no special case |
-| 3 | Nameserver lookup (`HostRepository` lookup by name, the resolution rule), registrar entities by IANA ID; publication policies as data (`rdap_publication_policies`, assignments per TLD, built-ins `gtld-rdp-2024` and `cctld-minimal`), admin API under `rdap:policy:admin`. Moves rdap-02, 03, 06 and 07 | Planned |
+| 3a | Nameserver lookup (`HostRepository.ListHostsByName`, the resolution rule, `rdap_nameserver_ambiguous_total`) and registrar entities by IANA ID, with statuses (RFC 8056), addresses, events, the registrar's contact data and abuse contact | **Done**. rdap-02, 03 (shape), 06 and 07 pass |
+| 3b | Publication policies as data (`rdap_publication_policies`, assignments per TLD, built-ins `gtld-rdp-2024` and `cctld-minimal`), the contact form URI and terms of use per policy, admin API under `rdap:policy:admin`, reload by polling | Planned |
 | 4 | Rate limiting: the EPP GCRA limiter extracted to `internal/infrastructure/ratelimit`; access policies assigned to networks (`anonymous`, `monitoring`), per-address and per-aggregate buckets, the not-found cost, 429 with `Retry-After`, node limits, fail-open, admin API. **Must land before any public deployment** | Planned |
 | 5 | Alert rules (`prometheus/rules/rdap.rules.yml`, with promtool unit tests), the *RDAP server* Grafana dashboard, this runbook filled in, and the test that keeps rules and panels to served metrics; optionally ICANN's MoSAPI view of RDAP availability as an alert | Planned |
 | 6 | `cmd/tools/rdapload`; the RDAP Conformance Tool and its RST config pinned and run by the suite (skipped locally without Java, required in CI), with seeded thick and thin TLDs. rdap-01 to 04 graded by the tool | Planned |

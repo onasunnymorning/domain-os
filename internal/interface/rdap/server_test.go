@@ -14,13 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 func registry() *fakeLookups {
 	return &fakeLookups{
 		domains:     map[string]*interfaces.RDAPDomain{"example.tld": minimalDomain("example.tld", "tld"), "xn--bcher-kva.tld": minimalDomain("xn--bcher-kva.tld", "tld")},
-		nameservers: map[string]bool{"ns1.example.tld": true},
-		registrars:  map[int]bool{9995: true},
+		nameservers: map[string]*interfaces.RDAPNameserver{"ns1.example.tld": testNameserver("ns1.example.tld")},
+		registrars:  map[int]*entities.Registrar{9995: testRegistrar()},
 	}
 }
 
@@ -100,8 +101,8 @@ func TestResponses(t *testing.T) {
 		{"existing domain under its TLD", http.MethodGet, "tld/domain/example.tld", http.StatusOK},
 		{"existing IDN domain by U-label", http.MethodGet, "domain/b%C3%BCcher.tld", http.StatusOK},
 		{"HEAD of a domain", http.MethodHead, "domain/example.tld", http.StatusOK},
-		{"existing nameserver, not served yet", http.MethodGet, "nameserver/ns1.example.tld", http.StatusNotImplemented},
-		{"existing registrar, not served yet", http.MethodGet, "entity/9995", http.StatusNotImplemented},
+		{"existing nameserver", http.MethodGet, "nameserver/ns1.example.tld", http.StatusOK},
+		{"existing registrar", http.MethodGet, "entity/9995", http.StatusOK},
 		{"search", http.MethodGet, "domains?name=ex*", http.StatusNotImplemented},
 		{"unknown query", http.MethodGet, "ip/192.0.2.1", http.StatusBadRequest},
 		{"invalid name", http.MethodGet, "domain/-bad-.tld", http.StatusBadRequest},

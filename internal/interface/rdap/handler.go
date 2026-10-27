@@ -61,15 +61,18 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, q query) {
 			return
 		}
 		rec, err := s.lookups.Domain(r.Context(), q.arg)
-		switch {
-		case err == nil:
+		if err == nil {
 			writeJSON(w, http.StatusOK, s.buildDomain(r, rec, rdappolicy.Anonymous()))
-		default:
-			s.answerLookup(w, r, routeDomain, false, errors.Is(err, entities.ErrDomainNotFound), err)
+			return
 		}
+		s.answerLookup(w, r, routeDomain, errors.Is(err, entities.ErrDomainNotFound), err)
 	case queryNameserver:
-		found, err := s.lookups.NameserverExists(r.Context(), q.arg)
-		s.answerLookup(w, r, routeNameserver, found, err == nil && !found, err)
+		rec, err := s.lookups.Nameserver(r.Context(), q.arg)
+		if err == nil {
+			writeJSON(w, http.StatusOK, s.buildNameserver(r, rec))
+			return
+		}
+		s.answerLookup(w, r, routeNameserver, errors.Is(err, entities.ErrHostNotFound), err)
 	case queryEntity:
 		// Only registrars are served directly, by IANA ID. A contact
 		// appears only inside a domain's response (ADR 0020 decision 5).
@@ -78,28 +81,27 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, q query) {
 			s.fail(w, r, http.StatusNotFound)
 			return
 		}
-		_, err := s.lookups.Registrar(r.Context(), ianaID)
-		s.answerLookup(w, r, routeEntity, err == nil, errors.Is(err, entities.ErrRegistrarNotFound), err)
+		rr, err := s.lookups.Registrar(r.Context(), ianaID)
+		if err == nil {
+			writeJSON(w, http.StatusOK, s.buildRegistrar(r, rr))
+			return
+		}
+		s.answerLookup(w, r, routeEntity, errors.Is(err, entities.ErrRegistrarNotFound), err)
 	default:
 		s.fail(w, r, http.StatusBadRequest, q.problem)
 	}
 }
 
-// answerLookup answers a lookup by whether the object was found.
-//
-// Nameservers and registrars that exist are answered 501 until Phase 3
-// builds their responses.
-func (s *Server) answerLookup(w http.ResponseWriter, r *http.Request, route string, found, notFound bool, err error) {
-	switch {
-	case notFound:
+// answerLookup answers a lookup that found nothing: 404 if the object does
+// not exist, 500 if the registry could not be read.
+func (s *Server) answerLookup(w http.ResponseWriter, r *http.Request, route string, notFound bool, err error) {
+	if notFound {
 		s.fail(w, r, http.StatusNotFound)
-	case found:
-		s.fail(w, r, http.StatusNotImplemented, "this object exists; responses for it are not served yet")
-	default:
-		s.metrics.lookupErrors.WithLabelValues(route).Inc()
-		s.logger.Error("RDAP lookup failed reading the registry; answered 500", "route", route, "error", err)
-		s.fail(w, r, http.StatusInternalServerError)
+		return
 	}
+	s.metrics.lookupErrors.WithLabelValues(route).Inc()
+	s.logger.Error("RDAP lookup failed reading the registry; answered 500", "route", route, "error", err)
+	s.fail(w, r, http.StatusInternalServerError)
 }
 
 // notices are the gTLD profile's notices that every top-level response

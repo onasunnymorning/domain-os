@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/rdappolicy"
@@ -86,10 +87,81 @@ func (s *RDAPService) Domain(ctx context.Context, name string) (*interfaces.RDAP
 	return out, nil
 }
 
-// NameserverExists reports whether any registrar holds a host named name.
-func (s *RDAPService) NameserverExists(ctx context.Context, name string) (bool, error) {
-	n, err := s.hosts.CountHostsByName(ctx, name)
-	return n > 0, err
+// Nameserver returns the host served for name, or entities.ErrHostNotFound.
+//
+// Host names are unique per registrar, not across the registry, so a name
+// can match several hosts. RFC 9082 has no "several" answer for an exact
+// lookup, so one is picked (ADR 0020 decision 5): the host sponsored by the
+// sponsor of its superordinate domain, which is the host RFC 5732 says the
+// name belongs to and the one whose glue is published; otherwise the oldest.
+func (s *RDAPService) Nameserver(ctx context.Context, name string) (*interfaces.RDAPNameserver, error) {
+	hosts, err := s.hosts.ListHostsByName(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if len(hosts) == 0 {
+		return nil, entities.ErrHostNotFound
+	}
+	out := &interfaces.RDAPNameserver{Host: hosts[0], Ambiguous: len(hosts) > 1}
+	if out.Ambiguous {
+		sponsor, err := s.superordinateSponsor(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		for _, h := range hosts {
+			if sponsor != "" && h.ClID == sponsor {
+				out.Host = h
+				break
+			}
+		}
+	}
+	// The stored linked flag can outlive the host's last association, so
+	// it is counted now, as EPP's <host:info> does.
+	id, err := out.Host.RoID.Int64()
+	if err != nil {
+		return nil, fmt.Errorf("nameserver %s: %w", name, err)
+	}
+	links, err := s.hosts.GetHostAssociationCount(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("count domains using nameserver %s: %w", name, err)
+	}
+	out.Host.Status.Linked = links > 0
+
+	out.Registrar, err = s.registrars.GetByClID(ctx, out.Host.ClID.String(), false)
+	if err != nil && !errors.Is(err, entities.ErrRegistrarNotFound) {
+		return nil, fmt.Errorf("sponsor %s of nameserver %s: %w", out.Host.ClID, name, err)
+	}
+	return out, nil
+}
+
+// superordinateSponsor is the sponsor of the registered domain host name
+// sits under, or empty if it sits under none: an external host, or one whose
+// superordinate domain is not registered. The placement is EPP's
+// (EPPHostService.place): the host's TLD is the longest suffix that is a
+// TLD this registry serves, so a host under x.co.uk is placed under co.uk
+// when both uk and co.uk are served, and its superordinate domain is that
+// TLD and one more label, which may be the host's whole name.
+func (s *RDAPService) superordinateSponsor(ctx context.Context, name string) (entities.ClIDType, error) {
+	labels := strings.Split(name, ".")
+	for k := 1; k < len(labels); k++ {
+		tld := strings.Join(labels[k:], ".")
+		_, err := s.tlds.GetWithPhases(ctx, tld)
+		if errors.Is(err, entities.ErrTLDNotFound) {
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("look up TLD %s: %w", tld, err)
+		}
+		d, err := s.domains.GetDomainByName(ctx, strings.Join(labels[k-1:], "."), false)
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			return "", nil
+		}
+		if err != nil {
+			return "", err
+		}
+		return d.ClID, nil
+	}
+	return "", nil
 }
 
 // Registrar returns the registrar with IANA ID ianaID, or

@@ -30,6 +30,8 @@ type metrics struct {
 	draining         prometheus.Gauge
 	lookupErrors     *prometheus.CounterVec
 	redactions       *prometheus.CounterVec
+
+	nameserversAmbiguous prometheus.Counter
 }
 
 func newMetrics() *metrics {
@@ -69,9 +71,13 @@ func newMetrics() *metrics {
 			Name: "rdap_redactions_total",
 			Help: "Contact fields withheld from responses, by TLD, field and RFC 9537 method. Never the values.",
 		}, []string{"tld", "field", "method"}),
+		nameserversAmbiguous: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "rdap_nameserver_ambiguous_total",
+			Help: "Nameserver lookups that matched hosts of more than one registrar, answered with the one the rule picked (ADR 0020 decision 5).",
+		}),
 	}
 	m.registry.MustRegister(
-		m.requests, m.requestDuration, m.inFlight, m.certNotAfter, m.certReloadErrors, m.draining, m.lookupErrors, m.redactions,
+		m.requests, m.requestDuration, m.inFlight, m.certNotAfter, m.certReloadErrors, m.draining, m.lookupErrors, m.redactions, m.nameserversAmbiguous,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
