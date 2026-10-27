@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -209,4 +210,60 @@ func TestRDAPNameserverResolution(t *testing.T) {
 		_, err := svc.Nameserver(context.Background(), "ns1.a.example")
 		assert.ErrorIs(t, err, entities.ErrHostNotFound)
 	})
+}
+
+// rdapSnapshots answers Snapshot with what it holds, or fails.
+type rdapSnapshots struct {
+	repositories.RDAPPublicationPolicyRepository
+	policies    []*entities.RDAPPublicationPolicy
+	assignments map[entities.DomainName]string
+	err         error
+}
+
+func (f *rdapSnapshots) Snapshot(context.Context) ([]*entities.RDAPPublicationPolicy, map[entities.DomainName]string, error) {
+	return f.policies, f.assignments, f.err
+}
+
+func TestRDAPServiceAppliesTheLoadedPolicyAndKeepsIt(t *testing.T) {
+	// A stored policy stricter than the gTLD built-in: it publishes no tech
+	// contact, and withholds the registrant's state or province.
+	strict := entities.BuiltInRDAPPublicationPolicies()[0]
+	strict.Name = "strict"
+	delete(strict.Roles, entities.RDAPRoleTech)
+	strict.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldSP] = entities.RDAPFieldRule{Rule: entities.RDAPWithhold, Method: entities.RDAPEmptyValue}
+
+	repo := &rdapSnapshots{policies: []*entities.RDAPPublicationPolicy{strict}, assignments: map[entities.DomainName]string{"example": "strict"}}
+	var read []string
+	svc := NewRDAPService(RDAPServiceDeps{
+		Domains:     rdapDomains{d: &entities.Domain{Name: "a.example", TLDName: "example", ClID: "rar", RegistrantID: "reg", TechID: "tec"}},
+		Registrars:  rdapRegistrars{},
+		TLDs:        rdapTLDs{t: rdapTLD(entities.TLDTypeGTLD, entities.NewContactDataPolicy())},
+		Contacts:    rdapContacts{read: &read},
+		Publication: NewRDAPPublicationPolicyService(repo, nil),
+	})
+	check := func(when string) {
+		t.Helper()
+		read = nil
+		rec, err := svc.Domain(context.Background(), "a.example")
+		require.NoError(t, err)
+		assert.Equal(t, "strict", rec.Publication.Name, when)
+		assert.Equal(t, []string{"reg"}, read, "%s: the tech contact is not read, its role unpublished", when)
+		assert.Equal(t, entities.RDAPWithhold, rec.Publication.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldSP].Rule, when)
+	}
+
+	rec, err := svc.Domain(context.Background(), "a.example")
+	require.NoError(t, err)
+	assert.Equal(t, entities.RDAPPolicyGTLDRDP2024, rec.Publication.Name, "before any load, the built-in")
+
+	require.NoError(t, svc.RefreshPublicationPolicies(context.Background()))
+	check("after the load")
+
+	repo.err = errors.New("database unavailable")
+	require.Error(t, svc.RefreshPublicationPolicies(context.Background()))
+	check("after a failed load")
+
+	repo.err = nil
+	repo.assignments = map[entities.DomainName]string{"example": "created-later"}
+	require.Error(t, svc.RefreshPublicationPolicies(context.Background()), "an assignment to a policy not in the snapshot")
+	check("after an inconsistent snapshot")
 }
