@@ -229,7 +229,7 @@ fuzz-epp: ## Fuzz the EPP frame scanner and command pipeline, FUZZTIME each (def
 .PHONY: alerts-check
 alerts-check: ## Check the Prometheus config, alert rules and their unit tests with promtool (needs Docker)
 	@docker run --rm -v "$(CURDIR)/prometheus:/etc/prometheus" --entrypoint promtool prom/prometheus:v3.10.0 check config /etc/prometheus/prometheus.yaml
-	@docker run --rm -v "$(CURDIR)/prometheus:/etc/prometheus" -w /etc/prometheus/tests --entrypoint promtool prom/prometheus:v3.10.0 test rules epp.rules.test.yml
+	@docker run --rm -v "$(CURDIR)/prometheus:/etc/prometheus" -w /etc/prometheus/tests --entrypoint promtool prom/prometheus:v3.10.0 test rules epp.rules.test.yml rdap.rules.test.yml
 
 test-integration: ## [LEGACY FALLBACK] Run Postman/Newman integration tests (requires Doppler + API keys)
 	@echo "Running integration tests with Postman/Newman..."

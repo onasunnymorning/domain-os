@@ -1,0 +1,103 @@
+# promtool unit tests for rdap.rules.yml: `make alerts-check`.
+rule_files:
+  - ../rules/rdap.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'up{job="rdap-server", instance="rdap-1"}'
+        values: '1 0 0 0 0'
+      - series: 'rdap_policy_decisions_total{instance="rdap-1", policy="monitoring", scope="address", action="refused"}'
+        values: '0 0 3 3 3'
+      - series: 'rdap_ratelimit_degraded{instance="rdap-1"}'
+        values: '0 1 1 1 1'
+      - series: 'rdap_server_cert_not_after_timestamp_seconds{instance="rdap-1"}'
+        values: '432000+0x4' # 5 days after the epoch: under 7 and 30 days
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: RDAPServerDown
+        exp_alerts: [] # not yet for 2 minutes
+      - eval_time: 4m
+        alertname: RDAPServerDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: rdap-server, instance: rdap-1 }
+            exp_annotations:
+              summary: "RDAP node rdap-1 is not answering on its ops port"
+              runbook: "docs/rdap/RUNBOOK.md#rdap-server-down"
+      - eval_time: 3m
+        alertname: RDAPMonitoringThrottled
+        exp_alerts:
+          - exp_labels: { severity: critical, scope: address }
+            exp_annotations:
+              summary: "Clients on the monitoring policy are being refused (address limit)"
+              runbook: "docs/rdap/RUNBOOK.md#monitoring-is-being-throttled"
+      - eval_time: 4m
+        alertname: RDAPRateLimitDegraded
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: rdap-1 }
+            exp_annotations:
+              summary: "rdap-1 cannot reach Redis; it limits clients on its own"
+              runbook: "docs/rdap/RUNBOOK.md#the-rate-limiter-is-degraded"
+      - eval_time: 2m
+        alertname: RDAPServerCertExpiresIn7Days
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: rdap-1 }
+            exp_annotations:
+              summary: "The RDAP server certificate on rdap-1 expires in 4d 23h 58m 0s"
+              runbook: "docs/rdap/RUNBOOK.md#rotate-the-certificate"
+
+  - interval: 1m
+    input_series:
+      # 10% of requests are 500s, for long enough.
+      - series: 'rdap_requests_total{instance="rdap-1", route="domain", code="200"}'
+        values: '0+90x15'
+      - series: 'rdap_requests_total{instance="rdap-1", route="domain", code="500"}'
+        values: '0+10x15'
+      # p95 well over 400 ms: every request in the 0.5 s bucket.
+      - series: 'rdap_request_duration_seconds_bucket{instance="rdap-1", route="domain", le="0.4"}'
+        values: '0+0x15'
+      - series: 'rdap_request_duration_seconds_bucket{instance="rdap-1", route="domain", le="0.5"}'
+        values: '0+100x15'
+      - series: 'rdap_request_duration_seconds_bucket{instance="rdap-1", route="domain", le="+Inf"}'
+        values: '0+100x15'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RDAPServerErrors
+        exp_alerts:
+          - exp_labels: { severity: critical, instance: rdap-1 }
+            exp_annotations:
+              summary: "rdap-1 answers 10% of RDAP requests with a server error"
+              runbook: "docs/rdap/RUNBOOK.md#rdap-server-errors"
+      - eval_time: 15m
+        alertname: RDAPLatencyOverSLA
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "RDAP p95 response time is 495ms, over the SLA's 400 ms"
+              runbook: "docs/rdap/RUNBOOK.md#latency-over-the-sla"
+
+  # The first lookup error and the first shed request fire: the counters are
+  # exposed at zero before any traffic.
+  - interval: 1m
+    input_series:
+      - series: 'rdap_lookup_errors_total{instance="rdap-1", route="domain"}'
+        values: '0 0 1 1 1'
+      - series: 'rdap_shed_total{instance="rdap-1", reason="in_flight"}'
+        values: '0 0 1 1 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: RDAPLookupsFailing
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: rdap-1, route: domain }
+            exp_annotations:
+              summary: "rdap-1 cannot read the registry for domain lookups"
+              runbook: "docs/rdap/RUNBOOK.md#rdap-server-errors"
+      - eval_time: 3m
+        alertname: RDAPShedding
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: rdap-1, reason: in_flight }
+            exp_annotations:
+              summary: "rdap-1 is refusing work to protect itself (in_flight)"
+              runbook: "docs/rdap/RUNBOOK.md#the-node-is-shedding-load"

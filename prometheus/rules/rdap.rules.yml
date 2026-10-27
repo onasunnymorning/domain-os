@@ -1,0 +1,145 @@
+# Alert rules for the RDAP server (docs/rdap/ARCHITECTURE.md §5, Phase 5).
+#
+# Every metric named here is one the RDAP server serves on its ops port:
+# TestAlertRulesNameServedMetrics (internal/interface/rdap) fails if a rule
+# names one that does not exist, or links to a runbook section that does
+# not. Each alert links to its section of docs/rdap/RUNBOOK.md.
+#
+# RDAP availability and round-trip time are SLA terms: ICANN's probes count
+# every minute the service is down and every query slower than 400 ms. So
+# the availability and latency alerts page.
+#
+# Severity: critical pages someone now; warning is looked at the same day;
+# info is for a dashboard or a ticket.
+
+groups:
+  - name: rdap-availability
+    rules:
+      - alert: RDAPServerDown
+        expr: up{job="rdap-server"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RDAP node {{ $labels.instance }} is not answering on its ops port"
+          runbook: "docs/rdap/RUNBOOK.md#rdap-server-down"
+
+      - alert: RDAPServerErrors
+        # 500s are lookups that could not read the registry; 503s are the
+        # node shedding load. Either is an outage to the SLA monitors.
+        expr: |
+          sum by (instance) (rate(rdap_requests_total{code=~"500|503"}[5m]))
+            / sum by (instance) (rate(rdap_requests_total[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} answers {{ $value | humanizePercentage }} of RDAP requests with a server error"
+          runbook: "docs/rdap/RUNBOOK.md#rdap-server-errors"
+
+      - alert: RDAPLookupsFailing
+        expr: sum by (instance, route) (increase(rdap_lookup_errors_total[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} cannot read the registry for {{ $labels.route }} lookups"
+          runbook: "docs/rdap/RUNBOOK.md#rdap-server-errors"
+
+  - name: rdap-sla
+    rules:
+      - alert: RDAPLatencyOverSLA
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(rdap_request_duration_seconds_bucket[5m]))) > 0.4
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RDAP p95 response time is {{ $value | humanizeDuration }}, over the SLA's 400 ms"
+          runbook: "docs/rdap/RUNBOOK.md#latency-over-the-sla"
+
+      - alert: RDAPShedding
+        expr: sum by (instance, reason) (increase(rdap_shed_total[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} is refusing work to protect itself ({{ $labels.reason }})"
+          runbook: "docs/rdap/RUNBOOK.md#the-node-is-shedding-load"
+
+  - name: rdap-abuse
+    rules:
+      - alert: RDAPMonitoringThrottled
+        # A throttled ICANN probe or RST client is an SLA miss we caused.
+        expr: sum by (scope) (increase(rdap_policy_decisions_total{policy="monitoring", action="refused"}[5m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Clients on the monitoring policy are being refused ({{ $labels.scope }} limit)"
+          runbook: "docs/rdap/RUNBOOK.md#monitoring-is-being-throttled"
+
+      - alert: RDAPClientsRefused
+        expr: sum by (policy, scope) (rate(rdap_policy_decisions_total{action="refused"}[10m])) > 1
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "More than one {{ $labels.policy }} request a second is refused at the {{ $labels.scope }} limit"
+          runbook: "docs/rdap/RUNBOOK.md#clients-are-being-refused"
+
+      - alert: RDAPEnumeration
+        # Most lookups finding nothing, at volume, is someone guessing names.
+        expr: |
+          sum(rate(rdap_requests_total{route=~"domain|nameserver|entity", code="404"}[10m]))
+            / sum(rate(rdap_requests_total{route=~"domain|nameserver|entity"}[10m])) > 0.8
+          and sum(rate(rdap_requests_total{route=~"domain|nameserver|entity"}[10m])) > 5
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of RDAP lookups find nothing"
+          runbook: "docs/rdap/RUNBOOK.md#enumeration"
+
+  - name: rdap-stores
+    rules:
+      - alert: RDAPRateLimitDegraded
+        expr: max by (instance) (rdap_ratelimit_degraded) == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} cannot reach Redis; it limits clients on its own"
+          runbook: "docs/rdap/RUNBOOK.md#the-rate-limiter-is-degraded"
+
+      - alert: RDAPPoliciesStale
+        expr: time() - rdap_policies_refreshed_timestamp_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} has not reloaded its RDAP policies for {{ $value | humanizeDuration }}"
+          runbook: "docs/rdap/RUNBOOK.md#policies-are-not-refreshing"
+
+  - name: rdap-certificates
+    rules:
+      - alert: RDAPServerCertExpiresIn30Days
+        expr: rdap_server_cert_not_after_timestamp_seconds - time() < 30 * 86400
+        labels:
+          severity: warning
+        annotations:
+          summary: "The RDAP server certificate on {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+          runbook: "docs/rdap/RUNBOOK.md#rotate-the-certificate"
+
+      - alert: RDAPServerCertExpiresIn7Days
+        expr: rdap_server_cert_not_after_timestamp_seconds - time() < 7 * 86400
+        labels:
+          severity: critical
+        annotations:
+          summary: "The RDAP server certificate on {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+          runbook: "docs/rdap/RUNBOOK.md#rotate-the-certificate"
+
+      - alert: RDAPServerCertReloadFailing
+        expr: increase(rdap_server_cert_reload_errors_total[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} cannot reload its server certificate; it keeps serving the one it has"
+          runbook: "docs/rdap/RUNBOOK.md#rotate-the-certificate"
