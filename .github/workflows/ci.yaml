@@ -182,14 +182,15 @@ jobs:
           path: .cache/rdapct
           key: rdapct-3.1.0
 
-      - name: Install the RDAP Conformance Tool
-        run: make rdapct
-
       - name: Name the RDAP conformance test server
         # The tool refuses localhost and IP addresses as web URIs, and looks
         # the server's name up in DNS with its own client before validating
-        # anything. systemd-resolved serves /etc/hosts entries over DNS.
+        # anything. systemd-resolved serves /etc/hosts entries over DNS. Before
+        # the install: on a cold cache it runs the test to fetch datasets.
         run: echo "127.0.0.1 rdap.conformance.internal" | sudo tee -a /etc/hosts
+
+      - name: Install the RDAP Conformance Tool
+        run: make rdapct
 
       - name: Run All Tests
         run: |

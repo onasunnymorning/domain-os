@@ -82,7 +82,9 @@ func findRDAPCT(t *testing.T) *rdapct {
 		if os.Getenv("CI") != "" {
 			t.Fatalf("RDAP Conformance Tool required in CI: %s", msg)
 		}
-		t.Skipf("RDAP Conformance Tool not available: %s", msg)
+		// The marker puts it on the `make rst-rdap` scoreboard: without the
+		// tool, rdap-01 to rdap-04 are not graded as RST grades them.
+		t.Skipf("RST pending: the RDAP Conformance Tool is not available, so rdap-01 to rdap-04 are ungraded: %s", msg)
 		return nil
 	}
 	dir, err := filepath.Abs("../../../.cache/rdapct")

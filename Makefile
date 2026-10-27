@@ -340,7 +340,7 @@ rst-rdap: ## ICANN RST v2.0 RDAP readiness scoreboard (ADR 0015)
 	echo "RST v2.0 StandardRDAP (pinned: internal/interface/rdap/testdata/rst/PROVENANCE.md)"; \
 	grep -E '^\s+--- (PASS|FAIL|SKIP): TestRST_[^/]+/' $$out | sed -E 's/^ +--- //; s/ \([0-9.]+s\)$$//'; \
 	echo ""; echo "Pending and operational reasons:"; \
-	grep -E 'RST (pending|operational)' $$out | sed -E 's/^ +rst_rdap_test.go:[0-9]+: /  /' | sort | uniq -c | sort -rn; \
+	grep -E 'RST (pending|operational)' $$out | sed -E 's/^ +[a-z_]+_test.go:[0-9]+: /  /' | sort | uniq -c | sort -rn; \
 	echo ""; \
 	printf "passed %s  failed %s  pending %s  operational %s\n" \
 		"$$(grep -cE '^\s+--- PASS: TestRST_[^/]+/' $$out)" \
