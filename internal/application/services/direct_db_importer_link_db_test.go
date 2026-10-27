@@ -96,16 +96,19 @@ func TestLinkDomainHosts_SharesOnePoolAcrossConcurrentLinkers(t *testing.T) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					total, inserted, err := l.imp.LinkDomainHosts(ctx, l.staged, "", func(string) {})
-					results[i] = [3]int64{total, inserted}
+					var batches int64
+					total, inserted, err := l.imp.LinkDomainHosts(ctx, l.staged, "", func(string) { batches++ })
+					results[i] = [3]int64{total, inserted, batches}
 					errs[i] = err
 				}()
 			}
 			wg.Wait()
+			const wantBatches = (perLinker + batch - 1) / batch
 			for i := range 2 {
 				require.NoError(t, errs[i], "linker %d", i)
 				require.Equal(t, int64(perLinker), results[i][0], "linker %d read every staged link", i)
 				require.Equal(t, int64(perLinker), results[i][1], "linker %d inserted every link", i)
+				require.Equal(t, int64(wantBatches), results[i][2], "linker %d ran one batch per %d links, each on the held connection", i, batch)
 			}
 			var n int64
 			require.NoError(t, db.Raw(`SELECT count(*) FROM domain_hosts`).Scan(&n).Error)

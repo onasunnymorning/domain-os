@@ -67,6 +67,9 @@ type DirectDBImporter struct {
 
 const defaultImportBatchSize = 5000
 
+// linkBatchSize is LinkDomainHosts's default rows per batch.
+const linkBatchSize = 10000
+
 func (s *DirectDBImporter) rowsPerBatch() int {
 	if s.batchSize > 0 {
 		return s.batchSize
@@ -158,7 +161,11 @@ func OpenImportPool(pgURL string, conns int) (*ImportPool, error) {
 	// Pool & resilience tuning for bulk import workloads.
 	// An import only needs a few connections; timeouts prevent indefinite stalls.
 	opt.PoolSize = conns
-	opt.MinIdleConns = 1
+	// No idle connections are dialled in the background: go-pg's Get can
+	// open a connection of its own while such a dial is still in flight,
+	// and the pool would briefly hold one more than its size, over the
+	// process's budget. Connections are dialled on demand only.
+	opt.MinIdleConns = 0
 	opt.DialTimeout = 10 * time.Second
 	opt.ReadTimeout = 90 * time.Second // Bulk upserts with 5K+ rows can take time
 	opt.WriteTimeout = 90 * time.Second
@@ -1080,7 +1087,12 @@ func replaceDSRecords(tx *pg.Tx, batch []*entities.Domain) (int64, error) {
 // --- Link Domain Hosts ---
 
 func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB, lastKey string, heartbeat func(processed string)) (int64, int64, error) {
-	const batchSize = 10000
+	// Links are small rows, so the linker's own default batch is larger than
+	// the importer's; a batch size set on the importer (tests) applies here too.
+	batchSize := linkBatchSize
+	if s.batchSize > 0 {
+		batchSize = s.batchSize
+	}
 	var total int64
 	var inserted int64
 	var lastDomain, lastNS string
