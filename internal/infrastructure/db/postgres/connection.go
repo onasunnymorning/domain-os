@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -108,12 +107,6 @@ func AutoMigrate(db *gorm.DB) error {
 		"CREATE INDEX IF NOT EXISTS idx_phases_tld_type_starts ON phases (tld_name, type, starts)",
 		// accreditations: tld_name is second in composite PK, can't be used for tld_name-only GROUP BY
 		"CREATE INDEX IF NOT EXISTS idx_accreditations_tld_name ON accreditations (tld_name)",
-		// domains: composite index to support expiring/purgeable domain queries filtered by cl_id and tld_name
-		"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_expiry ON domains (cl_id, tld_name, expiry_date)",
-		"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_purge ON domains (cl_id, tld_name, purge_date)",
-		// domains: composite index to support expiring/purgeable domain queries filtered by tld_name only (e.g. global/CLI workflows)
-		"CREATE INDEX IF NOT EXISTS idx_domains_tld_expiry ON domains (tld_name, expiry_date)",
-		"CREATE INDEX IF NOT EXISTS idx_domains_tld_purge ON domains (tld_name, purge_date)",
 		// domain_events: global index to support global list of recent events ordered by occurred_at DESC
 		"CREATE INDEX IF NOT EXISTS idx_domain_events_occurred_at ON domain_events (occurred_at DESC)",
 		// domain_events: type index for type-filtered event search queries
@@ -146,12 +139,33 @@ func AutoMigrate(db *gorm.DB) error {
 		}
 	}
 
+	// Partial indexes that replace full ones dropped below. Unlike the loop
+	// above, a failure here is fatal, and it runs before the drops: a sweep
+	// must never lose its index because the replacement failed to build.
+	for _, idx := range replacementIndexes {
+		if err := db.Exec(idx).Error; err != nil {
+			return fmt.Errorf("failed to create replacement index: %s: %w", idx, err)
+		}
+	}
+
 	// Drop legacy domain_events indexes that have no matching queries in the codebase.
 	// These were replaced by a composite (subject, occurred_at DESC) index via GORM tags.
 	// GORM AutoMigrate only adds indexes, never removes them, so we clean up manually.
 	legacyIndexes := []string{
 		"DROP INDEX IF EXISTS idx_domain_events_source",
 		"DROP INDEX IF EXISTS idx_domain_events_subject",
+		// domains carried single-column indexes on cl_id and tld_name beside the
+		// composites above, which serve the same lookups as a left prefix; every
+		// domain write maintained both. Their struct tags are gone, and GORM never
+		// drops an index, so they go here.
+		"DROP INDEX IF EXISTS idx_domains_cl_id",
+		"DROP INDEX IF EXISTS idx_domains_tld_name",
+		// Replaced by replacementIndexes, which exist by now: the full ones indexed
+		// every domain's purge date and restore end, almost all of them zero, and
+		// every event's published flag, almost all of them true.
+		"DROP INDEX IF EXISTS idx_domains_purge_date",
+		"DROP INDEX IF EXISTS idx_domains_pending_restore_end",
+		"DROP INDEX IF EXISTS idx_domain_events_published",
 		// escrow_deposits carried ryde_*/sig_* columns until #415 generalised the
 		// record to Artifact*/Signature* so it can also hold an unsigned .xml or
 		// .xml.gz deposit. AutoMigrate adds the new columns but never drops the
@@ -191,6 +205,35 @@ func AutoMigrate(db *gorm.DB) error {
 	return nil
 }
 
+// replacementIndexes are the indexes that replaced others on the two hottest
+// write tables: the composites that cover the dropped single-column ones as
+// a left prefix, and the partial ones that replaced full ones. AutoMigrate
+// creates them before it drops what they replace, and fails if it cannot.
+var replacementIndexes = []string{
+	// domains: composite indexes for the expiring/purgeable domain queries filtered by
+	// cl_id and tld_name. They also serve every lookup by cl_id alone or by cl_id and
+	// tld_name, as a left prefix, which is why the single-column cl_id index could go.
+	"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_expiry ON domains (cl_id, tld_name, expiry_date)",
+	"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_purge ON domains (cl_id, tld_name, purge_date)",
+	// domains: the same queries filtered by tld_name only (global/CLI workflows). The
+	// first also serves every lookup by tld_name alone (the counts, the zone builds),
+	// which is why the single-column tld_name index could go.
+	"CREATE INDEX IF NOT EXISTS idx_domains_tld_expiry ON domains (tld_name, expiry_date)",
+	"CREATE INDEX IF NOT EXISTS idx_domains_tld_purge ON domains (tld_name, purge_date)",
+	// domains: the purge sweep with neither cl_id nor tld (purgeableFilter). Only a
+	// pendingDelete domain has a purge date that matters, so the index holds only
+	// those rows; the query says "pending_delete = true" in the same words so the
+	// planner can match it.
+	"CREATE INDEX IF NOT EXISTS idx_domains_pending_delete_purge ON domains (purge_date) WHERE pending_delete = true",
+	// domains: the lapsed-restore sweep (ListLapsedRestores). Same shape: a restore
+	// is pending on a handful of domains at a time, so the index is tiny.
+	"CREATE INDEX IF NOT EXISTS idx_domains_pending_restore_pending_end ON domains (pending_restore_end, ro_id) WHERE pending_restore = true",
+	// domain_events: the outbox relay reads only unpublished events, oldest first, and
+	// almost every row is published. A full index on the boolean cost a write per
+	// event for nothing; this one holds only the backlog.
+	"CREATE INDEX IF NOT EXISTS idx_domain_events_unpublished ON domain_events (occurred_at) WHERE published = false",
+}
+
 func CreateDB(dbUser, dbPass, dbHost, dbName, dbPort string) error {
 	// Connect to the server
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s sslmode=require", dbHost, dbPort, dbUser, dbPass)
@@ -210,7 +253,14 @@ func CreateDB(dbUser, dbPass, dbHost, dbName, dbPort string) error {
 	return nil
 }
 
+// Config locates the database and bounds the pool. It has the same fields,
+// in the same order, as internal/config.Database, which reads them from
+// the environment at the composition root (INV-17): a cmd converts with
+// postgres.Config(db). Keep the two in step.
 type Config struct {
+	// URL is the whole connection string, when known; it takes precedence
+	// over the parts below.
+	URL         string
 	User        string
 	Pass        string
 	Host        string
@@ -218,6 +268,9 @@ type Config struct {
 	DBName      string
 	SSLmode     string
 	AutoMigrate bool
+	// MaxOpenConns bounds the pool: DefaultMaxOpenConns when zero, never
+	// below MinMaxOpenConns.
+	MaxOpenConns int
 }
 
 // buildDSN assembles a postgres connection URL from cfg. It uses net/url so
@@ -237,24 +290,95 @@ func buildDSN(cfg Config) string {
 	return u.String()
 }
 
+// Pool bounds, applied to every connection this package opens. database/sql
+// defaults to an unbounded pool that keeps two idle connections: a burst
+// opens as many connections as it has goroutines, each with a TLS
+// handshake, and drops them again a moment later. On a managed Postgres the
+// connection slots are the scarce, priced resource, and one process's burst
+// starves the others. Config.MaxOpenConns bounds the pool; the rest follows
+// from it.
+const (
+	// DefaultMaxOpenConns is the bound when Config.MaxOpenConns is zero.
+	DefaultMaxOpenConns = 20
+	// MinMaxOpenConns is the smallest pool that works: Migrate holds one
+	// connection for its advisory lock while AutoMigrate runs on another,
+	// so a pool of one hangs every migration for good.
+	MinMaxOpenConns = 2
+	connMaxLifetime = 30 * time.Minute
+	connMaxIdleTime = 5 * time.Minute
+)
+
+// poolSize is the bound to apply for Config.MaxOpenConns n: the default for
+// zero, n otherwise, and an error below MinMaxOpenConns.
+func poolSize(n int) (int, error) {
+	switch {
+	case n == 0:
+		return DefaultMaxOpenConns, nil
+	case n < MinMaxOpenConns:
+		return 0, fmt.Errorf("a pool of %d connections is below %d, the least a migration needs (one holds its lock while the other runs it)", n, MinMaxOpenConns)
+	}
+	return n, nil
+}
+
+// configurePool bounds db's connection pool to maxOpen.
+func configurePool(db *gorm.DB, maxOpen int) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("get sql.DB: %w", err)
+	}
+	n, err := poolSize(maxOpen)
+	if err != nil {
+		return err
+	}
+	sqlDB.SetMaxOpenConns(n)
+	sqlDB.SetMaxIdleConns(max(2, n/4))
+	sqlDB.SetConnMaxLifetime(connMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(connMaxIdleTime)
+	return nil
+}
+
+// open connects to dsn with a pool bounded to maxOpen.
+func open(dsn string, maxOpen int) (*gorm.DB, error) {
+	db, err := gorm.Open(postgres.Open(dsn))
+	if err != nil {
+		return nil, err
+	}
+	if err := configurePool(db, maxOpen); err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+// dsn is cfg's connection string: URL as given when it is set, otherwise
+// one built from the parts.
+func dsn(cfg Config) string {
+	if cfg.URL != "" {
+		return cfg.URL
+	}
+	return buildDSN(cfg)
+}
+
 // OpenExisting connects to an existing database and changes nothing: no
 // database is created and nothing is migrated. A read-only process (the
 // RDAP server, ADR 0020) uses it, so a mistyped DB_NAME fails at start
 // instead of creating an empty database.
 func OpenExisting(cfg Config) (*gorm.DB, error) {
-	db, err := gorm.Open(postgres.Open(buildDSN(cfg)))
+	db, err := open(dsn(cfg), cfg.MaxOpenConns)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 	return db, nil
 }
 
+// NewConnection connects to cfg's database, creating it when it does not
+// exist (when cfg names it by its parts: a URL is connected to as given)
+// and migrating it when cfg.AutoMigrate is set.
 func NewConnection(cfg Config) (*gorm.DB, error) {
-	dsn := buildDSN(cfg)
-	gormDB, err := gorm.Open(postgres.Open(dsn))
+	dsn := dsn(cfg)
+	gormDB, err := open(dsn, cfg.MaxOpenConns)
 	if err != nil {
 		errMsg := err.Error()
-		if strings.Contains(errMsg, fmt.Sprintf("database %q does not exist", cfg.DBName)) {
+		if cfg.URL == "" && strings.Contains(errMsg, fmt.Sprintf("database %q does not exist", cfg.DBName)) {
 			log.Printf("Database '%s' does not exist. Attempting to create it...", cfg.DBName)
 			if err := CreateDB(cfg.User, cfg.Pass, cfg.Host, cfg.DBName, cfg.Port); err != nil {
 				// Two processes starting against an empty cluster (e.g. two
@@ -268,7 +392,7 @@ func NewConnection(cfg Config) (*gorm.DB, error) {
 				log.Printf("Database '%s' was created concurrently by another process", cfg.DBName)
 			}
 			// Retry the connection after creating the database
-			gormDB, err = gorm.Open(postgres.Open(dsn))
+			gormDB, err = open(dsn, cfg.MaxOpenConns)
 			if err != nil {
 				// If there is still an issue establishing the connection, return the error
 				return nil, fmt.Errorf("failed to connect to database: %w, after creating it", err)
@@ -279,27 +403,6 @@ func NewConnection(cfg Config) (*gorm.DB, error) {
 	}
 
 	if cfg.AutoMigrate {
-		if err := autoMigrateOnConnect(gormDB); err != nil {
-			return gormDB, err
-		}
-	} else {
-		log.Println("Skipping auto migration")
-	}
-
-	return gormDB, nil
-}
-
-// NewConnectionFromURL opens a GORM connection using a single database URL
-// (e.g. postgres://user:pass@host:5432/dbname?sslmode=require).
-// This is useful for managed database providers like Neon that provide a
-// single connection string.
-func NewConnectionFromURL(databaseURL string, autoMigrate bool) (*gorm.DB, error) {
-	gormDB, err := gorm.Open(postgres.Open(databaseURL))
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
-	}
-
-	if autoMigrate {
 		if err := autoMigrateOnConnect(gormDB); err != nil {
 			return gormDB, err
 		}
@@ -327,23 +430,6 @@ func autoMigrateOnConnect(gormDB *gorm.DB) error {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 	return nil
-}
-
-// NewConnectionFromEnv opens a connection the way every domain-os process
-// does: DATABASE_URL when set, otherwise the DB_* variables. It never
-// migrates - callers that should migrate call Migrate explicitly.
-func NewConnectionFromEnv() (*gorm.DB, error) {
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		return NewConnectionFromURL(dbURL, false)
-	}
-	return NewConnection(Config{
-		User:    os.Getenv("DB_USER"),
-		Pass:    os.Getenv("DB_PASS"),
-		Host:    os.Getenv("DB_HOST"),
-		Port:    os.Getenv("DB_PORT"),
-		DBName:  os.Getenv("DB_NAME"),
-		SSLmode: os.Getenv("DB_SSLMODE"),
-	})
 }
 
 // isDuplicateDatabaseError reports whether err is Postgres refusing a CREATE

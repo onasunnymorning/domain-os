@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/bwmarrin/snowflake"
 )
@@ -26,19 +27,35 @@ func (g *IDGenerator) ListNode() int64 {
 	return g.nodeID
 }
 
-// NewIDGenerator creates a new instance of IDGenerator
+// The process has one snowflake node, built on first use and shared by
+// every IDGenerator. Two nodes with the same host ID in one process could
+// mint the same ID in the same millisecond, and snowflake.NewNode writes the
+// library's package-level masks, which every Generate reads: building nodes
+// concurrently, as the worker's import activities did, raced on them.
+var (
+	nodeOnce sync.Once
+	node     *snowflake.Node
+	nodeID   int64
+	nodeErr  error
+)
+
+// NewIDGenerator returns an IDGenerator on the process's snowflake node.
 func NewIDGenerator() (*IDGenerator, error) {
-	node, err := NewSnowflakeNode()
-	if err != nil {
-		return nil, err
+	nodeOnce.Do(func() {
+		node, nodeErr = NewSnowflakeNode()
+		if nodeErr == nil {
+			nodeID = node.Generate().Node()
+		}
+	})
+	if nodeErr != nil {
+		return nil, nodeErr
 	}
-	return &IDGenerator{
-		node:   node,
-		nodeID: node.Generate().Node(),
-	}, nil
+	return &IDGenerator{node: node, nodeID: nodeID}, nil
 }
 
-// NewSnowflakeNode creates a new instance of SnowflakeNode with a unique host ID
+// NewSnowflakeNode creates a new instance of SnowflakeNode with a unique host
+// ID. NewIDGenerator calls it once per process; a caller that builds nodes
+// of its own must not do so concurrently with any Generate (see above).
 func NewSnowflakeNode() (*snowflake.Node, error) {
 	return snowflake.NewNode(int64(generateHostID()))
 }

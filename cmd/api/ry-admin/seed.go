@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
+	sharedconfig "github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -101,15 +101,12 @@ var seedDomains = []seedDomain{
 func runSeed(cfg *config.AdminApiConfig, repositoryID entities.RepositoryID, logger *zap.Logger) {
 	ctx := context.Background()
 
-	gormDB, err := postgres.NewConnection(postgres.Config{
-		User:        os.Getenv("DB_USER"),
-		Pass:        os.Getenv("DB_PASS"),
-		Host:        os.Getenv("DB_HOST"),
-		Port:        os.Getenv("DB_PORT"),
-		DBName:      os.Getenv("DB_NAME"),
-		SSLmode:     os.Getenv("DB_SSLMODE"),
-		AutoMigrate: false, // admin-api owns migration; we only ever write rows
-	})
+	// admin-api owns migration; the seed only ever writes rows.
+	dbCfg, err := sharedconfig.LoadDatabase()
+	if err != nil {
+		logger.Fatal("seed: database configuration is invalid", zap.Error(err))
+	}
+	gormDB, err := postgres.NewConnection(postgres.Config(dbCfg))
 	if err != nil {
 		logger.Fatal("seed: failed to connect to the database", zap.Error(err))
 	}

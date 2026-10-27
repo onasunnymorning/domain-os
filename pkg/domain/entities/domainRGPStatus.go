@@ -19,11 +19,11 @@ type DomainRGPStatus struct {
 	// RedemptionPeriodEnd is the date after which the domain will no longer be restorable it will remain in the repository until the purge date.
 	RedemptionPeriodEnd time.Time `json:"redemptionPeriodEnd"`
 	// PurgeDate is date after which the domain should be purged and become available for registration again.
-	PurgeDate time.Time `json:"purgeDate" gorm:"index"`
+	PurgeDate time.Time `json:"purgeDate"`
 	// PendingRestoreEnd is when a requested restore lapses unless its
 	// report has been sent (RFC 3915 pendingRestore; see restore.go). Zero
 	// when no restore is pending.
-	PendingRestoreEnd time.Time `json:"pendingRestoreEnd" gorm:"index"`
+	PendingRestoreEnd time.Time `json:"pendingRestoreEnd"`
 }
 
 // IsNil checks if the DomainRGPStatus object is nil

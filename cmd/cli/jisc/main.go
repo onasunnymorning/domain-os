@@ -16,7 +16,7 @@ func main() {
 		Commands: []*cli.Command{
 			jisc.GetAnalyzeCommand(),
 			jisc.GetGenerateDBCommand(),
-			jisc.GetImportCommand(config.LoadRepositoryID),
+			jisc.GetImportCommand(config.LoadRepositoryID, config.LoadDatabase),
 		},
 	}
 

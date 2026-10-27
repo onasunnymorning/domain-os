@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -61,24 +60,7 @@ type EscrowKeyActivities struct {
 // without a key store still registers them: public keys can still be probed,
 // and a private one records KEY_STORE_NOT_CONFIGURED instead of the workflow
 // failing on an unregistered activity.
-func NewEscrowKeyActivities() (*EscrowKeyActivities, error) {
-	var db *gorm.DB
-	var err error
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		db, err = postgres.NewConnectionFromURL(dbURL, false)
-	} else {
-		db, err = postgres.NewConnection(postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: os.Getenv("DB_SSLMODE"),
-		})
-	}
-	if err != nil {
-		return nil, fmt.Errorf("escrow key activities: database: %w", err)
-	}
+func NewEscrowKeyActivities(db *gorm.DB) (*EscrowKeyActivities, error) {
 	store, err := secrets.NewEscrowSecretStoreFromEnv(context.Background())
 	if err != nil && !errors.Is(err, entities.ErrEscrowKeyStoreNotConfigured) {
 		return nil, fmt.Errorf("escrow key activities: %w", err)
