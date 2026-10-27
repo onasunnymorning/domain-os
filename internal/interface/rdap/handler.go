@@ -1,6 +1,7 @@
 package rdap
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/netip"
@@ -34,7 +35,7 @@ func (s *Server) handler() http.Handler {
 			// so this is alerted on; it is not how clients are limited.
 			s.metrics.shed.WithLabelValues(shedInFlight).Inc()
 			rec.Header().Set("Retry-After", "1")
-			writeError(rec, http.StatusServiceUnavailable, "the server is busy; retry shortly")
+			s.fail(rec, r, http.StatusServiceUnavailable, "the server is busy; retry shortly")
 			return
 		}
 
@@ -45,17 +46,21 @@ func (s *Server) handler() http.Handler {
 
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			rec.Header().Set("Allow", "GET, HEAD")
-			writeError(rec, http.StatusMethodNotAllowed, "RDAP is read-only: only GET and HEAD are served")
+			s.fail(rec, r, http.StatusMethodNotAllowed, "RDAP is read-only: only GET and HEAD are served")
 			return
 		}
 		path, ok := strings.CutPrefix(r.URL.Path, s.basePath)
 		if !ok {
-			writeError(rec, http.StatusNotFound, "this path is outside the RDAP service's base URL")
+			s.fail(rec, r, http.StatusNotFound, "this path is outside the RDAP service's base URL")
 			return
 		}
 		q := parseQuery(path)
 		route = q.kind.route()
-		s.serve(rec, r, q)
+		// Lookups must end before the response's write deadline, with
+		// time left to answer with an RDAP error.
+		ctx, cancel := context.WithTimeout(r.Context(), s.lookupDeadline())
+		defer cancel()
+		s.serve(rec, r.WithContext(ctx), q)
 		// A lookup that found nothing costs more, to slow enumeration.
 		if rec.status == http.StatusNotFound && (q.kind == queryDomain || q.kind == queryNameserver || q.kind == queryEntity) {
 			if p := s.lookups.AccessPolicy(clientAddrOrZero(r)); p.Limits.NotFoundCost > 1 {
@@ -71,12 +76,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, q query) {
 	case queryHelp:
 		writeJSON(w, http.StatusOK, helpResponse{RDAPConformance: conformance, Notices: s.notices(r)})
 	case querySearch:
-		writeError(w, http.StatusNotImplemented, "searches are not offered")
+		s.fail(w, r, http.StatusNotImplemented, "searches are not offered")
 	case queryDomain:
 		// A domain outside the TLD whose base URL was used is not this
 		// TLD's to answer for.
 		if q.tld != "" && !strings.HasSuffix(q.arg, "."+q.tld) {
-			writeError(w, http.StatusNotFound)
+			s.fail(w, r, http.StatusNotFound)
 			return
 		}
 		rec, err := s.lookups.Domain(r.Context(), q.arg)
@@ -84,20 +89,20 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, q query) {
 			writeJSON(w, http.StatusOK, s.buildDomain(r, rec, rdappolicy.Anonymous()))
 			return
 		}
-		s.answerLookup(w, routeDomain, errors.Is(err, entities.ErrDomainNotFound), err)
+		s.answerLookup(w, r, routeDomain, errors.Is(err, entities.ErrDomainNotFound), err)
 	case queryNameserver:
 		rec, err := s.lookups.Nameserver(r.Context(), q.arg)
 		if err == nil {
 			writeJSON(w, http.StatusOK, s.buildNameserver(r, rec))
 			return
 		}
-		s.answerLookup(w, routeNameserver, errors.Is(err, entities.ErrHostNotFound), err)
+		s.answerLookup(w, r, routeNameserver, errors.Is(err, entities.ErrHostNotFound), err)
 	case queryEntity:
 		// Only registrars are served directly, by IANA ID. A contact
 		// appears only inside a domain's response (ADR 0020 decision 5).
 		ianaID, isRegistrar := registrarHandle(q.arg)
 		if !isRegistrar {
-			writeError(w, http.StatusNotFound)
+			s.fail(w, r, http.StatusNotFound)
 			return
 		}
 		rr, err := s.lookups.Registrar(r.Context(), ianaID)
@@ -105,22 +110,22 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, q query) {
 			writeJSON(w, http.StatusOK, s.buildRegistrar(r, rr))
 			return
 		}
-		s.answerLookup(w, routeEntity, errors.Is(err, entities.ErrRegistrarNotFound), err)
+		s.answerLookup(w, r, routeEntity, errors.Is(err, entities.ErrRegistrarNotFound), err)
 	default:
-		writeError(w, http.StatusBadRequest, q.problem)
+		s.fail(w, r, http.StatusBadRequest, q.problem)
 	}
 }
 
 // answerLookup answers a lookup that found nothing: 404 if the object does
 // not exist, 500 if the registry could not be read.
-func (s *Server) answerLookup(w http.ResponseWriter, route string, notFound bool, err error) {
+func (s *Server) answerLookup(w http.ResponseWriter, r *http.Request, route string, notFound bool, err error) {
 	if notFound {
-		writeError(w, http.StatusNotFound)
+		s.fail(w, r, http.StatusNotFound)
 		return
 	}
 	s.metrics.lookupErrors.WithLabelValues(route).Inc()
 	s.logger.Error("RDAP lookup failed reading the registry; answered 500", "route", route, "error", err)
-	writeError(w, http.StatusInternalServerError)
+	s.fail(w, r, http.StatusInternalServerError)
 }
 
 // notices are the gTLD profile's notices that every top-level response
@@ -138,9 +143,30 @@ func (s *Server) notices(r *http.Request) []notice {
 }
 
 // requestURL is the public URL of r, the context of every link in its
-// response.
+// response: the queried URI, query string included (the gTLD profile's
+// tool checks this).
 func (s *Server) requestURL(r *http.Request) string {
-	return s.baseURL + strings.TrimPrefix(r.URL.EscapedPath(), s.escapedBasePath)
+	// The public origin and the request's own escaped path: exactly the
+	// queried URI, however the path was spelled and wherever it routed.
+	u := s.origin + r.URL.EscapedPath()
+	if r.URL.RawQuery != "" || r.URL.ForceQuery {
+		u += "?" + r.URL.RawQuery
+	}
+	return u
+}
+
+// fail answers r with an RDAP error object carrying the notices.
+func (s *Server) fail(w http.ResponseWriter, r *http.Request, status int, description ...string) {
+	writeErrorObject(w, status, s.notices(r), description...)
+}
+
+// lookupDeadline is how long a request's lookups may take: three quarters
+// of the write timeout, leaving the rest to answer.
+func (s *Server) lookupDeadline() time.Duration {
+	if d := s.cfg.Timeouts.Write; d > 0 {
+		return d * 3 / 4
+	}
+	return 10 * time.Second
 }
 
 // statusRecorder keeps the status a handler wrote, for metrics.
