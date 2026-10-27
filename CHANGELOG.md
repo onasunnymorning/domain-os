@@ -1,4 +1,92 @@
 <a name="unreleased"></a>
+## [1.0.0](https://github.com/onasunnymorning/domain-os/compare/v0.13.0...v1.0.0) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **escrow:** remove the admin-API escrow import
+
+### Features
+
+* **frontend:** find Domain Restore and Domain Transfers from command K ([798dd83](https://github.com/onasunnymorning/domain-os/commit/798dd83bc9c131b6f91d2338d08e16e995202b26))
+* **rdap:** Phase 1 — server skeleton on shared TLS ([0b08565](https://github.com/onasunnymorning/domain-os/commit/0b085655345e5fd947dffd7b8de610cc25571ace))
+* **rdap:** Phase 2 — domain lookups with the publication decision ([cd07b85](https://github.com/onasunnymorning/domain-os/commit/cd07b85ab8242238f7b148703820978a7e63f4fe))
+* **rdap:** Phase 3a — nameserver and registrar lookups ([85e15d5](https://github.com/onasunnymorning/domain-os/commit/85e15d58392c4f4b1e7d5f4edb460d8fc9d0fc7e))
+* **rdap:** Phase 3b — publication policies as data ([276bb5c](https://github.com/onasunnymorning/domain-os/commit/276bb5c44abd8f5ec1c63c68554d6a9103f2017a))
+* **rdap:** Phase 4 — rate limiting by network access policy ([bcb20a6](https://github.com/onasunnymorning/domain-os/commit/bcb20a61cd5ca9b7a4c9c3375c859d10d8a808ca))
+* **rdap:** Phase 4 — rate limiting on the shared limiter ([3777c82](https://github.com/onasunnymorning/domain-os/commit/3777c820cfff854d85cb201b5e952b4960259eff))
+* **rdap:** Phase 5 — alerts, dashboard and runbook ([9a6ee66](https://github.com/onasunnymorning/domain-os/commit/9a6ee66d1562225d415c120f5e470904643c818f))
+* **rdap:** Phase 5 — alerts, dashboard and runbook ([8c9b6b4](https://github.com/onasunnymorning/domain-os/commit/8c9b6b4419b3675621aa6892d1b90ed9acb41e91))
+* **rdap:** Phase 6 — ICANN's conformance tool in the suite, and rdapload ([f316442](https://github.com/onasunnymorning/domain-os/commit/f316442b4694f6eb0ff2982e9c4e2ee1b55e46cb))
+* **rdap:** Phase 6 — ICANN's conformance tool in the suite, and rdapload ([801fe09](https://github.com/onasunnymorning/domain-os/commit/801fe09bcbb84f24295331b62a2d04ef5984fd44))
+* **rdap:** Phase 7a — rdapcheck for rdap-91 and rdap-92 ([fbca0f0](https://github.com/onasunnymorning/domain-os/commit/fbca0f0f5d6810e9dd0f0796f9efa84111455a16))
+* **rdap:** Phase 7a — rdapcheck for rdap-91 and rdap-92 ([193cfee](https://github.com/onasunnymorning/domain-os/commit/193cfeedb906f0406d754a6e478e0d64182c3f39))
+
+
+### Bug Fixes
+
+* **ci:** build ./... on ubuntu-26.04 runners (libxml2 2.15) ([1606d0d](https://github.com/onasunnymorning/domain-os/commit/1606d0d065508bd99c2142576edd0a9bce0db8e0))
+* **ci:** green on ubuntu-26.04 runners (libxml2 2.15) ([c7254e5](https://github.com/onasunnymorning/domain-os/commit/c7254e5752e63abd39889576c8200441fb5d6873))
+* **db:** build replacement indexes before dropping the ones they replace ([a4f231f](https://github.com/onasunnymorning/domain-os/commit/a4f231f97572b42a4b6b3def0ca47665d0a9485b))
+* **db:** build the composites before dropping the indexes they cover ([70c2f5c](https://github.com/onasunnymorning/domain-os/commit/70c2f5cb90a49d22c4ec9601b3bf7e35720244b0))
+* **db:** load the database settings at the composition root ([dcf809d](https://github.com/onasunnymorning/domain-os/commit/dcf809df3bd6fa7e879f6a7e9c6f6c945c108108))
+* **domain:** quote the premium label of the normalised name ([cccfcd2](https://github.com/onasunnymorning/domain-os/commit/cccfcd219f6ce281071c4aabfb404f1725f4bffa))
+* **epp/schema:** accept signed unsigned values, as XSD and libxml2 2.15 do ([eb1056e](https://github.com/onasunnymorning/domain-os/commit/eb1056e08543d648943d05faa43ac97f7f785821))
+* **import:** heartbeating admission to the shared pool; one snowflake node ([3f13e51](https://github.com/onasunnymorning/domain-os/commit/3f13e51e4e683be8a047b45badabdffbe15346cc))
+* **import:** LinkDomainHosts holds one connection for its temp table ([a840b75](https://github.com/onasunnymorning/domain-os/commit/a840b757ba19c4a7c3e893a080eba32381ea85ca))
+* **import:** no background idle dials; the linker honours the batch override ([f07dae3](https://github.com/onasunnymorning/domain-os/commit/f07dae3aba69fb9619fad952ebc98719073ef783))
+* **import:** the CLI import loads its database at the composition root ([42b448a](https://github.com/onasunnymorning/domain-os/commit/42b448aea2c62fbdac273f91f1a8056b23aeaa16))
+* **memstore:** order equal-time hosts by ROID ([619add6](https://github.com/onasunnymorning/domain-os/commit/619add61f8c28948919c67d8493eb86b925e2f07))
+* **rdap:** address review of domain lookups ([323f3d4](https://github.com/onasunnymorning/domain-os/commit/323f3d4aa53c7771390a35d92f1e6cdaa6a365d3))
+* **rdap:** address review of the server skeleton ([69606f6](https://github.com/onasunnymorning/domain-os/commit/69606f67a9f4d2a606983a8676b945083ca42e3a))
+* **rdap:** address second review of the server skeleton ([3419756](https://github.com/onasunnymorning/domain-os/commit/34197568d600f62adf3168a6b39feef5bf5c782a))
+* **rdap:** address third review of the server skeleton ([5bd7320](https://github.com/onasunnymorning/domain-os/commit/5bd7320f902ae2ec36a6e1611e1d05a7ebb0792d))
+* **rdap:** alerted counters start at zero; the dashboard shows the stalest node ([ecaedd6](https://github.com/onasunnymorning/domain-os/commit/ecaedd6fbbb380b956ef605f3d0ef2580b45e0bf))
+* **rdap:** charge the 404 surcharge after the handler; expose Retry-After ([2a40a16](https://github.com/onasunnymorning/domain-os/commit/2a40a1647e7c74abe05facab89a666e851904005))
+* **rdapcheck:** grade the URL asked for, strict JSON, honest cipher coverage ([b850708](https://github.com/onasunnymorning/domain-os/commit/b8507083332d087dd35d7e7b985cd0b469d4c5ba))
+* **rdapcheck:** refuse an answer over the read limit; annotate the test redirect ([f7fe05d](https://github.com/onasunnymorning/domain-os/commit/f7fe05d4355233e6f7b44cc17d9110aecb1e4af4))
+* **rdap:** CI names the test host before installing; upgrade under the policy lock ([34a5976](https://github.com/onasunnymorning/domain-os/commit/34a59761eb078e83b3e374bcc752e2863958a4e1))
+* **rdap:** conformance runs fail loudly; rdapload refuses bad rates ([33cc224](https://github.com/onasunnymorning/domain-os/commit/33cc22476979eec40eb208924c96cc61498fa28b))
+* **rdap:** consistent access-policy loads, per-policy buckets, mapped networks ([45af080](https://github.com/onasunnymorning/domain-os/commit/45af0804a9d89c2caf2764affe26b49c64d23a30))
+* **rdap:** exact link values and stricter base URL ([fbe57e8](https://github.com/onasunnymorning/domain-os/commit/fbe57e824fb0660c2c99d458cfb15d9787084174))
+* **rdap:** glue by name, and replacementPath for a replaced email ([2e7939c](https://github.com/onasunnymorning/domain-os/commit/2e7939c472659fa272b84a6fc163dcd9b16ebdf1))
+* **rdap:** IDN TLDs default to cctld-minimal; full decision table ([1810d2a](https://github.com/onasunnymorning/domain-os/commit/1810d2a255a14e5bf9f27cf0e68b53d2f832f20c))
+* **rdap:** limiter admission ignores disconnects; 404 surcharge from the admitting policy ([cfa7a1a](https://github.com/onasunnymorning/domain-os/commit/cfa7a1a7b21f41ef2f6623350cf3b9254362b523))
+* **rdapload:** failed requests count in the latency distribution ([c49dcdf](https://github.com/onasunnymorning/domain-os/commit/c49dcdf2b42ffbbf2d048bff3440186b00550d04))
+* **rdap:** nameserver linkage and apex-named hosts ([8a1c9da](https://github.com/onasunnymorning/domain-os/commit/8a1c9da706bfd802eb7e88430aa0be1cde64e50d))
+* **rdap:** never serve built-ins in place of stored publication policies ([3fac191](https://github.com/onasunnymorning/domain-os/commit/3fac191bb03af3c014acc85166e5f7e1a01701ff))
+* **rdap:** place nameservers under the longest served TLD ([c594457](https://github.com/onasunnymorning/domain-os/commit/c594457c4cd3404fb980c63ffb437beb7d43a51b))
+* **rdap:** refuse an assignment without a policy; grant the static token RDAP policy admin ([ebd17c1](https://github.com/onasunnymorning/domain-os/commit/ebd17c12e763a1475e8513a8af4b5c27bee28295))
+* **rdap:** run the conformance tool against a named test host ([9d4d7a9](https://github.com/onasunnymorning/domain-os/commit/9d4d7a9304bcc37796b65e32a48c50decad5b8bc))
+* **rdap:** send the 404 before its surcharge; debit each bucket on its own ([60ac465](https://github.com/onasunnymorning/domain-os/commit/60ac46550997c6cc8b26197a38a6f119cc6a20a0))
+* **rdap:** Shutdown cancels the first policy load ([0a088d5](https://github.com/onasunnymorning/domain-os/commit/0a088d538119b6004b07ff8c906348cad9c00370))
+* **rdap:** the conformance run must reach the server; upgrade stored phone rules ([74c07bb](https://github.com/onasunnymorning/domain-os/commit/74c07bb2e08decaa6de697e5d13bc5e7b3dc4e7a))
+* **roid:** one snowflake node per replica, from SNOWFLAKE_NODE_ID ([fb882e9](https://github.com/onasunnymorning/domain-os/commit/fb882e9186d687fc092a361d7d60853894b3a704))
+* **roid:** one snowflake node per replica, from SNOWFLAKE_NODE_ID ([383fc3b](https://github.com/onasunnymorning/domain-os/commit/383fc3bbbeed08b86d23b1f6ff98f15a882d3774))
+* **roid:** say the node range is shared by every service ([06057be](https://github.com/onasunnymorning/domain-os/commit/06057be7463ff06519cab495597d13f03949cea2))
+* **worker:** one shared import pool, within a budget the worker checks ([8c64936](https://github.com/onasunnymorning/domain-os/commit/8c64936a2b5a77cf32a17f57b672e8b5e05fb140))
+* **worker:** the escrow importer's pool comes out of the same budget ([62a4da1](https://github.com/onasunnymorning/domain-os/commit/62a4da13f634447a06c2a69a0ca73e937795b21f))
+
+
+### Performance Improvements
+
+* **db:** index the hosts under a domain by reversed name ([62f7647](https://github.com/onasunnymorning/domain-os/commit/62f76475fd12cdfcfeb038d097575bbcde069408))
+* **db:** index the hosts under a domain by reversed name ([cb1ac9b](https://github.com/onasunnymorning/domain-os/commit/cb1ac9b86a9a3a49dddf26766db4d72af59646ce))
+* **db:** one bounded connection pool per process ([1df7a8f](https://github.com/onasunnymorning/domain-os/commit/1df7a8f9d3b83036fb1f6921fed05668439797cc))
+* **db:** one bounded connection pool per process ([4f3af59](https://github.com/onasunnymorning/domain-os/commit/4f3af598696159f2ea29b3dc6344a347949b14ec))
+* **db:** trim the index set on domains and domain_events ([e16668b](https://github.com/onasunnymorning/domain-os/commit/e16668b9d17dba84383f8ed2a4f656e18576d6b2))
+* **db:** trim the index set on domains and domain_events ([4795950](https://github.com/onasunnymorning/domain-os/commit/479595006eee2fcbac91cdf9ac1ceaac4c24989a))
+* **domain:** read the TLD once per registration ([3dda98a](https://github.com/onasunnymorning/domain-os/commit/3dda98a53a64b277b583a33d7224b832ce048b7f))
+* **domain:** read the TLD once per registration ([718205e](https://github.com/onasunnymorning/domain-os/commit/718205ea8d3635c1294b2d04650e4c482c84a283))
+* **epp:** list the hosts under a domain on the reversed-name index ([c45d2aa](https://github.com/onasunnymorning/domain-os/commit/c45d2aa43553a2477260ff656d5a213a462d70d2))
+* **epp:** two lookups per &lt;domain:check&gt;, however many names ([fd3bf03](https://github.com/onasunnymorning/domain-os/commit/fd3bf03362e27e592bb550461c88c55bf44f09ce))
+* **epp:** two lookups per &lt;domain:check&gt;, however many names ([a15fbc3](https://github.com/onasunnymorning/domain-os/commit/a15fbc3b1f23424e354980d0c890e3a404655232))
+
+
+### Code Refactoring
+
+* **escrow:** remove the admin-API escrow import ([2096527](https://github.com/onasunnymorning/domain-os/commit/2096527c29e8b4ead575d37408af21cef9fff37d))
+
 ## [0.13.0](https://github.com/onasunnymorning/domain-os/compare/v0.12.0...v0.13.0) (2026-10-24)
 
 
