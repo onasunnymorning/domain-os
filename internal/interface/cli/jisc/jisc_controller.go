@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/urfave/cli/v2"
 )
@@ -11,9 +12,12 @@ import (
 // JiscController handles JISC CLI commands
 type JiscController struct {
 	svc *services.JiscService
-	// repositoryID loads the repository ID the import mints ROIDs with. It
-	// is called only by the import, so analysis does not need it set.
+	// repositoryID loads the repository ID the import mints ROIDs with, and
+	// database the database to import into and the process's connection
+	// budget. Both are called only by the import, so analysis does not need
+	// them set.
 	repositoryID func() (entities.RepositoryID, error)
+	database     func() (config.Database, error)
 }
 
 // NewJiscController creates a new JiscController
@@ -94,28 +98,37 @@ func (c *JiscController) Import(ctx *cli.Context) error {
 		return cli.Exit("Error: JSON file argument is required", 1)
 	}
 
-	// We rely on standard PG env vars for connection, which NewDirectDBImporter uses.
-	// DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT
-	// Ensure these are set or user is aware.
-
 	repositoryID, err := c.repositoryID()
 	if err != nil {
 		return cli.Exit(err.Error(), 1)
 	}
+	db, err := c.database()
+	if err != nil {
+		return cli.Exit(err.Error(), 1)
+	}
+	// The importer's pool is this process's only one, so the budget bounds
+	// it, as does the importer's own ceiling.
+	pool, err := services.OpenImportPool(db.DSN(), min(services.DefaultImportConns, db.MaxOpenConns))
+	if err != nil {
+		return cli.Exit(err.Error(), 1)
+	}
+	defer pool.Close()
 
 	log.Printf("Starting Direct DB Import from %s...", jsonFile)
-	if err := c.svc.ImportToDirectDB(jsonFile, repositoryID); err != nil {
+	if err := c.svc.ImportToDirectDB(jsonFile, repositoryID, pool); err != nil {
 		return cli.Exit(err.Error(), 1)
 	}
 
 	return nil
 }
 
-// GetImportCommand returns the CLI command definition. repositoryID is
-// config.LoadRepositoryID, injected from the composition root (INV-17).
-func GetImportCommand(repositoryID func() (entities.RepositoryID, error)) *cli.Command {
+// GetImportCommand returns the CLI command definition. repositoryID and
+// database are config.LoadRepositoryID and config.LoadDatabase, injected
+// from the composition root (INV-17).
+func GetImportCommand(repositoryID func() (entities.RepositoryID, error), database func() (config.Database, error)) *cli.Command {
 	ctrl := NewJiscController()
 	ctrl.repositoryID = repositoryID
+	ctrl.database = database
 
 	return &cli.Command{
 		Name:      "import",
@@ -123,7 +136,7 @@ func GetImportCommand(repositoryID func() (entities.RepositoryID, error)) *cli.C
 		Usage:     "Import JISC JSON data directly to Postgres (via SQLite escrow stage)",
 		ArgsUsage: "[json-file]",
 		Flags:     []cli.Flag{
-			// No flags needed, strictly uses ENV for DB connection
+			// No flags: the database comes from the environment, loaded at start
 		},
 		Action: ctrl.Import,
 	}

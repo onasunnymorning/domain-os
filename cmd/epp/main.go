@@ -72,18 +72,14 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		logger.Warn("EPP source allowlists are not enforced (EPP_REQUIRE_ALLOWLIST=false); local development only")
 	}
 
+	// Logins, the credential refresh, checks and the audit log share a
+	// bounded pool, so a node cannot crowd out the API and workers.
 	db, err := postgres.NewConnection(postgres.Config{
 		User: cfg.DB.User, Pass: cfg.DB.Pass, Host: cfg.DB.Host, Port: cfg.DB.Port,
-		DBName: cfg.DB.Name, SSLmode: cfg.DB.SSLMode,
+		DBName: cfg.DB.Name, SSLmode: cfg.DB.SSLMode, MaxOpenConns: cfg.DB.MaxOpenConns,
 	})
 	if err != nil {
 		return fmt.Errorf("connect to the database at %s:%s: %w", cfg.DB.Host, cfg.DB.Port, err)
-	}
-	if sqlDB, err := db.DB(); err == nil {
-		// Logins, the credential refresh, checks and the audit log share
-		// a bounded pool, so a node cannot crowd out the API and workers.
-		sqlDB.SetMaxOpenConns(cfg.DB.MaxOpenConns)
-		sqlDB.SetMaxIdleConns(max(2, cfg.DB.MaxOpenConns/4))
 	}
 	schemaLog := func(format string, args ...any) { logger.Info(fmt.Sprintf(format, args...)) }
 	if err := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), schemaLog); err != nil {

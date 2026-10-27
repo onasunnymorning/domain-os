@@ -3,9 +3,7 @@ package activities
 import (
 	"context"
 	"io"
-	"os"
 
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"gorm.io/gorm"
 )
@@ -25,26 +23,9 @@ type SnapshotActivities struct {
 	S3Client SnapshotStorageAPI
 }
 
-// NewSnapshotActivities creates a new SnapshotActivities with initialized DB and S3 dependencies.
-func NewSnapshotActivities() (*SnapshotActivities, error) {
+// NewSnapshotActivities creates a new SnapshotActivities on db and the temp bucket.
+func NewSnapshotActivities(db *gorm.DB) (*SnapshotActivities, error) {
 	s3c, err := storage.NewTempS3Client()
-	if err != nil {
-		return nil, err
-	}
-	var db *gorm.DB
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		db, err = postgres.NewConnectionFromURL(dbURL, false)
-	} else {
-		dbCfg := postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: os.Getenv("DB_SSLMODE"),
-		}
-		db, err = postgres.NewConnection(dbCfg)
-	}
 	if err != nil {
 		return nil, err
 	}

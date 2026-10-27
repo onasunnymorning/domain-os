@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -93,24 +92,7 @@ type EscrowSanitizeActivities struct {
 // (ERROR) instead of producing anything. That is still "no derivative with a
 // weak pseudonym", decided per run and on the record rather than by the worker
 // silently not registering the activities.
-func NewEscrowSanitizeActivities() (*EscrowSanitizeActivities, error) {
-	var db *gorm.DB
-	var err error
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		db, err = postgres.NewConnectionFromURL(dbURL, false)
-	} else {
-		db, err = postgres.NewConnection(postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: os.Getenv("DB_SSLMODE"),
-		})
-	}
-	if err != nil {
-		return nil, fmt.Errorf("escrow sanitization activities: database: %w", err)
-	}
+func NewEscrowSanitizeActivities(db *gorm.DB) (*EscrowSanitizeActivities, error) {
 	escrowStore, err := storage.NewS3ClientFromEnv()
 	if err != nil {
 		return nil, fmt.Errorf("NewEscrowSanitizeActivities: escrow storage: %w", err)
