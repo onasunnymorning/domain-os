@@ -360,6 +360,22 @@ func (v registryDomains) GetDomainByName(_ context.Context, name string, _ bool)
 	return nil, entities.ErrDomainNotFound
 }
 
+// ExistingNames implements repositories.DomainRepository.
+func (v registryDomains) ExistingNames(_ context.Context, names []string) ([]string, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return nil, v.r.err
+	}
+	var found []string
+	for _, n := range names {
+		if _, ok := v.r.domains[n]; ok {
+			found = append(found, n)
+		}
+	}
+	return found, nil
+}
+
 // copyDomain copies a stored domain, with its nameservers as they are now:
 // a renamed host shows its new name, as it does through the database's
 // link table. The caller holds the lock.
@@ -500,6 +516,22 @@ func (v registryNNDNs) GetNNDN(_ context.Context, name string) (*entities.NNDN, 
 		return &entities.NNDN{}, nil
 	}
 	return nil, entities.ErrNNDNNotFound
+}
+
+// ExistingNames implements repositories.NNDNRepository.
+func (v registryNNDNs) ExistingNames(_ context.Context, names []string) ([]string, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return nil, v.r.err
+	}
+	var found []string
+	for _, n := range names {
+		if v.r.reserved[n] {
+			found = append(found, n)
+		}
+	}
+	return found, nil
 }
 
 type registryTLDs struct {
