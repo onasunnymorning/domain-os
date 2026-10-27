@@ -89,8 +89,16 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request) (notFound func(),
 		s.metrics.policyDecisions.WithLabelValues(p.Name, "", actionAllowed).Inc()
 		extra := p.Limits.NotFoundCost - 1
 		return func() {
-			if extra > 0 {
-				_, _ = s.limiter.Take(ctx, buckets, extra, notFoundDebtWait)
+			if extra <= 0 {
+				return
+			}
+			// Each bucket owes its share from its own time. Taken together,
+			// every bucket would be charged from the slowest one's: the
+			// address's debt would push the aggregate into the future and
+			// refuse the client's neighbours. With no limit on the wait, a
+			// take from one bucket is a plain debit.
+			for _, b := range buckets {
+				_, _ = s.limiter.Take(ctx, []entities.EPPRateBucket{b}, extra, notFoundDebtWait)
 			}
 		}, true
 	}

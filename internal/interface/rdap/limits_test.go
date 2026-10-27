@@ -221,14 +221,16 @@ func TestAdmissionAndNotFoundCharge(t *testing.T) {
 	}, time.Now())
 	notFound()
 
-	require.Len(t, lim.calls, 2)
-	admitted, owed := lim.calls[0], lim.calls[1]
+	admitted := lim.calls[0]
+	require.Len(t, lim.calls, 1+len(admitted.keys), "admission, then one debit per bucket")
 	assert.False(t, admitted.cancelled, "a disconnect must not reach the store as a failure")
-	assert.False(t, owed.cancelled)
-	assert.Equal(t, entities.AnonymousRDAPAccessLimits().NotFoundCost-1, owed.cost, "the policy the request was admitted under")
-	assert.Equal(t, admitted.keys, owed.keys, "charged to the buckets it was admitted from")
-	assert.Equal(t, notFoundDebtWait, owed.maxWait)
-	assert.Greater(t, owed.maxWait, 100*24*time.Hour, "a surcharge is never dropped for being far off")
+	for i, owed := range lim.calls[1:] {
+		assert.False(t, owed.cancelled)
+		assert.Equal(t, entities.AnonymousRDAPAccessLimits().NotFoundCost-1, owed.cost, "the policy the request was admitted under")
+		assert.Equal(t, []string{admitted.keys[i]}, owed.keys, "charged to the buckets it was admitted from, each on its own")
+		assert.Equal(t, notFoundDebtWait, owed.maxWait)
+		assert.Greater(t, owed.maxWait, 100*24*time.Hour, "a surcharge is never dropped for being far off")
+	}
 }
 
 func TestConcurrentCloseReleasesOneSlot(t *testing.T) {
@@ -267,4 +269,66 @@ func TestConcurrentCloseReleasesOneSlot(t *testing.T) {
 		t.Fatal("closing one connection many times blocked")
 	}
 	assert.Len(t, l.slots, 1, "one slot back, and the other connection keeps its own")
+}
+
+func TestNotFoundDebtSparesNeighbours(t *testing.T) {
+	// Ten misses admitted together from one address spend 30 of its
+	// aggregate's 60 tokens. A neighbour in the same /24 must still get in:
+	// the address's debt is its own, not the aggregate's.
+	srv, err := NewServer(Options{Config: testConfig("https://rdap.example.test/"), Lookups: registry(), Limiter: ratelimit.NewMemory()})
+	require.NoError(t, err)
+	from := func(addr string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/domain/missing.tld", nil)
+		r.RemoteAddr = addr + ":4242"
+		return r
+	}
+	var owed []func()
+	for i := 0; i < entities.AnonymousRDAPAccessLimits().PerAddress.Burst; i++ {
+		notFound, ok := srv.admit(httptest.NewRecorder(), from("192.0.2.7"))
+		require.True(t, ok, "miss %d is within the address's burst", i+1)
+		owed = append(owed, notFound)
+	}
+	for _, notFound := range owed {
+		notFound()
+	}
+	_, ok := srv.admit(httptest.NewRecorder(), from("192.0.2.8"))
+	assert.True(t, ok, "the neighbour pays nothing for the address's misses")
+	_, ok = srv.admit(httptest.NewRecorder(), from("192.0.2.7"))
+	assert.False(t, ok, "the address does")
+}
+
+// stallingLimiter admits, then holds every later take until release closes.
+type stallingLimiter struct {
+	release chan struct{}
+	mu      sync.Mutex
+	takes   int
+}
+
+func (l *stallingLimiter) Take(context.Context, []entities.EPPRateBucket, int, time.Duration) (entities.EPPRateTake, error) {
+	l.mu.Lock()
+	l.takes++
+	first := l.takes == 1
+	l.mu.Unlock()
+	if !first {
+		<-l.release
+	}
+	return entities.EPPRateTake{Taken: true}, nil
+}
+
+func TestNotFoundIsDeliveredBeforeTheCharge(t *testing.T) {
+	lim := &stallingLimiter{release: make(chan struct{})}
+	ts := startServerWith(t, Options{Config: testConfig("https://rdap.example.test/"), Lookups: registry(), Limiter: lim})
+	defer close(lim.release)
+
+	got := make(chan int, 1)
+	go func() {
+		resp, _ := ts.do(t, http.MethodGet, "domain/missing.tld")
+		got <- resp.StatusCode
+	}()
+	select {
+	case code := <-got:
+		assert.Equal(t, http.StatusNotFound, code)
+	case <-time.After(2 * time.Second):
+		t.Fatal("the 404 waited on the surcharge")
+	}
 }

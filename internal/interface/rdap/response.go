@@ -3,6 +3,7 @@ package rdap
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 )
 
 // contentType is the RDAP media type (RFC 7480 §4.2).
@@ -73,6 +74,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 		// Every value here is built from plain structs; this cannot happen.
 		status, body = http.StatusInternalServerError, []byte(`{"errorCode":500,"title":"Internal Server Error"}`)
 	}
+	// The length lets a client take the response as complete as soon as
+	// it is flushed, before the handler has returned.
+	h.Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(status)
 	_, _ = w.Write(body)
 }
