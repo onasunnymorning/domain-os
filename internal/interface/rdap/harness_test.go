@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,6 +30,14 @@ type fakeLookups struct {
 	err         error // returned by every lookup when set
 	// stall makes Domain wait until its context is done.
 	stall bool
+
+	mu         sync.Mutex
+	refreshes  int
+	refreshErr error
+	// failAfter is how many loads succeed before refreshErr is returned.
+	failAfter int
+	// stallRefresh makes a policy load wait until its context is done.
+	stallRefresh bool
 }
 
 func (f *fakeLookups) Domain(ctx context.Context, name string) (*interfaces.RDAPDomain, error) {
@@ -75,6 +84,20 @@ func (f *fakeLookups) Registrar(_ context.Context, ianaID int) (*entities.Regist
 		return nil, entities.ErrRegistrarNotFound
 	}
 	return rr, nil
+}
+
+func (f *fakeLookups) RefreshPublicationPolicies(ctx context.Context) error {
+	if f.stallRefresh {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.refreshes++
+	if f.refreshes <= f.failAfter {
+		return nil
+	}
+	return f.refreshErr
 }
 
 // testRegistrar is an accredited registrar with every contact field.

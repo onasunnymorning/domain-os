@@ -84,3 +84,10 @@ RFC 9537 lets a response say that a field was withheld by policy rather than bei
 - ADR 0006 is amended with the public read plane (see its Amendments). Publication policies hang off the TLD, the operator side, and RDAP serves only what a TLD's policy publishes to everyone, so it does not decide the deferred cross-side visibility question (ADR 0006 rule 6).
 - `docs/rdap/PUBLICATION_REFERENCE.md` is the human-readable field-access matrix: field, source, rule per built-in policy, redaction method and reason. It is the shared specification for the API, compliance review and a future authenticated tier.
 - The contents of the built-in policies are a compliance decision, not an engineering one. The policy owner signs off each built-in before a TLD goes live, and that sign-off is recorded in the reference.
+
+## Amendments
+
+### 2026-10-27: loading the set (Phase 3b)
+
+- A node does not serve until it has loaded the stored publication policies once. The built-ins are not a safe stand-in: a stored policy may withhold what a built-in publishes. A reload that fails later keeps the set last loaded.
+- Policies and assignments are read in one consistent snapshot, and a set in which an assignment names a policy it does not hold is refused, so a TLD is never served its built-in in place of a policy created at the same moment.

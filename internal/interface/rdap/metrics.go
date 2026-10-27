@@ -32,6 +32,8 @@ type metrics struct {
 	redactions       *prometheus.CounterVec
 
 	nameserversAmbiguous prometheus.Counter
+	policiesRefreshed    prometheus.Gauge
+	policyRefreshErrors  prometheus.Counter
 }
 
 func newMetrics() *metrics {
@@ -75,9 +77,17 @@ func newMetrics() *metrics {
 			Name: "rdap_nameserver_ambiguous_total",
 			Help: "Nameserver lookups that matched hosts of more than one registrar, answered with the one the rule picked (ADR 0020 decision 5).",
 		}),
+		policiesRefreshed: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "rdap_policies_refreshed_timestamp_seconds",
+			Help: "When this node last loaded the TLDs' publication policies, as a Unix timestamp.",
+		}),
+		policyRefreshErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "rdap_policy_refresh_errors_total",
+			Help: "Failed reloads of the publication policies. The node keeps the set last loaded.",
+		}),
 	}
 	m.registry.MustRegister(
-		m.requests, m.requestDuration, m.inFlight, m.certNotAfter, m.certReloadErrors, m.draining, m.lookupErrors, m.redactions, m.nameserversAmbiguous,
+		m.requests, m.requestDuration, m.inFlight, m.certNotAfter, m.certReloadErrors, m.draining, m.lookupErrors, m.redactions, m.nameserversAmbiguous, m.policiesRefreshed, m.policyRefreshErrors,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)

@@ -15,7 +15,7 @@ var rdapEnv = []string{
 	"RDAP_TLS_CERT_PATH", "RDAP_TLS_KEY_PATH", "RDAP_TLS_SELF_SIGNED", "RDAP_TLS_RELOAD_INTERVAL", "RDAP_SERVER_NAME",
 	"RDAP_PROXY_PROTOCOL", "RDAP_PROXY_TRUSTED_CIDRS",
 	"RDAP_READ_TIMEOUT", "RDAP_WRITE_TIMEOUT", "RDAP_IDLE_TIMEOUT", "RDAP_DRAIN_TIMEOUT",
-	"RDAP_BASE_URL", "RDAP_TERMS_OF_SERVICE_URL", "RDAP_DB_MAX_OPEN_CONNS",
+	"RDAP_BASE_URL", "RDAP_TERMS_OF_SERVICE_URL", "RDAP_DB_MAX_OPEN_CONNS", "RDAP_POLICY_REFRESH_INTERVAL",
 	"DB_USER", "DB_PASS", "DB_HOST", "DB_PORT", "DB_NAME", "DB_SSLMODE",
 }
 
@@ -43,6 +43,7 @@ func TestLoadRDAPDefaults(t *testing.T) {
 	assert.Equal(t, time.Minute, cfg.TLS.ReloadInterval)
 	assert.Equal(t, RDAPTimeouts{Read: 5 * time.Second, Write: 10 * time.Second, Idle: time.Minute, Drain: 20 * time.Second}, cfg.Timeouts)
 	assert.Equal(t, 20, cfg.DB.MaxOpenConns)
+	assert.Equal(t, 30*time.Second, cfg.PolicyRefresh)
 	assert.Empty(t, cfg.Notices.TermsOfServiceURL)
 }
 

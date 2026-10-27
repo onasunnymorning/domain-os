@@ -76,12 +76,16 @@ func run(cfg config.RDAP, repositoryID entities.RepositoryID, logger *slog.Logge
 	}
 	logger.Info("Connected to the database", "host", cfg.DB.Host, "name", cfg.DB.Name)
 
+	tlds := postgres.NewGormTLDRepo(db)
 	lookups := services.NewRDAPService(services.RDAPServiceDeps{
 		Domains:    postgres.NewDomainRepository(db, repositoryID),
 		Hosts:      postgres.NewGormHostRepository(db, repositoryID),
 		Registrars: postgres.NewGormRegistrarRepository(db),
-		TLDs:       postgres.NewGormTLDRepo(db),
+		TLDs:       tlds,
 		Contacts:   postgres.NewContactRepository(db, repositoryID),
+		// The TLDs' publication policies (ADR 0021), reloaded every
+		// RDAP_POLICY_REFRESH_INTERVAL.
+		Publication: services.NewRDAPPublicationPolicyService(postgres.NewRDAPPublicationPolicyRepository(db), tlds),
 	})
 	srv, err := rdap.NewServer(rdap.Options{Config: cfg, Lookups: lookups, Logger: logger})
 	if err != nil {

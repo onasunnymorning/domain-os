@@ -33,16 +33,29 @@ Durations use Go syntax (`30s`, `10m`). Every value is checked at start. A bad v
 | `RDAP_WRITE_TIMEOUT` | `10s` | Writing a response | 1 |
 | `RDAP_IDLE_TIMEOUT` | `60s` | A keep-alive connection waiting for its next request | 1 |
 | `RDAP_DRAIN_TIMEOUT` | `20s` | On SIGTERM, how long requests in flight may finish after readiness turns 503 | 1 |
-| `RDAP_TERMS_OF_SERVICE_URL` | *(unset)* | The registry's RDAP terms of use, linked from the Terms of Use notice. Unset leaves the notice out, which the gTLD profile does not allow, and logs a warning at start. Moves into each TLD's publication policy in Phase 3 | 1 |
+| `RDAP_TERMS_OF_SERVICE_URL` | *(unset)* | The RDAP service's terms of use, linked from the Terms of Use notice in every response. Unset leaves the notice out, which the gTLD profile does not allow, and logs a warning at start | 1 |
 | `RDAP_DB_MAX_OPEN_CONNS` | `20` | Database pool cap per node | 1 |
 | `DB_*`, `SCHEMA_GUARD`, `LOG_LEVEL` | as the other services | Database connection, schema check and log level. The RDAP server only connects to an existing database: unlike the admin API, it never creates one | 1 |
 | `RDAP_MAX_IN_FLIGHT` | `200` *(planned)* | Requests a node serves at once, to protect the node | 4 |
 | `RDAP_MAX_CONNECTIONS` | `5000` *(planned)* | Open connections per node | 4 |
 | `RDAP_MAX_CONNECTIONS_PER_IP` | `20` *(planned)* | Open connections per client address per node | 4 |
-| `RDAP_POLICY_REFRESH_INTERVAL` | `30s` *(planned)* | How often a node reloads access and publication policies | 3 |
+| `RDAP_POLICY_REFRESH_INTERVAL` | `30s` | How often a node reloads the publication policies (and, from Phase 4, access policies). A node does not serve until its first load succeeds (built-ins could publish what a stored policy withholds); a later reload that fails keeps the set last loaded. Policies and assignments are read in one snapshot, and a set with an assignment to a missing policy is refused | 3b |
 | `REDIS_*` | as EPP *(planned)* | The limiter's store. Without it the limiter fails open to per-node buckets | 4 |
 
 A read replica for lookups is not offered yet. It is added if load testing (Phase 6) shows the primary is the bottleneck.
+
+## Publication policies
+
+What each TLD publishes is its publication policy: the field-access matrix in [PUBLICATION_REFERENCE.md](PUBLICATION_REFERENCE.md). Policies live in the database and are changed through the admin API, under `rdap:policy:admin`:
+
+| Endpoint | Does |
+|---|---|
+| `GET /rdap/publication-policies` | Every policy, the built-ins included |
+| `GET`, `PUT`, `DELETE /rdap/publication-policies/{name}` | Read, create or replace, delete one. The built-ins can be changed, not deleted; an assigned policy cannot be deleted |
+| `GET /tlds/{tld}/rdap/publication-policy` | The policy that applies to the TLD, and whether it is assigned or the built-in for its type |
+| `PUT /tlds/{tld}/rdap/publication-policy` | Assign a policy; `{"policy": ""}` returns the TLD to its built-in |
+
+Every change writes an outbox event (`rdap.publication_policy.saved`, `.deleted`, `.assigned`) with the actor and the policy before and after. Nodes apply it within `RDAP_POLICY_REFRESH_INTERVAL`.
 
 ## Access policies
 

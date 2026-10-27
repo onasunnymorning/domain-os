@@ -2,7 +2,7 @@
 
 What the RDAP server publishes for each contact field, per publication policy ([ADR 0021](../adr/0021-rdap-publication-and-redaction.md)). This page is the shared specification for the server, compliance review and a future authenticated tier. Change it in the same PR as the built-in policies change.
 
-> **Status: draft, awaiting the policy owner's sign-off.** The server applies these built-ins (Phase 2); Phase 3 makes policies data. Neither built-in may be used for a live TLD until the policy owner has confirmed it and the sign-off is recorded below.
+> **Status: draft, awaiting the policy owner's sign-off.** The server applies these policies, which are stored and editable (Phase 3b). Neither built-in may be used for a live TLD until the policy owner has confirmed it and the sign-off is recorded below.
 
 ## How a field is decided
 
@@ -26,7 +26,7 @@ Redaction methods (RFC 9537): `removal` (the member is left out), `emptyValue` (
 
 A role a policy does not list is **not published**: no entity is served for it and nothing about it is listed in `redacted`, the same as a role the TLD prohibits.
 
-Until Phase 3 lets a policy be assigned to a TLD, a generic TLD has `gtld-rdp-2024` and any other TLD has `cctld-minimal` (`rdappolicy.BuiltInFor`). The policies are code in `internal/application/rdappolicy/policy.go` and must match this page. An IDN TLD (`xn--…`) has `cctld-minimal` whatever its stored type: the registry infers the type from the name and files IDN ccTLDs as generic, so when the type is uncertain the less revealing policy applies. An IDN gTLD is assigned `gtld-rdp-2024` explicitly once Phase 3b lets policies be assigned.
+A TLD is assigned a policy through the admin API ([POLICY_REFERENCE.md § Publication policies](POLICY_REFERENCE.md#publication-policies)). A TLD with none has `gtld-rdp-2024` if it is generic and `cctld-minimal` otherwise. The built-ins' starting rules are code (`entities.BuiltInRDAPPublicationPolicies`), seeded by the migration and editable afterwards; this page lists the starting rules and must match that code. An IDN TLD (`xn--…`) with no assignment has `cctld-minimal` whatever its stored type: the registry infers the type from the name and files IDN ccTLDs as generic, so when the type is uncertain the less revealing policy applies. Assign an IDN gTLD `gtld-rdp-2024` explicitly.
 
 ### `gtld-rdp-2024`: ICANN Registration Data Policy baseline
 
@@ -46,7 +46,7 @@ Until Phase 3 lets a policy be assigned to a TLD, a generic TLD has `gtld-rdp-20
 
 The administrative and billing roles are not published.
 
-A `replacementValue` email needs the policy's contact form URI. Until Phase 3 makes that configurable, it has none, so the email is removed instead.
+A `replacementValue` email needs the policy's contact form URI (`contactFormUri`). The built-ins start without one, so their emails are removed until a URI is set.
 
 The internationalised (`int`) postal information is used when a contact has both forms.
 

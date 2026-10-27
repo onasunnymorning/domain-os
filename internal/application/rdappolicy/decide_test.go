@@ -30,7 +30,7 @@ func TestThickToThinNeverServesAProhibitedRole(t *testing.T) {
 	for _, r := range Roles {
 		allPublic.Roles[r] = map[Field]FieldRule{}
 		for _, f := range Fields {
-			allPublic.Roles[r][f] = publish
+			allPublic.Roles[r][f] = FieldRule{Rule: Publish}
 		}
 	}
 	for _, role := range Roles {

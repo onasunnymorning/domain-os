@@ -41,6 +41,10 @@ const (
 	// to registrars, and registrar families (ADR 0019). Reading them needs
 	// it too: families say which registrars are affiliated.
 	ScopeEPPPolicyAdmin = "epp:policy:admin"
+	// ScopeRDAPPolicyAdmin allows changing the RDAP publication policies and
+	// their assignment to TLDs (ADR 0021), and from Phase 4 the access
+	// policies (ADR 0022). Reading them needs it too.
+	ScopeRDAPPolicyAdmin = "rdap:policy:admin"
 )
 
 // grantedPermissions returns the permissions an Auth0 access token grants,

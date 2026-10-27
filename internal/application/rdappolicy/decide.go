@@ -77,11 +77,11 @@ func Decide(req Requester, cdp *entities.ContactDataPolicy, p Policy, role Role,
 	if !RoleAllowed(cdp, role) || !published {
 		return ContactDecision{}
 	}
-	out := ContactDecision{Serve: true, Fields: make(map[Field]FieldDecision, numberFields)}
+	out := ContactDecision{Serve: true, Fields: make(map[Field]FieldDecision, len(Fields))}
 	for _, f := range Fields {
 		rule, ok := rules[f]
 		if !ok {
-			rule = withhold(Removal) // a field the policy does not name is withheld
+			rule = FieldRule{Rule: Withhold, Method: Removal} // a field the policy does not name is withheld
 		}
 		switch {
 		case rule.Rule == Publish,

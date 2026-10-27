@@ -32,6 +32,9 @@ type RDAP struct {
 	Timeouts RDAPTimeouts
 	Notices  RDAPNotices
 	DB       RDAPDatabase
+	// PolicyRefresh is how often the node reloads the TLDs' publication
+	// policies (and, from Phase 4, access policies).
+	PolicyRefresh time.Duration
 }
 
 // RDAPTLS says where the server certificate comes from. Exactly one of a
@@ -60,8 +63,8 @@ type RDAPTimeouts struct {
 	Drain time.Duration // on SIGTERM, time allowed for requests in flight
 }
 
-// RDAPNotices are the links the gTLD RDAP Profile's notices carry.
-// Phase 3 moves them into each TLD's publication policy.
+// RDAPNotices are the links the gTLD RDAP Profile's notices carry. They
+// are the RDAP service's own, the same for every TLD.
 type RDAPNotices struct {
 	// TermsOfServiceURL is the registry's RDAP terms of use. Empty leaves
 	// the "Terms of Use" notice out, which the gTLD profile does not allow.
@@ -93,7 +96,8 @@ var rdapDefaults = RDAP{
 		Idle:  60 * time.Second,
 		Drain: 20 * time.Second,
 	},
-	DB: RDAPDatabase{MaxOpenConns: 20, User: "postgres", Pass: "postgres", Host: "localhost", Port: "5432", Name: "domain_os", SSLMode: "disable"},
+	PolicyRefresh: 30 * time.Second,
+	DB:            RDAPDatabase{MaxOpenConns: 20, User: "postgres", Pass: "postgres", Host: "localhost", Port: "5432", Name: "domain_os", SSLMode: "disable"},
 }
 
 // LoadRDAP reads the RDAP server's environment. A value that is set but
@@ -131,6 +135,7 @@ func LoadRDAP() (RDAP, error) {
 	collect(setDuration(&cfg.Timeouts.Write, "RDAP_WRITE_TIMEOUT", os.Getenv("RDAP_WRITE_TIMEOUT")))
 	collect(setDuration(&cfg.Timeouts.Idle, "RDAP_IDLE_TIMEOUT", os.Getenv("RDAP_IDLE_TIMEOUT")))
 	collect(setDuration(&cfg.Timeouts.Drain, "RDAP_DRAIN_TIMEOUT", os.Getenv("RDAP_DRAIN_TIMEOUT")))
+	collect(setDuration(&cfg.PolicyRefresh, "RDAP_POLICY_REFRESH_INTERVAL", os.Getenv("RDAP_POLICY_REFRESH_INTERVAL")))
 
 	cfg.BaseURL, err = parseRDAPBaseURL(os.Getenv("RDAP_BASE_URL"), cfg.TLS.ServerName)
 	collect(err)

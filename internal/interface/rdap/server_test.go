@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -260,5 +261,70 @@ func TestOpsAndMetrics(t *testing.T) {
 		require.NoError(t, ts.Shutdown(ctx))
 		assert.Equal(t, http.StatusServiceUnavailable, opsGet(ts.Server, "/readyz").Code)
 		assert.Contains(t, opsGet(ts.Server, "/metrics").Body.String(), "rdap_draining 1")
+	})
+}
+
+func TestPublicationPoliciesAreReloaded(t *testing.T) {
+	cfg := testConfig("https://rdap.example.test/")
+	cfg.PolicyRefresh = 20 * time.Millisecond
+
+	t.Run("on start and every interval", func(t *testing.T) {
+		lookups := registry()
+		ts := startServer(t, cfg, lookups)
+		require.Eventually(t, func() bool {
+			lookups.mu.Lock()
+			defer lookups.mu.Unlock()
+			return lookups.refreshes >= 2
+		}, 2*time.Second, 5*time.Millisecond)
+		assert.NotContains(t, opsGet(ts.Server, "/metrics").Body.String(), "rdap_policies_refreshed_timestamp_seconds 0")
+	})
+
+	t.Run("a failed reload is counted and the server keeps serving", func(t *testing.T) {
+		lookups := registry()
+		lookups.refreshErr, lookups.failAfter = errors.New("database unavailable"), 1
+		ts := startServer(t, cfg, lookups)
+		require.Eventually(t, func() bool {
+			return strings.Contains(opsGet(ts.Server, "/metrics").Body.String(), "rdap_policy_refresh_errors_total 2")
+		}, 2*time.Second, 5*time.Millisecond)
+		resp, _ := ts.do(t, http.MethodGet, "domain/example.tld")
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("no first load, no serving", func(t *testing.T) {
+		lookups := registry()
+		lookups.refreshErr = errors.New("database unavailable")
+		srv, err := NewServer(Options{Config: cfg, Lookups: lookups})
+		require.NoError(t, err)
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		defer func() { _ = l.Close() }()
+		err = srv.Serve(l)
+		assert.ErrorContains(t, err, "load the publication policies before serving")
+		assert.False(t, srv.Ready(), "never ready")
+	})
+
+	t.Run("shutdown stops a first load that has stalled", func(t *testing.T) {
+		slow := cfg
+		slow.PolicyRefresh = time.Minute
+		lookups := registry()
+		lookups.stallRefresh = true
+		srv, err := NewServer(Options{Config: slow, Lookups: lookups})
+		require.NoError(t, err)
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		defer func() { _ = l.Close() }()
+		served := make(chan error, 1)
+		go func() { served <- srv.Serve(l) }()
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, srv.Shutdown(ctx))
+		select {
+		case err := <-served:
+			assert.NoError(t, err, "a shutdown is not a failure to start")
+		case <-time.After(2 * time.Second):
+			t.Fatal("Serve still waiting on the policy load after Shutdown")
+		}
+		assert.False(t, srv.Ready())
 	})
 }
