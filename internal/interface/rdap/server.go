@@ -43,7 +43,10 @@ type Server struct {
 	// decoded, which requests are routed by; escapedBasePath is the same
 	// path as it appears in a URL, which links are built from.
 	baseURL, basePath, escapedBasePath string
-	termsOfService                     string
+	// origin is the base URL's scheme and host: link values are the origin
+	// and the request's own path and query.
+	origin         string
+	termsOfService string
 
 	startOnce sync.Once
 	serving   atomic.Bool
@@ -71,6 +74,7 @@ func NewServer(opts Options) (*Server, error) {
 		baseURL:         opts.Config.BaseURL,
 		basePath:        base.Path,
 		escapedBasePath: base.EscapedPath(),
+		origin:          base.Scheme + "://" + base.Host,
 		termsOfService:  opts.Config.Notices.TermsOfServiceURL,
 	}
 	if s.basePath == "" {

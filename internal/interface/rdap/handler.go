@@ -115,7 +115,9 @@ func (s *Server) notices(r *http.Request) []notice {
 // response: the queried URI, query string included (the gTLD profile's
 // tool checks this).
 func (s *Server) requestURL(r *http.Request) string {
-	u := s.baseURL + strings.TrimPrefix(r.URL.EscapedPath(), s.escapedBasePath)
+	// The public origin and the request's own escaped path: exactly the
+	// queried URI, however the path was spelled and wherever it routed.
+	u := s.origin + r.URL.EscapedPath()
 	if r.URL.RawQuery != "" || r.URL.ForceQuery {
 		u += "?" + r.URL.RawQuery
 	}

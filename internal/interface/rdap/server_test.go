@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -181,6 +182,27 @@ func TestEveryErrorCarriesTheTermsOfUse(t *testing.T) {
 	failing := startServer(t, testConfig("https://rdap.example.test/"), lookups)
 	_, body := failing.do(t, http.MethodGet, "domain/example.tld")
 	assert.NotEmpty(t, decodeError(t, body).Notices, "500")
+}
+
+func TestLinkValuesAreTheQueriedURI(t *testing.T) {
+	ts := startServer(t, testConfig("https://rdap.example.test/rdap/"), registry())
+	root := strings.TrimSuffix(ts.url, "rdap/")
+	get := func(path string) []byte {
+		resp, err := ts.client.Get(root + path)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return body
+	}
+
+	var help helpResponse
+	require.NoError(t, json.Unmarshal(get("rd%61p/help"), &help))
+	require.NotEmpty(t, help.Notices, "an escaped spelling of the base path still routes")
+	assert.Equal(t, "https://rdap.example.test/rd%61p/help", help.Notices[0].Links[0].Value, "the path as it was queried")
+
+	e := decodeError(t, get("elsewhere"))
+	assert.Equal(t, "https://rdap.example.test/elsewhere", e.Notices[0].Links[0].Value, "outside the base path too")
 }
 
 func TestLinkValuesKeepTheQuery(t *testing.T) {
