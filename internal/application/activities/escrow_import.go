@@ -46,6 +46,13 @@ type EscrowImportActivities struct {
 	// RepositoryID is the repository ID imported objects' new ROIDs are
 	// minted with (ADR 0017).
 	RepositoryID entities.RepositoryID
+	// DSN is the database the importer writes to, and ImportConns the
+	// connections it may open for that: the importer's driver (go-pg) has
+	// a pool apart from the worker's GORM pool, so the worker sets both
+	// from one budget (config.Database.MaxOpenConns). Zero means the
+	// importer's own default.
+	DSN         string
+	ImportConns int
 }
 
 // ValidateEscrowSource checks that required inputs are present, the TLD allows
@@ -1293,7 +1300,7 @@ func (a *EscrowImportActivities) IngestContacts(ctx context.Context, args Ingest
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
+	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
 	if err != nil {
 		return IngestContactsResult{}, fmt.Errorf("failed to init importer: %w", err)
 	}
@@ -1376,7 +1383,7 @@ func (a *EscrowImportActivities) ValidateRegistrantRefs(ctx context.Context, arg
 	defer sqliteDB.Close()
 
 	// Open Postgres connection for live contact lookup.
-	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
+	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
 	if err != nil {
 		return ValidateRegistrantRefsResult{}, fmt.Errorf("ValidateRegistrantRefs: init PG importer: %w", err)
 	}
@@ -1560,7 +1567,7 @@ func (a *EscrowImportActivities) IngestHosts(ctx context.Context, args IngestHos
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
+	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
 	if err != nil {
 		return IngestHostsResult{}, err
 	}
@@ -1622,7 +1629,7 @@ func (a *EscrowImportActivities) IngestDomains(ctx context.Context, args IngestD
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
+	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
 	if err != nil {
 		return IngestDomainsResult{}, err
 	}
@@ -1682,7 +1689,7 @@ func (a *EscrowImportActivities) IngestNNDNs(ctx context.Context, args IngestNND
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
+	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
 	if err != nil {
 		return IngestNNDNsResult{}, err
 	}
@@ -1742,7 +1749,7 @@ func (a *EscrowImportActivities) LinkDomainHosts(ctx context.Context, args LinkD
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
+	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
 	if err != nil {
 		return LinkDomainHostsResult{}, err
 	}
@@ -1812,7 +1819,7 @@ func (a *EscrowImportActivities) AccreditRegistrars(ctx context.Context, args Ac
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporter(a.RepositoryID)
+	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
 	if err != nil {
 		return AccreditRegistrarsResult{}, fmt.Errorf("failed to init importer: %w", err)
 	}

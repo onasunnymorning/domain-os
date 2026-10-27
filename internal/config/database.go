@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 )
 
@@ -29,6 +30,23 @@ type Database struct {
 	// open at once. A quarter are kept idle. The EPP and RDAP nodes have
 	// their own setting and do not use this one.
 	MaxOpenConns int
+}
+
+// DSN is the connection string: URL as given when it is set, otherwise one
+// built from the parts, with the credentials percent-escaped so a password
+// holding URL-reserved characters survives.
+func (d Database) DSN() string {
+	if d.URL != "" {
+		return d.URL
+	}
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(d.User, d.Pass),
+		Host:     d.Host + ":" + d.Port,
+		Path:     "/" + d.DBName,
+		RawQuery: "sslmode=" + url.QueryEscape(d.SSLmode),
+	}
+	return u.String()
 }
 
 const (

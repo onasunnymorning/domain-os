@@ -62,3 +62,10 @@ func TestLoadDatabaseRefusesABadPoolBound(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, db.MaxOpenConns)
 }
+
+func TestDatabaseDSN(t *testing.T) {
+	db := Database{User: "u", Pass: "p@ss:w/rd", Host: "db.example", Port: "5433", DBName: "dos", SSLmode: "require"}
+	assert.Equal(t, "postgres://u:p%40ss%3Aw%2Frd@db.example:5433/dos?sslmode=require", db.DSN())
+	db.URL = "postgres://given"
+	assert.Equal(t, "postgres://given", db.DSN(), "a URL is used as given")
+}

@@ -9,6 +9,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 
 	"github.com/onasunnymorning/domain-os/internal/application/activities"
+	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/application/workflows"
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/bootstrap"
@@ -34,7 +35,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Refusing to start: %v", err)
 	}
-	db := openDB(repositoryID)
+	db, importDSN, importConns := openDB(repositoryID)
 	log.Printf("unified-worker ROID repository ID %s", repositoryID)
 	// Create a shared Temporal client
 	cfg := temporal.NewClientConfigFromEnv("")
@@ -180,8 +181,9 @@ func main() {
 	scheduledWorker.RegisterActivity(activities.SyncSpec5)
 	drainDataWorker.RegisterActivity(activities.SyncSpec5)
 
-	// Escrow Import (Heavy Batch + Drain Data)
-	escrowImportActs := &activities.EscrowImportActivities{RepositoryID: repositoryID}
+	// Escrow Import (Heavy Batch + Drain Data). The importer's driver has a
+	// pool apart from the GORM one; both come out of the same budget.
+	escrowImportActs := &activities.EscrowImportActivities{RepositoryID: repositoryID, DSN: importDSN, ImportConns: importConns}
 	heavyBatchWorker.RegisterActivity(escrowImportActs)
 	drainDataWorker.RegisterActivity(escrowImportActs)
 
@@ -375,17 +377,25 @@ func newEscrowIntakeActivities(db *gorm.DB) (*activities.EscrowIntakeActivities,
 	})
 }
 
-// openDB opens the worker's one database pool and runs the schema guard
+// openDB opens the worker's one GORM pool and runs the schema guard
 // (docs/adr/0010-database-migrations.md) on it, exiting when the guard
 // refuses. A connection failure is fatal too: a worker that cannot reach the
 // database cannot do useful work, and failing here names the cause instead of
-// failing every activity later.
-func openDB(repositoryID entities.RepositoryID) *gorm.DB {
+// failing every activity later. It also returns what the escrow importer,
+// which has a pool of its own, may use: the connection string and its share
+// of the budget.
+func openDB(repositoryID entities.RepositoryID) (db *gorm.DB, importDSN string, importConns int) {
 	dbCfg, err := config.LoadDatabase()
 	if err != nil {
 		log.Fatalf("Refusing to start: %v", err)
 	}
-	db, err := postgres.NewConnection(postgres.Config(dbCfg))
+	// One budget, DB_MAX_OPEN_CONNS, split between the GORM pool every
+	// activity shares and the escrow importer's own (go-pg) pool: a quarter
+	// of it, at most DefaultImportConns, for the importer, the rest for GORM.
+	importConns = min(services.DefaultImportConns, max(1, dbCfg.MaxOpenConns/4))
+	gormCfg := dbCfg
+	gormCfg.MaxOpenConns = max(postgres.MinMaxOpenConns, dbCfg.MaxOpenConns-importConns)
+	db, err = postgres.NewConnection(postgres.Config(gormCfg))
 	if err != nil {
 		log.Fatalf("schema guard: cannot connect to the database: %v", err)
 	}
@@ -397,5 +407,5 @@ func openDB(repositoryID entities.RepositoryID) *gorm.DB {
 		log.Printf("Refusing to start: %v", err)
 		os.Exit(1)
 	}
-	return db
+	return db, dbCfg.DSN(), importConns
 }

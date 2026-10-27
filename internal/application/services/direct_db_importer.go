@@ -73,23 +73,37 @@ func (s *DirectDBImporter) rowsPerBatch() int {
 	return defaultImportBatchSize
 }
 
+// DefaultImportConns is the connections an importer opens when its caller
+// sets no budget: bulk upserts need a few, never many.
+const DefaultImportConns = 5
+
 // NewDirectDBImporter connects an importer that mints ROIDs with repository,
-// the process's configured repository ID (config.LoadRepositoryID).
+// the process's configured repository ID (config.LoadRepositoryID), to the
+// database the environment names: DATABASE_URL (Neon/Render), else the
+// DB_* variables (the production credential path on AWS ECS, also used
+// locally). The CLI import path uses it; the worker passes its own
+// connection string and budget to NewDirectDBImporterOn.
 func NewDirectDBImporter(repository entities.RepositoryID) (*DirectDBImporter, error) {
+	pgURL := os.Getenv("DATABASE_URL")
+	if pgURL == "" {
+		pgURL = fallbackPGURL()
+	}
+	return NewDirectDBImporterOn(repository, pgURL, DefaultImportConns)
+}
+
+// NewDirectDBImporterOn connects an importer to the database at pgURL with
+// a pool of at most conns connections (DefaultImportConns when conns is not
+// positive). The importer's driver (go-pg) has a pool of its own, apart from
+// the process's GORM pool, so the caller counts conns within its budget.
+func NewDirectDBImporterOn(repository entities.RepositoryID, pgURL string, conns int) (*DirectDBImporter, error) {
 	if err := repository.Validate(); err != nil {
 		return nil, fmt.Errorf("direct importer: %w", err)
 	}
-	// Initialize Postgres connection
-	// Prefer DATABASE_URL (Neon/Render), fall back to individual DB_* vars
-	// (the production credential path on AWS ECS, also used locally)
-	var pgURL string
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		pgURL = sanitizePGURLForGoPG(dbURL)
-	} else {
-		pgURL = fallbackPGURL()
+	if conns <= 0 {
+		conns = DefaultImportConns
 	}
 
-	opt, err := pg.ParseURL(pgURL)
+	opt, err := pg.ParseURL(sanitizePGURLForGoPG(pgURL))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse PG URL: %w", err)
 	}
@@ -107,8 +121,8 @@ func NewDirectDBImporter(repository entities.RepositoryID) (*DirectDBImporter, e
 	}
 
 	// Pool & resilience tuning for bulk import workloads.
-	// Worker only needs a few connections; timeouts prevent indefinite stalls.
-	opt.PoolSize = 5
+	// An import only needs a few connections; timeouts prevent indefinite stalls.
+	opt.PoolSize = conns
 	opt.MinIdleConns = 1
 	opt.DialTimeout = 10 * time.Second
 	opt.ReadTimeout = 90 * time.Second // Bulk upserts with 5K+ rows can take time
