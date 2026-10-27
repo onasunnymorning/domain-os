@@ -1875,16 +1875,16 @@ func (s *DomainService) quoteIn(ctx context.Context, q *queries.QuoteRequest, ph
 	if err != nil {
 		return nil, err
 	}
-	domainName := entities.DomainName(q.DomainName)
 
-	// Get the PremiumLabels in all currencies
+	// Get the PremiumLabels in all currencies. The label is the domain's,
+	// normalised by NewDomainName, not the request's raw text.
 	pe := []*entities.PremiumLabel{}
 	if phase.PremiumListName != nil {
 		pe, _, err = s.premiumLabelRepo.List(ctx, queries.ListItemsQuery{
 			PageSize: 25,
 			Filter: queries.ListPremiumLabelsFilter{
 				PremiumListNameEquals: *phase.PremiumListName,
-				LabelLike:             domainName.Label(),
+				LabelLike:             domain.Name.Label(),
 			},
 		})
 		if err != nil {
