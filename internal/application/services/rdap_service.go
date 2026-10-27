@@ -17,7 +17,7 @@ type RDAPService struct {
 	domains    repositories.DomainRepository
 	hosts      repositories.HostRepository
 	registrars repositories.RegistrarRepository
-	tlds       repositories.TLDRepository
+	tlds       repositories.TLDPhaseReader
 	contacts   repositories.ContactRepository
 }
 
@@ -26,7 +26,7 @@ type RDAPServiceDeps struct {
 	Domains    repositories.DomainRepository
 	Hosts      repositories.HostRepository
 	Registrars repositories.RegistrarRepository
-	TLDs       repositories.TLDRepository
+	TLDs       repositories.TLDPhaseReader
 	Contacts   repositories.ContactRepository
 }
 
@@ -53,12 +53,14 @@ func (s *RDAPService) Domain(ctx context.Context, name string) (*interfaces.RDAP
 		return nil, fmt.Errorf("sponsor %s of %s: %w", d.ClID, d.Name, err)
 	}
 
-	tld, err := s.tlds.GetByName(ctx, d.TLDName.String(), true)
+	// The TLD's type and phases only: no prices, fees or counts, so a
+	// lookup's cost does not grow with the TLD.
+	tld, err := s.tlds.GetWithPhases(ctx, d.TLDName.String())
 	if err != nil {
 		return nil, fmt.Errorf("TLD of %s: %w", d.Name, err)
 	}
 	out.TLDType = tld.Type
-	out.Publication = rdappolicy.BuiltInFor(tld.Type)
+	out.Publication = rdappolicy.BuiltInFor(tld.Name, tld.Type)
 	if phase, err := tld.GetCurrentGAPhase(); err == nil {
 		cdp := phase.Policy.ContactDataPolicy
 		out.ContactPolicy = &cdp

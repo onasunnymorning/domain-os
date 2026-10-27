@@ -6,6 +6,8 @@
 package rdappolicy
 
 import (
+	"strings"
+
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -134,10 +136,16 @@ func GTLDRegistrationDataPolicy2024() Policy {
 }
 
 // CCTLDMinimal is the built-in cctld-minimal: only the registrant's country.
+// The country is published in the jCard's address, and a jCard always has a
+// name, so the name and the other address parts are kept empty
+// (emptyValue), not removed.
 func CCTLDMinimal() Policy {
 	registrant := map[Field]FieldRule{}
 	for _, f := range Fields {
 		registrant[f] = withhold(Removal)
+	}
+	for _, f := range []Field{FieldName, FieldStreet, FieldCity, FieldSP, FieldPC} {
+		registrant[f] = withhold(EmptyValue)
 	}
 	registrant[FieldCC] = publish
 	return Policy{Name: "cctld-minimal", Roles: map[Role]map[Field]FieldRule{RoleRegistrant: registrant}}
@@ -145,8 +153,13 @@ func CCTLDMinimal() Policy {
 
 // BuiltInFor is the publication policy a TLD has until Phase 3 lets one be
 // assigned: gtld-rdp-2024 for a generic TLD, cctld-minimal for any other.
-func BuiltInFor(t entities.TLDType) Policy {
-	if t == entities.TLDTypeGTLD {
+//
+// The TLD type is inferred from the name (two letters is a ccTLD), which
+// files an IDN ccTLD such as xn--p1ai as generic. When the type is uncertain
+// the less revealing policy is the safe one, so an IDN TLD has cctld-minimal
+// unless a policy is assigned to it: an IDN gTLD is assigned gtld-rdp-2024.
+func BuiltInFor(name entities.DomainName, t entities.TLDType) Policy {
+	if t == entities.TLDTypeGTLD && !strings.HasPrefix(strings.ToLower(string(name)), "xn--") {
 		return GTLDRegistrationDataPolicy2024()
 	}
 	return CCTLDMinimal()
