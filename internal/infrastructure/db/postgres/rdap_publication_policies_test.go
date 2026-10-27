@@ -40,6 +40,30 @@ func TestRDAPPublicationPolicyRepository(t *testing.T) {
 		return n
 	}
 
+	t.Run("the migration upgrades a policy stored with an emptied phone", func(t *testing.T) {
+		// A row as saved before a withheld phone had to be removed.
+		old := entities.BuiltInRDAPPublicationPolicies()[0]
+		old.Name, old.Description, old.UpdatedBy = "pre-tel-rule", "kept as is", "ops"
+		old.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldVoice] = entities.RDAPFieldRule{Rule: entities.RDAPWithhold, Method: entities.RDAPEmptyValue}
+		old.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldFax] = entities.RDAPFieldRule{Rule: entities.RDAPWithhold, Method: entities.RDAPEmptyValue}
+		require.NoError(t, tx.Create(toRDAPPublicationRecord(old)).Error)
+
+		require.NoError(t, seedRDAPPublicationPolicies(tx))
+		got, err := repo.GetPolicy(ctx, "pre-tel-rule")
+		require.NoError(t, err)
+		removed := entities.RDAPFieldRule{Rule: entities.RDAPWithhold, Method: entities.RDAPRemoval}
+		assert.Equal(t, removed, got.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldVoice])
+		assert.Equal(t, removed, got.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldFax])
+		assert.Equal(t, old.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldStreet], got.Roles[entities.RDAPRoleRegistrant][entities.RDAPFieldStreet], "other rules kept")
+		assert.Equal(t, "kept as is", got.Description)
+		assert.NoError(t, got.Validate())
+
+		require.NoError(t, seedRDAPPublicationPolicies(tx), "running again changes nothing")
+		again, err := repo.GetPolicy(ctx, "pre-tel-rule")
+		require.NoError(t, err)
+		assert.Equal(t, got, again)
+	})
+
 	t.Run("the migration seeded the built-in policies", func(t *testing.T) {
 		require.NoError(t, seedRDAPPublicationPolicies(tx), "seeding again keeps what is there")
 		for _, b := range entities.BuiltInRDAPPublicationPolicies() {
@@ -70,6 +94,17 @@ func TestRDAPPublicationPolicyRepository(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "custom-test", a["rdappoltest"])
 		assert.ErrorIs(t, repo.DeletePolicy(ctx, "custom-test", event("test.deleted")), entities.ErrRDAPPublicationPolicyInUse)
+	})
+
+	t.Run("a snapshot holds the policies and the assignments together", func(t *testing.T) {
+		policies, assignments, err := repo.Snapshot(ctx)
+		require.NoError(t, err)
+		names := map[string]bool{}
+		for _, p := range policies {
+			names[p.Name] = true
+		}
+		assert.True(t, names["custom-test"])
+		assert.Equal(t, "custom-test", assignments["rdappoltest"])
 	})
 
 	t.Run("assignment refuses an unknown TLD or policy", func(t *testing.T) {

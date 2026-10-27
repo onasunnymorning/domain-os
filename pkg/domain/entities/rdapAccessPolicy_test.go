@@ -66,6 +66,20 @@ func TestParseRDAPAccessNetwork(t *testing.T) {
 	p, err = ParseRDAPAccessNetwork("2001:db8::1")
 	require.NoError(t, err)
 	assert.Equal(t, "2001:db8::1/128", p.String())
+	p, err = ParseRDAPAccessNetwork("::ffff:192.0.2.9/120")
+	require.NoError(t, err)
+	assert.Equal(t, "192.0.2.0/24", p.String(), "an IPv4-mapped prefix is its IPv4 prefix")
 	_, err = ParseRDAPAccessNetwork("not-a-network")
 	assert.ErrorIs(t, err, ErrInvalidRDAPAccessNetwork)
+}
+
+func TestRDAPAccessSetMatchesMappedNetworks(t *testing.T) {
+	stored := netip.MustParsePrefix("::ffff:192.0.2.0/120") // as an older row may hold it
+	set := NewRDAPAccessSet(nil, []RDAPAccessNetwork{{Network: stored, Policy: RDAPAccessMonitoring}}, time.Time{})
+	assert.Equal(t, RDAPAccessMonitoring, set.ForAddress(netip.MustParseAddr("192.0.2.7")).Name)
+	assert.Equal(t, RDAPAccessMonitoring, set.ForAddress(netip.MustParseAddr("::ffff:192.0.2.7")).Name)
+	assert.Empty(t, set.UnresolvedNetworks())
+
+	broken := NewRDAPAccessSet(nil, []RDAPAccessNetwork{{Network: netip.MustParsePrefix("198.51.100.0/24"), Policy: "gone"}}, time.Time{})
+	assert.Equal(t, []string{"198.51.100.0/24=gone"}, broken.UnresolvedNetworks())
 }

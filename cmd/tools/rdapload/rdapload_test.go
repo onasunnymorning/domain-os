@@ -55,6 +55,16 @@ func TestSummarise(t *testing.T) {
 	assert.Equal(t, 1, rep.Shed)
 	assert.Equal(t, 2, rep.OverSLA, "a transport error that took a second is over the SLA too")
 	assert.InDelta(t, 2.0, rep.PerSecond, 0.01)
+	assert.Equal(t, time.Second, rep.P99, "slow failures are in the latency distribution")
+
+	slow := make([]sample, 0, 100)
+	for i := 0; i < 95; i++ {
+		slow = append(slow, sample{latency: time.Second})
+	}
+	for i := 0; i < 5; i++ {
+		slow = append(slow, sample{code: 200, latency: 10 * time.Millisecond})
+	}
+	assert.Equal(t, time.Second, summarise(slow, time.Second).P95, "95 one-second timeouts are the p95, not the five fast answers")
 }
 
 func TestCLI(t *testing.T) {
@@ -69,4 +79,20 @@ func TestCLI(t *testing.T) {
 
 	assert.Error(t, cli([]string{"-base", srv.URL}, &out), "names are required")
 	assert.Error(t, cli([]string{"-name", "a.example", "-miss", "2"}, &out))
+	for _, rate := range []string{"-1", "2e9", "NaN"} {
+		assert.Error(t, cli([]string{"-base", srv.URL, "-name", "a.example", "-rate", rate}, &out), "-rate %s is refused before any load", rate)
+	}
+}
+
+func TestTruncatedBodyIsAFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("only ten b")) // then the connection ends
+	}))
+	defer srv.Close()
+
+	s := lookup(context.Background(), srv.Client(), srv.URL)
+	assert.Zero(t, s.code, "a 200 whose body never arrived is not a 200")
+	assert.Positive(t, s.latency, "its time is still counted")
 }

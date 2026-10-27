@@ -12,7 +12,18 @@ package rdap
 // --use-local-datasets and needs no network.
 //
 // Without a local Java, RDAPCT_DOCKER=1 runs the tool in a Temurin image
-// (`make rst-rdap-docker`).
+// (`make rst-rdap-docker`), which reaches the server as host.docker.internal:
+// that needs Docker Desktop, where the name is in Docker's DNS and reaches
+// the host's loopback.
+//
+// The server needs a real host name. The tool refuses links to "localhost"
+// or an IP address as web URIs, and it resolves the name with its own DNS
+// client (not the hosts file the JVM reads) before it validates anything:
+// without an address it skips validation and reports only -20400. So a
+// native run uses conformanceHost, which must resolve to 127.0.0.1 in DNS.
+// CI adds it to /etc/hosts, which systemd-resolved serves; elsewhere, use
+// the Docker run. Every case also checks that the server was asked for its
+// URL, so a run that validated nothing cannot pass.
 
 import (
 	"crypto/ecdsa"
@@ -33,7 +44,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -50,6 +63,8 @@ const (
 	rdapctSHA256 = "e0d0d2002e8d2e933426c25712be5137bc629d3b081e042d6ffdcc42309e1a42"
 	// rdapctImage runs the tool when RDAPCT_DOCKER is set.
 	rdapctImage = "eclipse-temurin:21.0.5_11-jre"
+	// conformanceHost is the test server's name in the tool's URLs.
+	conformanceHost = "rdap.conformance.internal"
 )
 
 // rdapct is a way to run the conformance tool.
@@ -67,7 +82,14 @@ func findRDAPCT(t *testing.T) *rdapct {
 		if os.Getenv("CI") != "" {
 			t.Fatalf("RDAP Conformance Tool required in CI: %s", msg)
 		}
-		t.Skipf("RDAP Conformance Tool not available: %s", msg)
+		if os.Getenv("RDAPCT_FETCH_DATASETS") != "" {
+			// `make rdapct` asked for the datasets: a skip would report an
+			// install that did not happen.
+			t.Fatalf("cannot fetch the tool's datasets: %s", msg)
+		}
+		// The marker puts it on the `make rst-rdap` scoreboard: without the
+		// tool, rdap-01 to rdap-04 are not graded as RST grades them.
+		t.Skipf("RST pending: the RDAP Conformance Tool is not available, so rdap-01 to rdap-04 are ungraded: %s", msg)
 		return nil
 	}
 	dir, err := filepath.Abs("../../../.cache/rdapct")
@@ -80,13 +102,18 @@ func findRDAPCT(t *testing.T) *rdapct {
 	if hex.EncodeToString(sum[:]) != rdapctSHA256 {
 		t.Fatalf("%s does not have the pinned checksum; delete it and run `make rdapct`", rdapctJar)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "datasets")); err != nil && os.Getenv("RDAPCT_FETCH_DATASETS") == "" {
-		return missing("the tool's IANA datasets are not in %s/datasets", dir)
+	// `make rdapct` writes the marker only after a fetch succeeds, so a
+	// partial fetch is never taken for the datasets.
+	if _, err := os.Stat(filepath.Join(dir, "datasets", ".complete")); err != nil && os.Getenv("RDAPCT_FETCH_DATASETS") == "" {
+		return missing("the tool's IANA datasets are not complete in %s/datasets", dir)
 	}
-	r := &rdapct{dir: dir, host: "localhost"}
+	r := &rdapct{dir: dir, host: conformanceHost}
 	if os.Getenv("RDAPCT_DOCKER") != "" {
 		r.docker, r.host = true, "host.docker.internal"
 		return r
+	}
+	if addrs, err := net.LookupHost(conformanceHost); err != nil || !slices.Contains(addrs, "127.0.0.1") {
+		return missing("%s does not resolve to 127.0.0.1 (%v); add it to /etc/hosts where systemd-resolved serves it, or set RDAPCT_DOCKER=1", conformanceHost, addrs)
 	}
 	// macOS ships a java stub that fails without a runtime; ask it.
 	if err := exec.Command("java", "-version").Run(); err != nil {
@@ -160,6 +187,27 @@ func conformanceCA(t *testing.T, host string) (tls.Certificate, []byte) {
 	return tls.Certificate{Certificate: [][]byte{der, caDER}, PrivateKey: key}, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})
 }
 
+// pathCounts counts the requests the server answered, by path.
+type pathCounts struct {
+	mu sync.Mutex
+	n  map[string]int
+}
+
+func (c *pathCounts) Add(path string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.n == nil {
+		c.n = map[string]int{}
+	}
+	c.n[path]++
+}
+
+func (c *pathCounts) Get(path string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.n[path]
+}
+
 // conformanceRun is one run of the tool against one URL.
 type conformanceRun struct {
 	Errors   []rdapctResult
@@ -175,7 +223,7 @@ type rdapctResult struct {
 // startConformanceServer serves rec, the nameserver and the registrar over
 // TLS on the loopback, with a CA-signed certificate for the tool's host
 // name, and returns the base URL the tool reaches it at.
-func startConformanceServer(t *testing.T, r *rdapct, lookups *fakeLookups, tmp string) string {
+func startConformanceServer(t *testing.T, r *rdapct, lookups *fakeLookups, tmp string, asked *pathCounts) string {
 	t.Helper()
 	cert, caPEM := conformanceCA(t, r.host)
 
@@ -190,6 +238,13 @@ func startConformanceServer(t *testing.T, r *rdapct, lookups *fakeLookups, tmp s
 	srv.certs, err = tlsconfig.NewStaticCertSource(cert, tlsconfig.Hooks{})
 	require.NoError(t, err)
 	srv.http.TLSConfig = tlsconfig.Server(srv.certs)
+	// Count what the tool asks for, by path, so a run that reached nothing
+	// cannot pass.
+	inner := srv.http.Handler
+	srv.http.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		asked.Add(req.URL.Path)
+		inner.ServeHTTP(w, req)
+	})
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(l) }()
 	t.Cleanup(func() { _ = srv.Shutdown(t.Context()); <-served })
@@ -242,8 +297,11 @@ func runConformance(t *testing.T, r *rdapct, tmp, url string, flags ...string) c
 	if os.Getenv("RDAPCT_VERBOSE") != "" {
 		t.Logf("rdapct output:\n%s", out)
 	}
+	// The tool exits 0 whatever it finds; any other exit is a run that
+	// failed, whatever its report says.
+	require.NoError(t, err, "the tool failed: %s", out)
 	raw, readErr := os.ReadFile(results) // #nosec G304 -- test-only: the results file this run named
-	require.NoError(t, readErr, "the tool wrote no results (exit %v): %s", err, out)
+	require.NoError(t, readErr, "the tool wrote no results: %s", out)
 
 	var file struct {
 		Results struct {
@@ -293,21 +351,31 @@ func TestRST_RDAPConformanceTool(t *testing.T) {
 		},
 		registrars: map[int]*entities.Registrar{9995: testRegistrar()},
 	}
-	base := startConformanceServer(t, r, lookups, tmp)
+	asked := &pathCounts{}
+	base := startConformanceServer(t, r, lookups, tmp, asked)
 
+	// grade runs the tool on path, and requires that the server was asked
+	// for it: the tool reports nothing about a response it never fetched.
+	grade := func(t *testing.T, path string, flags ...string) {
+		t.Helper()
+		before := asked.Get("/" + path)
+		run := runConformance(t, r, tmp, base+path, flags...)
+		require.Greater(t, asked.Get("/"+path), before, "the tool never fetched /%s, so it validated nothing", path)
+		requireConformant(t, run)
+	}
 	t.Run("rdap-01 a thick domain", func(t *testing.T) {
-		requireConformant(t, runConformance(t, r, tmp, base+"example/domain/"+string(thick.Domain.Name), "--gtld-registry"))
+		grade(t, "example/domain/"+string(thick.Domain.Name), "--gtld-registry")
 	})
 	t.Run("rdap-01 a domain of a thin TLD", func(t *testing.T) {
-		requireConformant(t, runConformance(t, r, tmp, base+"example/domain/"+string(thin.Domain.Name), "--gtld-registry", "--thin"))
+		grade(t, "example/domain/"+string(thin.Domain.Name), "--gtld-registry", "--thin")
 	})
 	t.Run("rdap-02 a nameserver", func(t *testing.T) {
-		requireConformant(t, runConformance(t, r, tmp, base+"example/nameserver/ns1.xn--bcher-kva.example", "--gtld-registry"))
+		grade(t, "example/nameserver/ns1.xn--bcher-kva.example", "--gtld-registry")
 	})
 	t.Run("rdap-03 a registrar", func(t *testing.T) {
-		requireConformant(t, runConformance(t, r, tmp, base+"example/entity/9995", "--gtld-registry"))
+		grade(t, "example/entity/9995", "--gtld-registry")
 	})
 	t.Run("rdap-04 help", func(t *testing.T) {
-		requireConformant(t, runConformance(t, r, tmp, base+"example/help", "--gtld-registry"))
+		grade(t, "example/help", "--gtld-registry")
 	})
 }

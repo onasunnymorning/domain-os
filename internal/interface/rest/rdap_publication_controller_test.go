@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 
@@ -71,6 +72,12 @@ func (f *fakeRDAPPublication) DeletePolicy(_ context.Context, name string, event
 	return nil
 }
 
+func (f *fakeRDAPPublication) Snapshot(ctx context.Context) ([]*entities.RDAPPublicationPolicy, map[entities.DomainName]string, error) {
+	p, _ := f.ListPolicies(ctx)
+	a, _ := f.ListAssignments(ctx)
+	return p, a, nil
+}
+
 func (f *fakeRDAPPublication) ListAssignments(context.Context) (map[entities.DomainName]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -135,7 +142,7 @@ func TestRDAPPublicationRequiresPermission(t *testing.T) {
 const thickPolicy = `{"description":"thick","contactFormUri":"https://registry.example/contact","roles":{"registrant":{
 	"handle":{"rule":"withhold","method":"removal"},"name":{"rule":"publish"},"org":{"rule":"publish-if-disclosed"},
 	"street":{"rule":"withhold","method":"emptyValue"},"city":{"rule":"withhold","method":"emptyValue"},"sp":{"rule":"publish"},
-	"pc":{"rule":"withhold","method":"emptyValue"},"cc":{"rule":"publish"},"voice":{"rule":"withhold","method":"emptyValue"},
+	"pc":{"rule":"withhold","method":"emptyValue"},"cc":{"rule":"publish"},"voice":{"rule":"withhold","method":"removal"},
 	"fax":{"rule":"withhold","method":"removal"},"email":{"rule":"withhold","method":"replacementValue"}}}}`
 
 func TestRDAPPublicationAPI(t *testing.T) {
@@ -189,8 +196,38 @@ func TestRDAPPublicationAPI(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, do(r, http.MethodDelete, "/rdap/publication-policies/cctld-minimal", "").Code)
 	})
 
+	t.Run("an assignment without a policy member is refused, not read as removal", func(t *testing.T) {
+		require.Equal(t, http.StatusOK, do(r, http.MethodPut, "/tlds/gtld/rdap/publication-policy", `{"policy":"thick"}`).Code)
+		for _, body := range []string{`{}`, `{"polciy":"thick"}`, `{"policy":null}`, `null`} {
+			assert.Equal(t, http.StatusBadRequest, do(r, http.MethodPut, "/tlds/gtld/rdap/publication-policy", body).Code, body)
+		}
+		assert.Equal(t, "thick", repo.assignments["gtld"], "the assignment is untouched")
+	})
+
 	t.Run("unassign, then delete", func(t *testing.T) {
 		require.Equal(t, http.StatusOK, do(r, http.MethodPut, "/tlds/gtld/rdap/publication-policy", `{"policy":""}`).Code)
 		assert.Equal(t, http.StatusNoContent, do(r, http.MethodDelete, "/rdap/publication-policies/thick", "").Code)
 	})
+}
+
+func TestRDAPPublicationStaticAdminToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &fakeRDAPPublication{policies: map[string]*entities.RDAPPublicationPolicy{}, assignments: map[entities.DomainName]string{}}
+	r := gin.New()
+	// The admin API's chain (cmd/api/ry-admin): authenticate, then copy the
+	// grants into the request's context.
+	auth := Auth0Middleware("", "", "dev-token", false)
+	chain := func(c *gin.Context) {
+		auth(c)
+		if !c.IsAborted() {
+			ContextPropagationMiddleware()(c)
+		}
+		c.Next()
+	}
+	NewRDAPPublicationController(r, services.NewRDAPPublicationPolicyService(repo, publicationTLDs{}), chain)
+	req := httptest.NewRequest(http.MethodGet, "/rdap/publication-policies", nil)
+	req.Header.Set("Authorization", "Bearer dev-token")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code, "with Auth0 off, the static admin token administers RDAP policies")
 }

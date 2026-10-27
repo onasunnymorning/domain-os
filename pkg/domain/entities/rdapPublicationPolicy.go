@@ -353,6 +353,20 @@ func (s *RDAPPublicationSet) ForTLD(tld DomainName, t TLDType) *RDAPPublicationP
 	return s.policies[BuiltInRDAPPublicationPolicyFor(tld, t)]
 }
 
+// UnresolvedAssignments lists, as "tld=policy", the assignments that name a
+// policy the set does not hold. A set with any must not be used: ForTLD
+// would serve those TLDs the built-in in place of their policy.
+func (s *RDAPPublicationSet) UnresolvedAssignments() []string {
+	var out []string
+	for tld, name := range s.assignments {
+		if _, ok := s.policies[name]; !ok {
+			out = append(out, string(tld)+"="+name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Policies returns every policy, by name.
 func (s *RDAPPublicationSet) Policies() []*RDAPPublicationPolicy {
 	out := make([]*RDAPPublicationPolicy, 0, len(s.policies))
@@ -361,4 +375,22 @@ func (s *RDAPPublicationSet) Policies() []*RDAPPublicationPolicy {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
+}
+
+// RemoveEmptiedPhones turns every withheld phone or fax redacted by
+// emptyValue into one redacted by removal: an empty tel is not valid jCard.
+// Policies stored before that rule are upgraded with it. It reports whether
+// anything changed.
+func (p *RDAPPublicationPolicy) RemoveEmptiedPhones() bool {
+	changed := false
+	for _, fields := range p.Roles {
+		for _, f := range []RDAPField{RDAPFieldVoice, RDAPFieldFax} {
+			if r, ok := fields[f]; ok && r.Rule == RDAPWithhold && r.Method == RDAPEmptyValue {
+				r.Method = RDAPRemoval
+				fields[f] = r
+				changed = true
+			}
+		}
+	}
+	return changed
 }

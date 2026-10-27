@@ -340,7 +340,7 @@ rst-rdap: ## ICANN RST v2.0 RDAP readiness scoreboard (ADR 0015)
 	echo "RST v2.0 StandardRDAP (pinned: internal/interface/rdap/testdata/rst/PROVENANCE.md)"; \
 	grep -E '^\s+--- (PASS|FAIL|SKIP): TestRST_[^/]+/' $$out | sed -E 's/^ +--- //; s/ \([0-9.]+s\)$$//'; \
 	echo ""; echo "Pending and operational reasons:"; \
-	grep -E 'RST (pending|operational)' $$out | sed -E 's/^ +rst_rdap_test.go:[0-9]+: /  /' | sort | uniq -c | sort -rn; \
+	grep -E 'RST (pending|operational)' $$out | sed -E 's/^ +[a-z_]+_test.go:[0-9]+: /  /' | sort | uniq -c | sort -rn; \
 	echo ""; \
 	printf "passed %s  failed %s  pending %s  operational %s\n" \
 		"$$(grep -cE '^\s+--- PASS: TestRST_[^/]+/' $$out)" \
@@ -364,13 +364,16 @@ rdapct: ## Fetch the pinned RDAP Conformance Tool and its IANA datasets into .ca
 	fi
 	@echo "$(RDAPCT_SHA256)  $(RDAPCT_DIR)/rdapct-$(RDAPCT_VERSION).jar" | shasum -a 256 -c - >/dev/null \
 		|| { echo "rdapct-$(RDAPCT_VERSION).jar does not match the pinned checksum"; rm -f $(RDAPCT_DIR)/rdapct-$(RDAPCT_VERSION).jar; exit 1; }
-	@if [ ! -d $(RDAPCT_DIR)/datasets ]; then \
+	@if [ ! -f $(RDAPCT_DIR)/datasets/.complete ]; then \
 		echo "Fetching the tool's IANA datasets..."; \
-		RDAPCT_FETCH_DATASETS=1 go test -count=1 -run 'TestRST_RDAPConformanceTool/rdap-04' ./internal/interface/rdap/ >/dev/null; \
+		rm -rf $(RDAPCT_DIR)/datasets; \
+		RDAPCT_FETCH_DATASETS=1 go test -count=1 -run 'TestRST_RDAPConformanceTool/rdap-04' ./internal/interface/rdap/ >/dev/null \
+			|| { echo "fetching the datasets failed; run again (needs Java 21 and rdap.conformance.internal, or RDAPCT_DOCKER=1)"; exit 1; }; \
+		touch $(RDAPCT_DIR)/datasets/.complete; \
 	fi
 	@echo "rdapct $(RDAPCT_VERSION) and its datasets are in $(RDAPCT_DIR)"
 
-rst-rdap-docker: ## make rst-rdap, with the conformance tool run in a Java container
+rst-rdap-docker: ## make rst-rdap, with the conformance tool run in a Java container (Docker Desktop: it reaches the server as host.docker.internal)
 	@RDAPCT_DOCKER=1 $(MAKE) rdapct
 	@RDAPCT_DOCKER=1 $(MAKE) rst-rdap
 
@@ -389,6 +392,10 @@ test-askg-eval: ## Run Ask G agent evals (live API, requires ANTHROPIC_API_KEY v
 ###################
 # Local CI (mirrors GitHub Actions)
 ###################
+
+hooks: ## Install the git hooks in .githooks (pre-push runs ci-arch + ci-lint + secrets). Once per clone; covers all worktrees
+	@git config core.hooksPath .githooks
+	@echo "✅ core.hooksPath = .githooks (pre-push gate active; 'git push --no-verify' skips it once)"
 
 ci-local: ci-preflight ci-envcheck ci-lint ci-arch build-all ci-test-backend ci-test-frontend ci-security test-api ## Run the full CI pipeline locally (lint + arch gate + build + test + frontend + security + API integration)
 	@echo ""
@@ -420,7 +427,10 @@ ci-envcheck: ## Check env var registry and deployment contract for drift
 	fi
 	@echo "✅ .env.example is in sync with env registry."
 
-ci-lint: ## Run all linters (Go + Frontend) — BLOCKING, mirrors the "Lint" CI job
+ci-lint: ci-lint-go ci-lint-frontend ## Run all linters (Go + Frontend) — BLOCKING, mirrors the "Lint" CI job
+	@echo "✅ Linters passed. Architectural rules are gated separately by 'make ci-arch'."
+
+ci-lint-go: ## Go linters only (vet + golangci-lint) — the part of ci-lint that needs no node_modules
 	@echo "🔍 Running Go vet..."
 	@go vet ./...
 	@echo "🔍 Running golangci-lint (BLOCKING)..."
@@ -433,9 +443,10 @@ ci-lint: ## Run all linters (Go + Frontend) — BLOCKING, mirrors the "Lint" CI 
 		echo "   make that case in .golangci.yml rather than suppressing it site by site."; \
 		exit 1; \
 	}
+
+ci-lint-frontend: ## Frontend linters only (needs 'npm ci' in frontend/ first)
 	@echo "🔍 Running frontend linters..."
 	@cd frontend && npm run lint
-	@echo "✅ Linters passed. Architectural rules are gated separately by 'make ci-arch'."
 
 secrets: ## Scan the working tree for secrets (BLOCKING) — CI only scans new commits
 	@command -v gitleaks >/dev/null 2>&1 || { \

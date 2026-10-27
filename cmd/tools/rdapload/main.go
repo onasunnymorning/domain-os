@@ -29,6 +29,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
@@ -90,6 +91,11 @@ func cli(args []string, out io.Writer) error {
 	}
 	if o.Workers < 1 || o.Miss < 0 || o.Miss > 1 || o.Duration <= 0 {
 		return errors.New("-workers must be at least 1, -miss between 0 and 1, -duration positive")
+	}
+	// A negative rate would mean no pacing at all, and one so high that its
+	// interval rounds to zero would panic the ticker.
+	if o.Rate < 0 || math.IsNaN(o.Rate) || (o.Rate > 0 && time.Duration(float64(time.Second)/o.Rate) <= 0) {
+		return errors.New("-rate must be 0 (as fast as possible) or a positive rate of at most 1e9 per second")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -201,8 +207,13 @@ func lookup(ctx context.Context, client *http.Client, url string) sample {
 	if err != nil {
 		return sample{latency: time.Since(start)}
 	}
-	_, _ = io.Copy(io.Discard, resp.Body)
+	_, err = io.Copy(io.Discard, resp.Body)
 	_ = resp.Body.Close()
+	if err != nil {
+		// Headers and then a truncated or timed-out body is a failure, not
+		// the status it began with.
+		return sample{latency: time.Since(start)}
+	}
 	return sample{code: resp.StatusCode, latency: time.Since(start)}
 }
 
@@ -249,14 +260,16 @@ func summarise(samples []sample, elapsed time.Duration) report {
 	if elapsed > 0 {
 		r.PerSecond = float64(len(samples)) / elapsed.Seconds()
 	}
+	// Every request's time counts, failures included: a slow timeout is
+	// what the SLA measures too.
 	lat := make([]time.Duration, 0, len(samples))
 	for _, s := range samples {
+		lat = append(lat, s.latency)
 		switch {
 		case s.code == 0:
 			r.Errors++
 		default:
 			r.Codes[fmt.Sprint(s.code)]++
-			lat = append(lat, s.latency)
 		}
 		if s.code == http.StatusTooManyRequests {
 			r.RateLimited++
