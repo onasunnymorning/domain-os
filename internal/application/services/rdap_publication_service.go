@@ -100,7 +100,7 @@ func (s *RDAPPublicationPolicyService) TLDPolicy(ctx context.Context, tld string
 	if err != nil {
 		return nil, err
 	}
-	out := &entities.RDAPTLDPublication{TLD: t.Name, Policy: entities.BuiltInRDAPPublicationPolicyFor(t.Type)}
+	out := &entities.RDAPTLDPublication{TLD: t.Name, Policy: entities.BuiltInRDAPPublicationPolicyFor(t.Name, t.Type)}
 	if name, ok := assignments[t.Name]; ok {
 		out.Policy, out.Assigned = name, true
 	}

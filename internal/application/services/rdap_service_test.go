@@ -31,11 +31,10 @@ func (rdapRegistrars) GetByClID(context.Context, string, bool) (*entities.Regist
 }
 
 type rdapTLDs struct {
-	repositories.TLDRepository
 	t *entities.TLD
 }
 
-func (f rdapTLDs) GetByName(context.Context, string, bool) (*entities.TLD, error) { return f.t, nil }
+func (f rdapTLDs) GetWithPhases(context.Context, string) (*entities.TLD, error) { return f.t, nil }
 
 // rdapContacts records every contact read.
 type rdapContacts struct {
