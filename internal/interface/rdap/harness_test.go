@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -23,8 +24,8 @@ import (
 // given.
 type fakeLookups struct {
 	domains     map[string]*interfaces.RDAPDomain
-	nameservers map[string]bool
-	registrars  map[int]bool
+	nameservers map[string]*interfaces.RDAPNameserver
+	registrars  map[int]*entities.Registrar
 	err         error // returned by every lookup when set
 	// stall makes Domain wait until its context is done.
 	stall bool
@@ -54,21 +55,47 @@ func minimalDomain(name, tld string) *interfaces.RDAPDomain {
 	}
 }
 
-func (f *fakeLookups) NameserverExists(_ context.Context, name string) (bool, error) {
+func (f *fakeLookups) Nameserver(_ context.Context, name string) (*interfaces.RDAPNameserver, error) {
 	if f.err != nil {
-		return false, f.err
+		return nil, f.err
 	}
-	return f.nameservers[name], nil
+	rec, ok := f.nameservers[name]
+	if !ok {
+		return nil, entities.ErrHostNotFound
+	}
+	return rec, nil
 }
 
 func (f *fakeLookups) Registrar(_ context.Context, ianaID int) (*entities.Registrar, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
-	if !f.registrars[ianaID] {
+	rr, ok := f.registrars[ianaID]
+	if !ok {
 		return nil, entities.ErrRegistrarNotFound
 	}
-	return &entities.Registrar{GurID: ianaID}, nil
+	return rr, nil
+}
+
+// testRegistrar is an accredited registrar with every contact field.
+func testRegistrar() *entities.Registrar {
+	return &entities.Registrar{
+		ClID: "rar-1", Name: "Example Registrar, Inc.", GurID: 9995,
+		Voice: "+1.5555550000", Email: "abuse@registrar.example", URL: "https://registrar.example",
+		PostalInfo: [2]*entities.RegistrarPostalInfo{{Type: "int", Address: &entities.Address{Street1: "1 Registrar Way", City: "Los Angeles", StateProvince: "CA", PostalCode: "90001", CountryCode: "US"}}},
+	}
+}
+
+// testNameserver is a host named name, sponsored by testRegistrar.
+func testNameserver(name string) *interfaces.RDAPNameserver {
+	return &interfaces.RDAPNameserver{
+		Host: &entities.Host{
+			RoID: "200_HOST-TEST", Name: entities.DomainName(name), ClID: "rar-1",
+			Addresses: []netip.Addr{netip.MustParseAddr("192.0.2.1"), netip.MustParseAddr("2001:db8::1")},
+			Status:    entities.HostStatus{Linked: true, OK: true},
+		},
+		Registrar: testRegistrar(),
+	}
 }
 
 // testConfig is a server on a self-signed certificate under base.

@@ -1,6 +1,7 @@
 package memstore
 
 import (
+	"cmp"
 	"context"
 	"slices"
 	"strconv"
@@ -810,6 +811,32 @@ func (v registryHosts) DeleteHostByRoid(_ context.Context, roid int64) error {
 		delete(v.r.hosts, hostKey{h.Name.String(), h.ClID.String()})
 	}
 	return nil
+}
+
+func (v registryHosts) ListHostsByName(_ context.Context, name string) ([]*entities.Host, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return nil, v.r.err
+	}
+	var out []*entities.Host
+	for k, h := range v.r.hosts {
+		if k.name == name {
+			out = append(out, h.DeepCopy())
+		}
+	}
+	// Oldest first, then by ROID, as the Postgres repository orders them
+	// (created_at, ro_id), so equal timestamps give the same order every
+	// read.
+	slices.SortFunc(out, func(a, b *entities.Host) int {
+		if c := a.CreatedAt.Compare(b.CreatedAt); c != 0 {
+			return c
+		}
+		ra, _ := a.RoID.Int64()
+		rb, _ := b.RoID.Int64()
+		return cmp.Compare(ra, rb)
+	})
+	return out, nil
 }
 
 func (v registryHosts) CountHostsByName(_ context.Context, name string) (int64, error) {

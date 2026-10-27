@@ -239,6 +239,20 @@ func (r *HostRepository) CountHostsByName(ctx context.Context, name string) (int
 	return count, err
 }
 
+// ListHostsByName returns every host named name, whichever registrar
+// sponsors it, with its addresses, oldest first.
+func (r *HostRepository) ListHostsByName(ctx context.Context, name string) ([]*entities.Host, error) {
+	var dbHosts []*Host
+	if err := dbFrom(ctx, r.db).Preload("Addresses").Where("name = ?", name).Order("created_at ASC, ro_id ASC").Find(&dbHosts).Error; err != nil {
+		return nil, err
+	}
+	out := make([]*entities.Host, len(dbHosts))
+	for i, h := range dbHosts {
+		out[i] = ToHost(h, r.repository)
+	}
+	return out, nil
+}
+
 // CountHostLinksFromOtherSponsors counts the domains that have the host as a
 // nameserver and that clid does not sponsor.
 func (r *HostRepository) CountHostLinksFromOtherSponsors(ctx context.Context, roid int64, clid string) (int64, error) {
