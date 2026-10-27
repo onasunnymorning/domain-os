@@ -77,3 +77,27 @@ tests:
             exp_annotations:
               summary: "RDAP p95 response time is 495ms, over the SLA's 400 ms"
               runbook: "docs/rdap/RUNBOOK.md#latency-over-the-sla"
+
+  # The first lookup error and the first shed request fire: the counters are
+  # exposed at zero before any traffic.
+  - interval: 1m
+    input_series:
+      - series: 'rdap_lookup_errors_total{instance="rdap-1", route="domain"}'
+        values: '0 0 1 1 1'
+      - series: 'rdap_shed_total{instance="rdap-1", reason="in_flight"}'
+        values: '0 0 1 1 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: RDAPLookupsFailing
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: rdap-1, route: domain }
+            exp_annotations:
+              summary: "rdap-1 cannot read the registry for domain lookups"
+              runbook: "docs/rdap/RUNBOOK.md#rdap-server-errors"
+      - eval_time: 3m
+        alertname: RDAPShedding
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: rdap-1, reason: in_flight }
+            exp_annotations:
+              summary: "rdap-1 is refusing work to protect itself (in_flight)"
+              runbook: "docs/rdap/RUNBOOK.md#the-node-is-shedding-load"

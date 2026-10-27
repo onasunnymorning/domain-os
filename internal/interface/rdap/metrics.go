@@ -3,6 +3,8 @@ package rdap
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+
+	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
 // Routes, for the route label. A fixed set, so a request path can never
@@ -112,5 +114,16 @@ func newMetrics() *metrics {
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
+	// The series alerts take increase() of start at zero, so that the first
+	// event is an increase and not the series' first sample.
+	for _, route := range []string{routeDomain, routeNameserver, routeEntity} {
+		m.lookupErrors.WithLabelValues(route)
+	}
+	for _, reason := range []string{shedInFlight, shedConnections} {
+		m.shed.WithLabelValues(reason)
+	}
+	for _, scope := range []string{scopeAddress, scopeAggregate} {
+		m.policyDecisions.WithLabelValues(entities.RDAPAccessMonitoring, scope, actionRefused)
+	}
 	return m
 }
