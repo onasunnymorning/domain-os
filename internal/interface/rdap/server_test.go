@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -166,6 +167,69 @@ func TestEscapedBasePath(t *testing.T) {
 	var help helpResponse
 	require.NoError(t, json.Unmarshal(body, &help))
 	assert.Equal(t, "https://rdap.example.test/rdap%20v1/tld/help", help.Notices[0].Links[0].Value, "links keep the escaped base")
+}
+
+func TestEveryErrorCarriesTheTermsOfUse(t *testing.T) {
+	ts := startServer(t, testConfig("https://rdap.example.test/"), registry())
+	for path, method := range map[string]string{
+		"ip/192.0.2.1":       http.MethodGet,  // 400
+		"domain/missing.tld": http.MethodGet,  // 404
+		"help":               http.MethodPost, // 405
+		"domains?name=a*":    http.MethodGet,  // 501
+	} {
+		_, body := ts.do(t, method, path)
+		e := decodeError(t, body)
+		require.NotEmpty(t, e.Notices, "%s %s (%d)", method, path, e.ErrorCode)
+		assert.Equal(t, "Terms of Use", e.Notices[0].Title)
+	}
+	lookups := registry()
+	lookups.err = errors.New("down")
+	failing := startServer(t, testConfig("https://rdap.example.test/"), lookups)
+	_, body := failing.do(t, http.MethodGet, "domain/example.tld")
+	assert.NotEmpty(t, decodeError(t, body).Notices, "500")
+}
+
+func TestLinkValuesAreTheQueriedURI(t *testing.T) {
+	ts := startServer(t, testConfig("https://rdap.example.test/rdap/"), registry())
+	root := strings.TrimSuffix(ts.url, "rdap/")
+	get := func(path string) []byte {
+		resp, err := ts.client.Get(root + path)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return body
+	}
+
+	var help helpResponse
+	require.NoError(t, json.Unmarshal(get("rd%61p/help"), &help))
+	require.NotEmpty(t, help.Notices, "an escaped spelling of the base path still routes")
+	assert.Equal(t, "https://rdap.example.test/rd%61p/help", help.Notices[0].Links[0].Value, "the path as it was queried")
+
+	e := decodeError(t, get("elsewhere"))
+	assert.Equal(t, "https://rdap.example.test/elsewhere", e.Notices[0].Links[0].Value, "outside the base path too")
+}
+
+func TestLinkValuesKeepTheQuery(t *testing.T) {
+	ts := startServer(t, testConfig("https://rdap.example.test/"), registry())
+	_, body := ts.do(t, http.MethodGet, "help?foo=bar")
+	var help helpResponse
+	require.NoError(t, json.Unmarshal(body, &help))
+	assert.Equal(t, "https://rdap.example.test/help?foo=bar", help.Notices[0].Links[0].Value)
+}
+
+func TestStalledLookupsEndBeforeTheWriteDeadline(t *testing.T) {
+	lookups := registry()
+	lookups.stall = true
+	cfg := testConfig("https://rdap.example.test/")
+	cfg.Timeouts.Write = 400 * time.Millisecond
+	ts := startServer(t, cfg, lookups)
+
+	start := time.Now()
+	resp, body := ts.do(t, http.MethodGet, "domain/example.tld")
+	assert.Less(t, time.Since(start), cfg.Timeouts.Write, "answered within the write timeout")
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	assert.Equal(t, 500, decodeError(t, body).ErrorCode)
 }
 
 func TestLookupFailureIs500(t *testing.T) {

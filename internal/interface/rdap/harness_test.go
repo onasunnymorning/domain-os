@@ -27,9 +27,15 @@ type fakeLookups struct {
 	nameservers map[string]*interfaces.RDAPNameserver
 	registrars  map[int]*entities.Registrar
 	err         error // returned by every lookup when set
+	// stall makes Domain wait until its context is done.
+	stall bool
 }
 
-func (f *fakeLookups) Domain(_ context.Context, name string) (*interfaces.RDAPDomain, error) {
+func (f *fakeLookups) Domain(ctx context.Context, name string) (*interfaces.RDAPDomain, error) {
+	if f.stall {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	if f.err != nil {
 		return nil, f.err
 	}

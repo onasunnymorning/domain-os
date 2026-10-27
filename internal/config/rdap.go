@@ -183,7 +183,9 @@ func parseRDAPBaseURL(raw, serverName string) (string, error) {
 		return "https://" + serverName + "/", nil
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+	// A bare "?" or "#" parses to an empty query or fragment, so look for
+	// the delimiters themselves: anything appended would land inside them.
+	if err != nil || u.Scheme != "https" || u.Host == "" || strings.ContainsAny(raw, "?#") {
 		return "", fmt.Errorf("RDAP_BASE_URL=%q is not an absolute https URL without query or fragment", raw)
 	}
 	if !strings.HasSuffix(raw, "/") {
