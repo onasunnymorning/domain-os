@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -170,6 +171,30 @@ func (r *RDAPAccessPolicyRepository) ListNetworks(ctx context.Context) ([]entiti
 		out = append(out, entities.RDAPAccessNetwork{Network: p, Policy: rec.Policy})
 	}
 	return out, nil
+}
+
+// Snapshot implements repositories.RDAPAccessPolicyRepository: both tables in
+// one read-only repeatable-read transaction on Postgres, so a policy created
+// and assigned between the two reads cannot be half seen.
+func (r *RDAPAccessPolicyRepository) Snapshot(ctx context.Context) ([]*entities.RDAPAccessPolicy, []entities.RDAPAccessNetwork, error) {
+	var (
+		policies []*entities.RDAPAccessPolicy
+		networks []entities.RDAPAccessNetwork
+	)
+	opts := &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true}
+	if r.db.Dialector.Name() != "postgres" {
+		opts = nil
+	}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		in := &RDAPAccessPolicyRepository{db: tx}
+		var err error
+		if policies, err = in.ListPolicies(ctx); err != nil {
+			return err
+		}
+		networks, err = in.ListNetworks(ctx)
+		return err
+	}, opts)
+	return policies, networks, err
 }
 
 // AssignNetwork implements repositories.RDAPAccessPolicyRepository.

@@ -366,6 +366,10 @@ test-askg-eval: ## Run Ask G agent evals (live API, requires ANTHROPIC_API_KEY v
 # Local CI (mirrors GitHub Actions)
 ###################
 
+hooks: ## Install the git hooks in .githooks (pre-push runs ci-arch + ci-lint + secrets). Once per clone; covers all worktrees
+	@git config core.hooksPath .githooks
+	@echo "✅ core.hooksPath = .githooks (pre-push gate active; 'git push --no-verify' skips it once)"
+
 ci-local: ci-preflight ci-envcheck ci-lint ci-arch build-all ci-test-backend ci-test-frontend ci-security test-api ## Run the full CI pipeline locally (lint + arch gate + build + test + frontend + security + API integration)
 	@echo ""
 	@echo "✅ All CI checks passed locally! Safe to push."
@@ -396,7 +400,10 @@ ci-envcheck: ## Check env var registry and deployment contract for drift
 	fi
 	@echo "✅ .env.example is in sync with env registry."
 
-ci-lint: ## Run all linters (Go + Frontend) — BLOCKING, mirrors the "Lint" CI job
+ci-lint: ci-lint-go ci-lint-frontend ## Run all linters (Go + Frontend) — BLOCKING, mirrors the "Lint" CI job
+	@echo "✅ Linters passed. Architectural rules are gated separately by 'make ci-arch'."
+
+ci-lint-go: ## Go linters only (vet + golangci-lint) — the part of ci-lint that needs no node_modules
 	@echo "🔍 Running Go vet..."
 	@go vet ./...
 	@echo "🔍 Running golangci-lint (BLOCKING)..."
@@ -409,9 +416,10 @@ ci-lint: ## Run all linters (Go + Frontend) — BLOCKING, mirrors the "Lint" CI 
 		echo "   make that case in .golangci.yml rather than suppressing it site by site."; \
 		exit 1; \
 	}
+
+ci-lint-frontend: ## Frontend linters only (needs 'npm ci' in frontend/ first)
 	@echo "🔍 Running frontend linters..."
 	@cd frontend && npm run lint
-	@echo "✅ Linters passed. Architectural rules are gated separately by 'make ci-arch'."
 
 secrets: ## Scan the working tree for secrets (BLOCKING) — CI only scans new commits
 	@command -v gitleaks >/dev/null 2>&1 || { \

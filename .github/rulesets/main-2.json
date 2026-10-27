@@ -1,0 +1,44 @@
+{
+  "_comment": "Intended state of the `main-2` ruleset (id 25766181). Apply with: gh api -X PUT repos/onasunnymorning/domain-os/rulesets/25766181 --input .github/rulesets/main-2.json. The status-check contexts are the job display names in .github/workflows/ci.yaml; a renamed job must be renamed here too or merges block forever.",
+  "name": "main-2",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["refs/heads/main"], "exclude": [] } },
+  "rules": [
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "do_not_enforce_on_create": true,
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [
+          { "context": "Secret Scan" },
+          { "context": "Lint" },
+          { "context": "Architecture gate" },
+          { "context": "Env Var Drift Check" },
+          { "context": "Vendor Integrity" },
+          { "context": "Go Vulnerability Check" },
+          { "context": "unit-tests" },
+          { "context": "frontend-tests" },
+          { "context": "API integration tests (Go-native)" }
+        ]
+      }
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "allowed_merge_methods": ["merge", "squash", "rebase"],
+        "dismiss_stale_reviews_on_push": false,
+        "require_code_owner_review": true,
+        "require_extra_approval_for_unattributed_changes": true,
+        "require_last_push_approval": false,
+        "required_approving_review_count": 0,
+        "required_review_thread_resolution": true,
+        "required_reviewers": []
+      }
+    },
+    {
+      "type": "copilot_code_review",
+      "parameters": { "review_on_push": true, "review_draft_pull_requests": false }
+    }
+  ]
+}

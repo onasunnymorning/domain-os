@@ -58,9 +58,17 @@ type Server struct {
 	origin         string
 	termsOfService string
 
+	// charges are the not-found surcharges still being charged.
+	charges sync.WaitGroup
+
 	startOnce sync.Once
 	serving   atomic.Bool
 	draining  atomic.Bool
+
+	// life is the server's lifetime: Shutdown cancels it, which stops the
+	// first policy load and the background reloads with the HTTP server.
+	life context.Context
+	end  context.CancelFunc
 }
 
 // NewServer builds a server. It loads the certificate, so a missing or
@@ -135,6 +143,7 @@ func NewServer(opts Options) (*Server, error) {
 		// routine; they are not errors of this server.
 		ErrorLog: slog.NewLogLogger(s.logger.Handler(), slog.LevelDebug),
 	}
+	s.life, s.end = context.WithCancel(context.Background()) // #nosec G118 -- s.end is called by Shutdown, which ends the server's life
 	return s, nil
 }
 
@@ -158,9 +167,21 @@ func (s *Server) Serve(l net.Listener) error {
 		l = newConnLimitListener(l, s.cfg.Limits.MaxConnections, s.metrics.shed.WithLabelValues(shedConnections).Inc)
 	}
 
+	// The publication policies decide what a response may show, so the
+	// node serves nothing until it holds the stored set: built-ins could
+	// publish what a stricter stored policy withholds. Shutdown cancels the
+	// load, so a stalled database cannot hold a draining node past its
+	// drain timeout. The access policies are loaded with them.
+	if err := s.loadPolicies(s.life); err != nil {
+		if s.life.Err() != nil {
+			return nil
+		}
+		return fmt.Errorf("rdap: load the publication policies before serving: %w", err)
+	}
+
 	// The certificate watch lives as long as Serve: shutting the HTTP
 	// server down returns ServeTLS, which stops it.
-	watchCtx, stop := context.WithCancel(context.Background())
+	watchCtx, stop := context.WithCancel(s.life)
 	defer stop()
 	go s.certs.Watch(watchCtx)
 	go s.watchPolicies(watchCtx)
@@ -193,7 +214,17 @@ func (s *Server) Serve(l net.Listener) error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.draining.Store(true)
 	s.metrics.draining.Set(1)
-	return s.http.Shutdown(ctx)
+	s.end()
+	err := s.http.Shutdown(ctx)
+	// Handlers have returned; their surcharges are bounded by the
+	// limiter's own timeout.
+	done := make(chan struct{})
+	go func() { s.charges.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
+	return err
 }
 
 // Ready reports whether the node should receive traffic.
@@ -219,32 +250,42 @@ func (s *Server) OpsHandler() http.Handler {
 	return mux
 }
 
-// watchPolicies reloads the publication and access policies now and every
-// PolicyRefresh, until ctx is done. A failed load keeps the set last loaded
-// (ADR 0021, ADR 0022): before the first, every TLD has the built-in for its
-// type and every client is anonymous.
-func (s *Server) watchPolicies(ctx context.Context) {
-	interval := s.cfg.PolicyRefresh
-	if interval <= 0 {
-		interval = 30 * time.Second
+// policyInterval is how often the policies are reloaded, and how long one
+// load may take.
+func (s *Server) policyInterval() time.Duration {
+	if s.cfg.PolicyRefresh > 0 {
+		return s.cfg.PolicyRefresh
 	}
-	ticker := time.NewTicker(interval)
+	return 30 * time.Second
+}
+
+// loadPolicies loads the publication and access policies once, bounded by
+// the reload interval, and records the outcome.
+func (s *Server) loadPolicies(ctx context.Context) error {
+	loadCtx, cancel := context.WithTimeout(ctx, s.policyInterval())
+	defer cancel()
+	if err := s.lookups.RefreshPolicies(loadCtx); err != nil {
+		s.metrics.policyRefreshErrors.Inc()
+		return err
+	}
+	s.metrics.policiesRefreshed.Set(float64(s.now().Unix()))
+	return nil
+}
+
+// watchPolicies reloads the publication and access policies every
+// PolicyRefresh, until ctx is done. Serve has loaded them once already; a
+// later load that fails keeps the set last loaded (ADR 0021, ADR 0022).
+func (s *Server) watchPolicies(ctx context.Context) {
+	ticker := time.NewTicker(s.policyInterval())
 	defer ticker.Stop()
 	for {
-		loadCtx, cancel := context.WithTimeout(ctx, interval)
-		err := s.lookups.RefreshPolicies(loadCtx)
-		cancel()
-		switch {
-		case err == nil:
-			s.metrics.policiesRefreshed.Set(float64(s.now().Unix()))
-		case ctx.Err() == nil:
-			s.metrics.policyRefreshErrors.Inc()
-			s.logger.Warn("RDAP policies not refreshed; keeping the previous set", "error", err)
-		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		}
+		if err := s.loadPolicies(ctx); err != nil && ctx.Err() == nil {
+			s.logger.Warn("RDAP policies not refreshed; keeping the previous set", "error", err)
 		}
 	}
 }
