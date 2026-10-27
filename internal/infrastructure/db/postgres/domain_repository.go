@@ -665,14 +665,15 @@ func (dr *DomainRepository) CountPurgeableDomains(ctx context.Context, before ti
 // it stays pendingDelete meanwhile (RFC 3915 §4), and its pending restore
 // period can outlast its purge date. A lapsed restore is reverted first
 // (Domain.RevertRestore), then purged.
-const purgeableFilter = "purge_date <= ? AND purge_date > '0001-01-01' AND COALESCE(pending_delete, false) = true AND COALESCE(pending_restore, false) = false"
+const purgeableFilter = "purge_date <= ? AND purge_date > '0001-01-01' AND pending_delete = true AND COALESCE(pending_restore, false) = false"
 
 // ListLapsedRestores returns the domains whose restore lapsed by dueBy
-// (repositories.DomainRepository), served by the pending_restore_end index.
+// (repositories.DomainRepository), served by idx_domains_pending_restore_pending_end:
+// the predicate is written as the index's, so the planner can match it.
 func (dr *DomainRepository) ListLapsedRestores(ctx context.Context, dueBy, afterEnd time.Time, afterRoID int64, limit int) ([]*entities.Domain, error) {
 	var rows []*Domain
 	err := dbFrom(ctx, dr.db).Select("ro_id", "name", "pending_restore_end").
-		Where("COALESCE(pending_restore, false) = true AND pending_restore_end <= ?", dueBy).
+		Where("pending_restore = true AND pending_restore_end <= ?", dueBy).
 		Where("(pending_restore_end, ro_id) > (?, ?)", afterEnd, afterRoID).
 		Order("pending_restore_end ASC, ro_id ASC").Limit(limit).Find(&rows).Error
 	if err != nil {

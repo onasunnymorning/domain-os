@@ -99,7 +99,7 @@ func (a *EventRelayActivities) RelayEventBatch(ctx context.Context, batchSize in
 func (a *EventRelayActivities) FetchUnpublishedEvents(ctx context.Context, batchSize int) ([]entities.DomainEvent, error) {
 	var records []postgres.DomainEventRecord
 	result := a.db.WithContext(ctx).
-		Where("published = ?", false).
+		Where("published = false"). // as idx_domain_events_unpublished is defined, so the planner matches it
 		Order("occurred_at ASC").
 		Limit(batchSize).
 		Find(&records)
@@ -186,7 +186,7 @@ func (a *EventRelayActivities) CountUnpublishedEvents(ctx context.Context) (int6
 	var count int64
 	result := a.db.WithContext(ctx).
 		Model(&postgres.DomainEventRecord{}).
-		Where("published = ?", false).
+		Where("published = false").
 		Count(&count)
 	if result.Error != nil {
 		return 0, fmt.Errorf("CountUnpublishedEvents: %w", result.Error)

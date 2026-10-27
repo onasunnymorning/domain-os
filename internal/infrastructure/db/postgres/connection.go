@@ -107,12 +107,6 @@ func AutoMigrate(db *gorm.DB) error {
 		"CREATE INDEX IF NOT EXISTS idx_phases_tld_type_starts ON phases (tld_name, type, starts)",
 		// accreditations: tld_name is second in composite PK, can't be used for tld_name-only GROUP BY
 		"CREATE INDEX IF NOT EXISTS idx_accreditations_tld_name ON accreditations (tld_name)",
-		// domains: composite index to support expiring/purgeable domain queries filtered by cl_id and tld_name
-		"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_expiry ON domains (cl_id, tld_name, expiry_date)",
-		"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_purge ON domains (cl_id, tld_name, purge_date)",
-		// domains: composite index to support expiring/purgeable domain queries filtered by tld_name only (e.g. global/CLI workflows)
-		"CREATE INDEX IF NOT EXISTS idx_domains_tld_expiry ON domains (tld_name, expiry_date)",
-		"CREATE INDEX IF NOT EXISTS idx_domains_tld_purge ON domains (tld_name, purge_date)",
 		// domain_events: global index to support global list of recent events ordered by occurred_at DESC
 		"CREATE INDEX IF NOT EXISTS idx_domain_events_occurred_at ON domain_events (occurred_at DESC)",
 		// domain_events: type index for type-filtered event search queries
@@ -145,12 +139,33 @@ func AutoMigrate(db *gorm.DB) error {
 		}
 	}
 
+	// Partial indexes that replace full ones dropped below. Unlike the loop
+	// above, a failure here is fatal, and it runs before the drops: a sweep
+	// must never lose its index because the replacement failed to build.
+	for _, idx := range replacementIndexes {
+		if err := db.Exec(idx).Error; err != nil {
+			return fmt.Errorf("failed to create replacement index: %s: %w", idx, err)
+		}
+	}
+
 	// Drop legacy domain_events indexes that have no matching queries in the codebase.
 	// These were replaced by a composite (subject, occurred_at DESC) index via GORM tags.
 	// GORM AutoMigrate only adds indexes, never removes them, so we clean up manually.
 	legacyIndexes := []string{
 		"DROP INDEX IF EXISTS idx_domain_events_source",
 		"DROP INDEX IF EXISTS idx_domain_events_subject",
+		// domains carried single-column indexes on cl_id and tld_name beside the
+		// composites above, which serve the same lookups as a left prefix; every
+		// domain write maintained both. Their struct tags are gone, and GORM never
+		// drops an index, so they go here.
+		"DROP INDEX IF EXISTS idx_domains_cl_id",
+		"DROP INDEX IF EXISTS idx_domains_tld_name",
+		// Replaced by replacementIndexes, which exist by now: the full ones indexed
+		// every domain's purge date and restore end, almost all of them zero, and
+		// every event's published flag, almost all of them true.
+		"DROP INDEX IF EXISTS idx_domains_purge_date",
+		"DROP INDEX IF EXISTS idx_domains_pending_restore_end",
+		"DROP INDEX IF EXISTS idx_domain_events_published",
 		// escrow_deposits carried ryde_*/sig_* columns until #415 generalised the
 		// record to Artifact*/Signature* so it can also hold an unsigned .xml or
 		// .xml.gz deposit. AutoMigrate adds the new columns but never drops the
@@ -188,6 +203,35 @@ func AutoMigrate(db *gorm.DB) error {
 	}
 
 	return nil
+}
+
+// replacementIndexes are the indexes that replaced others on the two hottest
+// write tables: the composites that cover the dropped single-column ones as
+// a left prefix, and the partial ones that replaced full ones. AutoMigrate
+// creates them before it drops what they replace, and fails if it cannot.
+var replacementIndexes = []string{
+	// domains: composite indexes for the expiring/purgeable domain queries filtered by
+	// cl_id and tld_name. They also serve every lookup by cl_id alone or by cl_id and
+	// tld_name, as a left prefix, which is why the single-column cl_id index could go.
+	"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_expiry ON domains (cl_id, tld_name, expiry_date)",
+	"CREATE INDEX IF NOT EXISTS idx_domains_clid_tld_purge ON domains (cl_id, tld_name, purge_date)",
+	// domains: the same queries filtered by tld_name only (global/CLI workflows). The
+	// first also serves every lookup by tld_name alone (the counts, the zone builds),
+	// which is why the single-column tld_name index could go.
+	"CREATE INDEX IF NOT EXISTS idx_domains_tld_expiry ON domains (tld_name, expiry_date)",
+	"CREATE INDEX IF NOT EXISTS idx_domains_tld_purge ON domains (tld_name, purge_date)",
+	// domains: the purge sweep with neither cl_id nor tld (purgeableFilter). Only a
+	// pendingDelete domain has a purge date that matters, so the index holds only
+	// those rows; the query says "pending_delete = true" in the same words so the
+	// planner can match it.
+	"CREATE INDEX IF NOT EXISTS idx_domains_pending_delete_purge ON domains (purge_date) WHERE pending_delete = true",
+	// domains: the lapsed-restore sweep (ListLapsedRestores). Same shape: a restore
+	// is pending on a handful of domains at a time, so the index is tiny.
+	"CREATE INDEX IF NOT EXISTS idx_domains_pending_restore_pending_end ON domains (pending_restore_end, ro_id) WHERE pending_restore = true",
+	// domain_events: the outbox relay reads only unpublished events, oldest first, and
+	// almost every row is published. A full index on the boolean cost a write per
+	// event for nothing; this one holds only the backlog.
+	"CREATE INDEX IF NOT EXISTS idx_domain_events_unpublished ON domain_events (occurred_at) WHERE published = false",
 }
 
 func CreateDB(dbUser, dbPass, dbHost, dbName, dbPort string) error {

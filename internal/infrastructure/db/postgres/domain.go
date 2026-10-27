@@ -16,10 +16,10 @@ type Domain struct {
 	AdminID      *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
 	TechID       *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
 	BillingID    *string `gorm:"index"` // These are optional, prohibited or mandatory based on ContactDataPolicy
-	ClID         string  `gorm:"index"`
+	ClID         string
 	CrRr         *string
 	UpRr         *string
-	TLDName      string `gorm:"not null;foreignKey;index"`
+	TLDName      string `gorm:"not null;foreignKey"`
 	TLD          TLD
 	ExpiryDate   time.Time `gorm:"not null;index"`
 	DropCatch    bool
