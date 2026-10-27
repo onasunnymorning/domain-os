@@ -50,6 +50,8 @@ const (
 	rdapctSHA256 = "e0d0d2002e8d2e933426c25712be5137bc629d3b081e042d6ffdcc42309e1a42"
 	// rdapctImage runs the tool when RDAPCT_DOCKER is set.
 	rdapctImage = "eclipse-temurin:21.0.5_11-jre"
+	// conformanceHost is the test server's name in the tool's URLs.
+	conformanceHost = "rdap.conformance.internal"
 )
 
 // rdapct is a way to run the conformance tool.
@@ -83,9 +85,12 @@ func findRDAPCT(t *testing.T) *rdapct {
 	if _, err := os.Stat(filepath.Join(dir, "datasets")); err != nil && os.Getenv("RDAPCT_FETCH_DATASETS") == "" {
 		return missing("the tool's IANA datasets are not in %s/datasets", dir)
 	}
-	r := &rdapct{dir: dir, host: "localhost"}
+	// The tool refuses links to "localhost" as web URIs (-10609), so the
+	// server is named like a real host: the JVM resolves the name to the
+	// loopback from a hosts file, and Docker maps it to the host machine.
+	r := &rdapct{dir: dir, host: conformanceHost}
 	if os.Getenv("RDAPCT_DOCKER") != "" {
-		r.docker, r.host = true, "host.docker.internal"
+		r.docker = true
 		return r
 	}
 	// macOS ships a java stub that fails without a runtime; ask it.
@@ -104,7 +109,7 @@ func (r *rdapct) command(tool string, paths []string, args ...string) *exec.Cmd 
 		cmd.Dir = r.dir
 		return cmd
 	}
-	dargs := []string{"run", "--rm", "-v", r.dir + ":" + r.dir, "-w", r.dir}
+	dargs := []string{"run", "--rm", "--add-host", r.host + ":host-gateway", "-v", r.dir + ":" + r.dir, "-w", r.dir}
 	for _, p := range paths {
 		dargs = append(dargs, "-v", p+":"+p)
 	}
@@ -216,6 +221,13 @@ func runConformance(t *testing.T, r *rdapct, tmp, url string, flags ...string) c
 	if os.Getenv("RDAPCT_VERBOSE") == "tls" {
 		jvm = append(jvm, "-Djavax.net.debug=ssl:handshake")
 	}
+	if !r.docker && os.Getenv("RDAPCT_FETCH_DATASETS") == "" {
+		// Only the test server's name resolves; the run is offline anyway.
+		// A run that fetches IANA's datasets needs the real resolver.
+		hosts := filepath.Join(tmp, "hosts")
+		require.NoError(t, os.WriteFile(hosts, []byte("127.0.0.1 "+r.host+"\n"), 0o600))
+		jvm = append(jvm, "-Djdk.net.hosts.file="+hosts)
+	}
 	args := []string{
 		"-Djavax.net.ssl.trustStore=" + filepath.Join(tmp, "trust.p12"),
 		"-Djavax.net.ssl.trustStorePassword=changeit",
@@ -262,21 +274,37 @@ func mustAbs(t *testing.T, p string) string {
 	return abs
 }
 
-// requireConformant fails with every error the tool found, and logs its
-// warnings.
+// deploymentOnly are the tool's checks of the deployment rather than the
+// responses, which a server on the loopback cannot pass. RST makes them
+// against the real service (rdap-91, rdap-92); --no-ipv6-queries sets aside
+// the IPv6 half of the same check.
+var deploymentOnly = map[int]string{
+	// The tool resolves the service's name in public DNS for an A record;
+	// the test server's name is in no DNS. Its responses still name the
+	// server by a host name, which the tool's URI checks require.
+	-20400: "the service's name has an IPv4 address in DNS",
+}
+
+// requireConformant fails with every error the tool found, except those
+// about the deployment, and logs its warnings.
 func requireConformant(t *testing.T, run conformanceRun) {
 	t.Helper()
 	for _, w := range run.Warnings {
 		t.Logf("rdapct warning %d: %s (%s)", w.Code, w.Message, w.Value)
 	}
-	if len(run.Errors) == 0 {
-		return
-	}
 	var b strings.Builder
+	n := 0
 	for _, e := range run.Errors {
+		if why, ok := deploymentOnly[e.Code]; ok {
+			t.Logf("rdapct %d checked per deployment, not here: %s (%s)", e.Code, why, e.Value)
+			continue
+		}
+		n++
 		fmt.Fprintf(&b, "\n  %d: %s\n     value: %s", e.Code, e.Message, e.Value)
 	}
-	t.Fatalf("the RDAP Conformance Tool found %d errors:%s", len(run.Errors), b.String())
+	if n > 0 {
+		t.Fatalf("the RDAP Conformance Tool found %d errors:%s", n, b.String())
+	}
 }
 
 // TestRST_RDAPConformanceTool grades the server's responses as RST does
