@@ -260,14 +260,16 @@ func summarise(samples []sample, elapsed time.Duration) report {
 	if elapsed > 0 {
 		r.PerSecond = float64(len(samples)) / elapsed.Seconds()
 	}
+	// Every request's time counts, failures included: a slow timeout is
+	// what the SLA measures too.
 	lat := make([]time.Duration, 0, len(samples))
 	for _, s := range samples {
+		lat = append(lat, s.latency)
 		switch {
 		case s.code == 0:
 			r.Errors++
 		default:
 			r.Codes[fmt.Sprint(s.code)]++
-			lat = append(lat, s.latency)
 		}
 		if s.code == http.StatusTooManyRequests {
 			r.RateLimited++

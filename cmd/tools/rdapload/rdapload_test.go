@@ -55,6 +55,16 @@ func TestSummarise(t *testing.T) {
 	assert.Equal(t, 1, rep.Shed)
 	assert.Equal(t, 2, rep.OverSLA, "a transport error that took a second is over the SLA too")
 	assert.InDelta(t, 2.0, rep.PerSecond, 0.01)
+	assert.Equal(t, time.Second, rep.P99, "slow failures are in the latency distribution")
+
+	slow := make([]sample, 0, 100)
+	for i := 0; i < 95; i++ {
+		slow = append(slow, sample{latency: time.Second})
+	}
+	for i := 0; i < 5; i++ {
+		slow = append(slow, sample{code: 200, latency: 10 * time.Millisecond})
+	}
+	assert.Equal(t, time.Second, summarise(slow, time.Second).P95, "95 one-second timeouts are the p95, not the five fast answers")
 }
 
 func TestCLI(t *testing.T) {
