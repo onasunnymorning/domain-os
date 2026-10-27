@@ -240,6 +240,9 @@ func check(ctx context.Context, o options) *result {
 func (o options) client(host string, addr netip.Addr) *http.Client {
 	return &http.Client{
 		Timeout: o.Timeout,
+		// RST grades the answer at the URL it asked for: a redirect to a
+		// 200 is not a 200.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		Transport: &http.Transport{
 			DialContext:     func(ctx context.Context, _, _ string) (net.Conn, error) { return o.dial(ctx, addr) },
 			TLSClientConfig: &tls.Config{ServerName: host, RootCAs: o.Roots, MinVersion: tls.VersionTLS12},
@@ -286,7 +289,10 @@ func checkTLS(ctx context.Context, o options, r *result, host string, addr netip
 		}
 	}
 	_, err = handshake(&tls.Config{MinVersion: tls.VersionTLS12, MaxVersion: tls.VersionTLS12, CipherSuites: weak, InsecureSkipVerify: true}) // #nosec G402 -- deliberately offering only weak suites to check they are refused
-	r.add(err != nil, "rdap-91/6 %s refuses every TLS 1.2 suite outside RFC 9325", addr)
+	// Go can only offer the suites it implements, so this cannot see a
+	// server that also accepts, say, a DHE or CCM suite; say so, and leave
+	// the full scan to a tool that offers every suite.
+	r.add(err != nil, "rdap-91/6 %s refuses the %d TLS 1.2 suites outside RFC 9325 that Go can offer (not DHE, CCM, ARIA or Camellia suites: scan those with testssl.sh)", addr, len(weak))
 }
 
 func rfc9325(id uint16) bool { return slicesContains(tlsconfig.RFC9325CipherSuites, id) }
@@ -347,6 +353,11 @@ func canonical(body []byte) (string, error) {
 	if err := dec.Decode(&v); err != nil {
 		return "", fmt.Errorf("not JSON: %w", err)
 	}
+	// One JSON value and nothing after it: trailing data would otherwise
+	// compare equal to a clean answer.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return "", errors.New("not JSON: data after the first value")
+	}
 	out, err := json.Marshal(normalise(v, ""))
 	return string(out), err
 }
@@ -359,7 +370,9 @@ func normalise(v any, key string) any {
 		}
 		return t
 	case []any:
-		var kept []any
+		// Never nil: an empty array must not marshal as null and compare
+		// equal to a null member.
+		kept := make([]any, 0, len(t))
 		for _, x := range t {
 			if key == "events" {
 				if m, ok := x.(map[string]any); ok && m["eventAction"] == "last update of RDAP database" {

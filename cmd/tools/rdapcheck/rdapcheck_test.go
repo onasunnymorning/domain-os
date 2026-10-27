@@ -105,6 +105,32 @@ func TestCanonical(t *testing.T) {
 	b, err := canonical([]byte(`{"links":[{"rel":"about"},{"rel":"self"}],"b":1,"events":[{"eventAction":"last update of RDAP database","eventDate":"y"}]}`))
 	require.NoError(t, err)
 	assert.Equal(t, a, b)
+
+	_, err = canonical([]byte(`{"b":1} trailing`))
+	assert.Error(t, err, "data after the JSON value is not a clean answer")
+	_, err = canonical([]byte(`{"b":1}{"b":2}`))
+	assert.Error(t, err, "nor is a second document")
+
+	empty, err := canonical([]byte(`{"links":[]}`))
+	require.NoError(t, err)
+	null, err := canonical([]byte(`{"links":null}`))
+	require.NoError(t, err)
+	assert.NotEqual(t, empty, null, "an empty array is not a null member")
+}
+
+func TestARedirectIsNotA200(t *testing.T) {
+	moved := func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/moved") {
+			answer(0)(w, r)
+			return
+		}
+		http.Redirect(w, r, r.URL.Path+"/moved", http.StatusFound)
+	}
+	r := check(context.Background(), servers(t, answer(0), moved))
+	var out bytes.Buffer
+	r.write(&out)
+	assert.False(t, r.ok())
+	assert.Contains(t, out.String(), "status 302", "the answer at the URL asked for is graded, not where it points")
 }
 
 func TestCLIValidates(t *testing.T) {

@@ -111,7 +111,7 @@ RST grades rdap-01 to rdap-04 with ICANN's RDAP Conformance Tool, so the suite r
 - RST's `rdap.clientACL` networks are assigned the `monitoring` policy.
 - A and AAAA records are published for the RDAP hostname, and the certificate covers it (rdap-91, rdap-92).
 - Each gTLD's base URL is registered in IANA's RDAP bootstrap.
-- `go run ./cmd/tools/rdapcheck -base https://$HOST/$TLD/ -domain … -nameserver … -entity …` passes against the deployment: rdap-91 (TLS 1.2 accepted, TLS 1.1 and non-RFC 9325 suites refused, a trusted, current certificate for the host name) and rdap-92 (an IPv4 and an IPv6 address, the same answers on each) on every address the host name resolves to.
+- `go run ./cmd/tools/rdapcheck -base https://$HOST/$TLD/ -domain … -nameserver … -entity …` passes against the deployment: rdap-91 (TLS 1.2 accepted, TLS 1.1 and the non-RFC 9325 suites Go can offer refused, a trusted, current certificate for the host name) and rdap-92 (an IPv4 and an IPv6 address, the same answers on each) on every address the host name resolves to. `testssl.sh --cipher-per-proto` against each address covers the suites Go cannot offer (DHE, CCM, ARIA, Camellia): only RFC 9325's may be accepted on TLS 1.2.
 
 ## Roadmap
 
