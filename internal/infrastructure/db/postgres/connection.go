@@ -232,6 +232,18 @@ func buildDSN(cfg Config) string {
 	return u.String()
 }
 
+// OpenExisting connects to an existing database and changes nothing: no
+// database is created and nothing is migrated. A read-only process (the
+// RDAP server, ADR 0020) uses it, so a mistyped DB_NAME fails at start
+// instead of creating an empty database.
+func OpenExisting(cfg Config) (*gorm.DB, error) {
+	db, err := gorm.Open(postgres.Open(buildDSN(cfg)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+	return db, nil
+}
+
 func NewConnection(cfg Config) (*gorm.DB, error) {
 	dsn := buildDSN(cfg)
 	gormDB, err := gorm.Open(postgres.Open(dsn))
