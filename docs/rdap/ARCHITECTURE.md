@@ -107,6 +107,7 @@ RST grades rdap-01 to rdap-04 with ICANN's RDAP Conformance Tool, so the suite r
 - `rdap.testDomains`, `rdap.testNameservers` and `rdap.testEntities` (registrars by IANA ID) all exist.
 - `general.registryDataModel` per TLD: `maximum` if its current policy allows a registrant, `minimum` if not (ADR 0021 decision 7).
 - `epp.hostModel` is `objects`.
+- Every TLD under test is explicitly assigned a publication policy, and that policy's current revision is signed off in [PUBLICATION_REFERENCE.md § Sign-off](PUBLICATION_REFERENCE.md#sign-off). The IDN fallback to `cctld-minimal` is not a configuration.
 - `rdap.profileVersion` is the February 2024 gTLD RDAP Profile.
 - RST's `rdap.clientACL` networks are assigned the `monitoring` policy.
 - A and AAAA records are published for the RDAP hostname, and the certificate covers it (rdap-91, rdap-92).
