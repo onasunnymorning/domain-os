@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/onasunnymorning/domain-os/internal/config"
 	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"gorm.io/gorm"
 )
@@ -68,15 +69,9 @@ func run() error {
 // the DB_* variables otherwise. AutoMigrate is never run from here — this
 // command reports on the schema, it does not change it.
 func connect() (*gorm.DB, error) {
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		return postgres.NewConnectionFromURL(dbURL, false)
+	dbCfg, err := config.LoadDatabase()
+	if err != nil {
+		return nil, err
 	}
-	return postgres.NewConnection(postgres.Config{
-		User:    os.Getenv("DB_USER"),
-		Pass:    os.Getenv("DB_PASS"),
-		Host:    os.Getenv("DB_HOST"),
-		Port:    os.Getenv("DB_PORT"),
-		DBName:  os.Getenv("DB_NAME"),
-		SSLmode: os.Getenv("DB_SSLMODE"),
-	})
+	return postgres.NewConnection(postgres.Config(dbCfg))
 }

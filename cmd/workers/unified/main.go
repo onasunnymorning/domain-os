@@ -381,7 +381,11 @@ func newEscrowIntakeActivities(db *gorm.DB) (*activities.EscrowIntakeActivities,
 // database cannot do useful work, and failing here names the cause instead of
 // failing every activity later.
 func openDB(repositoryID entities.RepositoryID) *gorm.DB {
-	db, err := postgres.NewConnectionFromEnv()
+	dbCfg, err := config.LoadDatabase()
+	if err != nil {
+		log.Fatalf("Refusing to start: %v", err)
+	}
+	db, err := postgres.NewConnection(postgres.Config(dbCfg))
 	if err != nil {
 		log.Fatalf("schema guard: cannot connect to the database: %v", err)
 	}

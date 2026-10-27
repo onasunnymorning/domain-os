@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-27T13:36:44Z",
+  "generated": "2026-10-27T13:58:28Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -63,7 +63,7 @@
           {
             "name": "DB_MAX_OPEN_CONNS",
             "default": "20",
-            "description": "Database connections one process may open; a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS take precedence on those nodes"
+            "description": "Database connections one process may open, at least 2 (a migration holds one for its lock while the schema changes run on another); a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. The EPP and RDAP nodes use EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS instead"
           },
           {
             "name": "AUTO_MIGRATE",
@@ -354,7 +354,7 @@
           {
             "name": "DB_MAX_OPEN_CONNS",
             "default": "20",
-            "description": "Database connections one process may open; a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS take precedence on those nodes"
+            "description": "Database connections one process may open, at least 2 (a migration holds one for its lock while the schema changes run on another); a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. The EPP and RDAP nodes use EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS instead"
           },
           {
             "name": "SCHEMA_GUARD",
@@ -687,7 +687,7 @@
           {
             "name": "DB_MAX_OPEN_CONNS",
             "default": "20",
-            "description": "Database connections one process may open; a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS take precedence on those nodes"
+            "description": "Database connections one process may open, at least 2 (a migration holds one for its lock while the schema changes run on another); a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. The EPP and RDAP nodes use EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS instead"
           },
           {
             "name": "SCHEMA_GUARD",
@@ -759,7 +759,7 @@
           {
             "name": "DB_MAX_OPEN_CONNS",
             "default": "20",
-            "description": "Database connections one process may open; a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS take precedence on those nodes"
+            "description": "Database connections one process may open, at least 2 (a migration holds one for its lock while the schema changes run on another); a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. The EPP and RDAP nodes use EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS instead"
           },
           {
             "name": "SCHEMA_GUARD",
@@ -943,7 +943,7 @@
           {
             "name": "DB_MAX_OPEN_CONNS",
             "default": "20",
-            "description": "Database connections one process may open; a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS take precedence on those nodes"
+            "description": "Database connections one process may open, at least 2 (a migration holds one for its lock while the schema changes run on another); a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. The EPP and RDAP nodes use EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS instead"
           },
           {
             "name": "SCHEMA_GUARD",
@@ -1234,7 +1234,7 @@
           {
             "name": "DB_MAX_OPEN_CONNS",
             "default": "20",
-            "description": "Database connections one process may open; a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS take precedence on those nodes"
+            "description": "Database connections one process may open, at least 2 (a migration holds one for its lock while the schema changes run on another); a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. The EPP and RDAP nodes use EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS instead"
           }
         ]
       }
@@ -1289,7 +1289,7 @@
           {
             "name": "DB_MAX_OPEN_CONNS",
             "default": "20",
-            "description": "Database connections one process may open; a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS take precedence on those nodes"
+            "description": "Database connections one process may open, at least 2 (a migration holds one for its lock while the schema changes run on another); a quarter of them are kept idle, each is recycled after 30 minutes and closed after 5 idle minutes. Size it so every process together stays under the database's connection limit. The EPP and RDAP nodes use EPP_DB_MAX_OPEN_CONNS and RDAP_DB_MAX_OPEN_CONNS instead"
           }
         ]
       }
