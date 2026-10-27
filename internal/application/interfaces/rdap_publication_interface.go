@@ -17,3 +17,14 @@ type RDAPPublicationPolicyService interface {
 	TLDPolicy(ctx context.Context, tld string) (*entities.RDAPTLDPublication, error)
 	AssignPolicy(ctx context.Context, tld string, cmd commands.AssignRDAPPublicationPolicyCommand) (*entities.RDAPTLDPublication, error)
 }
+
+// RDAPAccessPolicyService manages RDAP access policies and the networks
+// they are assigned to (ADR 0022).
+type RDAPAccessPolicyService interface {
+	ListPolicies(ctx context.Context) ([]*entities.RDAPAccessPolicy, error)
+	GetPolicy(ctx context.Context, name string) (*entities.RDAPAccessPolicy, error)
+	SavePolicy(ctx context.Context, name string, cmd commands.SaveRDAPAccessPolicyCommand) (*entities.RDAPAccessPolicy, error)
+	DeletePolicy(ctx context.Context, name string) error
+	ListNetworks(ctx context.Context) ([]entities.RDAPAccessNetwork, error)
+	AssignNetwork(ctx context.Context, cmd commands.AssignRDAPAccessNetworkCommand) (*entities.RDAPAccessNetwork, error)
+}

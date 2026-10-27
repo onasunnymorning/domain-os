@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"strings"
 	"sync/atomic"
 
@@ -16,7 +17,9 @@ import (
 // RDAPService reads what the RDAP server serves (ADR 0020). It never writes.
 type RDAPService struct {
 	publication *RDAPPublicationPolicyService
+	access      *RDAPAccessPolicyService
 	set         atomic.Pointer[entities.RDAPPublicationSet]
+	accessSet   atomic.Pointer[entities.RDAPAccessSet]
 
 	domains    repositories.DomainRepository
 	hosts      repositories.HostRepository
@@ -35,28 +38,46 @@ type RDAPServiceDeps struct {
 	// Publication is where the publication policies are read from. Nil
 	// keeps the built-ins for every TLD.
 	Publication *RDAPPublicationPolicyService
+	// Access is where the access policies are read from. Nil keeps the
+	// built-ins: every client is anonymous.
+	Access *RDAPAccessPolicyService
 }
 
 // NewRDAPService returns an RDAPService reading from deps. Until the first
-// RefreshPublicationPolicies, every TLD has the built-in for its type.
+// RefreshPolicies, every TLD has the built-in for its type and every client
+// is anonymous; the server serves nothing before that load succeeds.
 func NewRDAPService(deps RDAPServiceDeps) *RDAPService {
-	s := &RDAPService{domains: deps.Domains, hosts: deps.Hosts, registrars: deps.Registrars, tlds: deps.TLDs, contacts: deps.Contacts, publication: deps.Publication}
+	s := &RDAPService{domains: deps.Domains, hosts: deps.Hosts, registrars: deps.Registrars, tlds: deps.TLDs, contacts: deps.Contacts, publication: deps.Publication, access: deps.Access}
 	s.set.Store(entities.DefaultRDAPPublicationSet())
+	s.accessSet.Store(entities.DefaultRDAPAccessSet())
 	return s
 }
 
-// RefreshPublicationPolicies reloads the publication policies and their
-// assignments. A failed load keeps the set last loaded.
-func (s *RDAPService) RefreshPublicationPolicies(ctx context.Context) error {
-	if s.publication == nil {
-		return nil
+// RefreshPolicies reloads the publication and access policies. A set that
+// fails to load keeps the one last loaded; the other is still replaced.
+func (s *RDAPService) RefreshPolicies(ctx context.Context) error {
+	var errs []error
+	if s.publication != nil {
+		if set, err := s.publication.PublicationSet(ctx); err != nil {
+			errs = append(errs, err)
+		} else {
+			s.set.Store(set)
+		}
 	}
-	set, err := s.publication.PublicationSet(ctx)
-	if err != nil {
-		return err
+	if s.access != nil {
+		if set, err := s.access.AccessSet(ctx); err != nil {
+			errs = append(errs, err)
+		} else {
+			s.accessSet.Store(set)
+		}
 	}
-	s.set.Store(set)
-	return nil
+	return errors.Join(errs...)
+}
+
+// AccessPolicy is the access policy for a client address: its network's,
+// or anonymous.
+func (s *RDAPService) AccessPolicy(addr netip.Addr) *entities.RDAPAccessPolicy {
+	return s.accessSet.Load().ForAddress(addr)
 }
 
 // Domain returns what a domain response is built from, or

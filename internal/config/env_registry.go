@@ -191,9 +191,9 @@ var Registry = []EnvVar{
 	{Name: "EPP_DRAIN_TIMEOUT", Services: []Service{ServiceEPP}, Default: "30s", Description: "On SIGTERM, time allowed for sessions to finish before their connections are closed"},
 	{Name: "EPP_USERNAME", Services: []Service{ServiceEPP, ServiceCLI}, Description: "EPP client login (clID) used by the epp-client API and the epp CLI. Was hardcoded to a CentralNic OTE account until #411"},
 	{Name: "EPP_PASSWORD", Services: []Service{ServiceEPP, ServiceCLI}, Secret: true, Description: "EPP client password. Was hardcoded alongside EPP_USERNAME until #411; that credential is in git history and should be rotated"},
-	{Name: "REDIS_HOST", Services: []Service{ServiceEPP, ServiceAPI}, Default: "localhost", Description: "Redis holding the EPP session registry and lockouts. The admin API reads it to list and end EPP sessions"},
-	{Name: "REDIS_PORT", Services: []Service{ServiceEPP, ServiceAPI}, Default: "6379", Description: "Redis port"},
-	{Name: "REDIS_PASSWORD", Services: []Service{ServiceEPP, ServiceAPI}, Secret: true, Description: "Redis password (empty = no auth)"},
+	{Name: "REDIS_HOST", Services: []Service{ServiceEPP, ServiceAPI, ServiceRDAP}, Default: "localhost", Description: "Redis holding the EPP session registry, lockouts and command rates, and the RDAP request rates. The admin API reads it to list and end EPP sessions"},
+	{Name: "REDIS_PORT", Services: []Service{ServiceEPP, ServiceAPI, ServiceRDAP}, Default: "6379", Description: "Redis port"},
+	{Name: "REDIS_PASSWORD", Services: []Service{ServiceEPP, ServiceAPI, ServiceRDAP}, Secret: true, Description: "Redis password (empty = no auth)"},
 
 	// ═══════════════════════════════════════════
 	// RDAP
@@ -215,7 +215,9 @@ var Registry = []EnvVar{
 	{Name: "RDAP_IDLE_TIMEOUT", Services: []Service{ServiceRDAP}, Default: "60s", Description: "Time a keep-alive connection may wait for its next request"},
 	{Name: "RDAP_DRAIN_TIMEOUT", Services: []Service{ServiceRDAP}, Default: "20s", Description: "On SIGTERM, time allowed for requests in flight after readiness turns 503"},
 	{Name: "RDAP_TERMS_OF_SERVICE_URL", Services: []Service{ServiceRDAP}, Description: "The RDAP service's terms of use, linked from the gTLD profile's Terms of Use notice in every response. Unset leaves that notice out, which a gTLD may not do"},
-	{Name: "RDAP_POLICY_REFRESH_INTERVAL", Services: []Service{ServiceRDAP}, Default: "30s", Description: "How often an RDAP node reloads the TLDs' publication policies. A failed reload keeps the set last loaded"},
+	{Name: "RDAP_MAX_IN_FLIGHT", Services: []Service{ServiceRDAP}, Default: "200", Description: "Requests one RDAP node serves at once. More are answered 503 at once, to protect the node; alerted on"},
+	{Name: "RDAP_MAX_CONNECTIONS", Services: []Service{ServiceRDAP}, Default: "5000", Description: "Connections one RDAP node holds open. More are closed at accept"},
+	{Name: "RDAP_POLICY_REFRESH_INTERVAL", Services: []Service{ServiceRDAP}, Default: "30s", Description: "How often an RDAP node reloads the publication and access policies. A failed reload keeps the set last loaded"},
 	{Name: "RDAP_DB_MAX_OPEN_CONNS", Services: []Service{ServiceRDAP}, Default: "20", Description: "Database connections one RDAP node may open"},
 
 	// ═══════════════════════════════════════════

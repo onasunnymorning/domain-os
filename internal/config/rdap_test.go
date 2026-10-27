@@ -15,7 +15,7 @@ var rdapEnv = []string{
 	"RDAP_TLS_CERT_PATH", "RDAP_TLS_KEY_PATH", "RDAP_TLS_SELF_SIGNED", "RDAP_TLS_RELOAD_INTERVAL", "RDAP_SERVER_NAME",
 	"RDAP_PROXY_PROTOCOL", "RDAP_PROXY_TRUSTED_CIDRS",
 	"RDAP_READ_TIMEOUT", "RDAP_WRITE_TIMEOUT", "RDAP_IDLE_TIMEOUT", "RDAP_DRAIN_TIMEOUT",
-	"RDAP_BASE_URL", "RDAP_TERMS_OF_SERVICE_URL", "RDAP_DB_MAX_OPEN_CONNS", "RDAP_POLICY_REFRESH_INTERVAL",
+	"RDAP_BASE_URL", "RDAP_TERMS_OF_SERVICE_URL", "RDAP_DB_MAX_OPEN_CONNS", "RDAP_POLICY_REFRESH_INTERVAL", "RDAP_MAX_IN_FLIGHT", "RDAP_MAX_CONNECTIONS", "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD",
 	"DB_USER", "DB_PASS", "DB_HOST", "DB_PORT", "DB_NAME", "DB_SSLMODE",
 }
 
@@ -44,6 +44,8 @@ func TestLoadRDAPDefaults(t *testing.T) {
 	assert.Equal(t, RDAPTimeouts{Read: 5 * time.Second, Write: 10 * time.Second, Idle: time.Minute, Drain: 20 * time.Second}, cfg.Timeouts)
 	assert.Equal(t, 20, cfg.DB.MaxOpenConns)
 	assert.Equal(t, 30*time.Second, cfg.PolicyRefresh)
+	assert.Equal(t, RDAPLimits{MaxInFlight: 200, MaxConnections: 5000}, cfg.Limits)
+	assert.Equal(t, "localhost:6379", cfg.Redis.Addr())
 	assert.Empty(t, cfg.Notices.TermsOfServiceURL)
 }
 
@@ -83,6 +85,7 @@ func TestLoadRDAPRejects(t *testing.T) {
 		{"proxy without trusted CIDRs", map[string]string{"RDAP_SERVER_NAME": "rdap.example", "RDAP_TLS_SELF_SIGNED": "true", "RDAP_PROXY_PROTOCOL": "true"}, "RDAP_PROXY_TRUSTED_CIDRS"},
 		{"same ports", map[string]string{"RDAP_SERVER_NAME": "rdap.example", "RDAP_TLS_SELF_SIGNED": "true", "RDAP_PORT": "9701"}, "both 9701"},
 		{"bad timeout", map[string]string{"RDAP_SERVER_NAME": "rdap.example", "RDAP_TLS_SELF_SIGNED": "true", "RDAP_READ_TIMEOUT": "soon"}, "RDAP_READ_TIMEOUT"},
+		{"in flight over connections", map[string]string{"RDAP_SERVER_NAME": "rdap.example", "RDAP_TLS_SELF_SIGNED": "true", "RDAP_MAX_IN_FLIGHT": "10", "RDAP_MAX_CONNECTIONS": "5"}, "RDAP_MAX_IN_FLIGHT"},
 		{"insecure terms URL", map[string]string{"RDAP_SERVER_NAME": "rdap.example", "RDAP_TLS_SELF_SIGNED": "true", "RDAP_TERMS_OF_SERVICE_URL": "http://x.example/tos"}, "RDAP_TERMS_OF_SERVICE_URL"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -29,6 +29,8 @@ const windowSlots = int64(entities.EPPFailedCreateWindow / time.Minute)
 
 func slotOf(t time.Time) int64 { return t.Unix() / 60 }
 
+// The failed-create budget is the EPP server's alone, so its keys are
+// always EPP's.
 func suspensionKey(login string) string { return "epp:suspended:" + login }
 func strikeKey(scope string) string     { return "epp:fc-strikes:" + scope }
 

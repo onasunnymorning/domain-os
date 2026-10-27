@@ -36,11 +36,10 @@ Durations use Go syntax (`30s`, `10m`). Every value is checked at start. A bad v
 | `RDAP_TERMS_OF_SERVICE_URL` | *(unset)* | The RDAP service's terms of use, linked from the Terms of Use notice in every response. Unset leaves the notice out, which the gTLD profile does not allow, and logs a warning at start | 1 |
 | `RDAP_DB_MAX_OPEN_CONNS` | `20` | Database pool cap per node | 1 |
 | `DB_*`, `SCHEMA_GUARD`, `LOG_LEVEL` | as the other services | Database connection, schema check and log level. The RDAP server only connects to an existing database: unlike the admin API, it never creates one | 1 |
-| `RDAP_MAX_IN_FLIGHT` | `200` *(planned)* | Requests a node serves at once, to protect the node | 4 |
-| `RDAP_MAX_CONNECTIONS` | `5000` *(planned)* | Open connections per node | 4 |
-| `RDAP_MAX_CONNECTIONS_PER_IP` | `20` *(planned)* | Open connections per client address per node | 4 |
-| `RDAP_POLICY_REFRESH_INTERVAL` | `30s` | How often a node reloads the publication policies (and, from Phase 4, access policies). A node does not serve until its first load succeeds (built-ins could publish what a stored policy withholds); a later reload that fails keeps the set last loaded. Policies and assignments are read in one snapshot, and a set with an assignment to a missing policy is refused | 3b |
-| `REDIS_*` | as EPP *(planned)* | The limiter's store. Without it the limiter fails open to per-node buckets | 4 |
+| `RDAP_MAX_IN_FLIGHT` | `200` | Requests a node serves at once. More are answered 503 with `Retry-After: 1` at once, not queued, and counted in `rdap_shed_total{reason="in_flight"}` | 4 |
+| `RDAP_MAX_CONNECTIONS` | `5000` | Open connections per node. More are closed at accept and counted in `rdap_shed_total{reason="connections"}`. At least `RDAP_MAX_IN_FLIGHT` | 4 |
+| `RDAP_POLICY_REFRESH_INTERVAL` | `30s` | How often a node reloads the publication and access policies. A node does not serve until its first load of both succeeds (built-ins could publish what a stored policy withholds); a later reload that fails keeps the set last loaded. Each kind is read in one snapshot (policies with their TLD or network assignments), and a set with an assignment to a missing policy is refused | 3b |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | as EPP | The limiter's store; RDAP's keys start `rdap:` and name the policy, so clients under different policies never share a bucket. Without it the limiter fails open to per-node buckets and `rdap_ratelimit_degraded` is 1 | 4 |
 
 A read replica for lookups is not offered yet. It is added if load testing (Phase 6) shows the primary is the bottleneck.
 
@@ -59,14 +58,25 @@ Every change writes an outbox event (`rdap.publication_policy.saved`, `.deleted`
 
 ## Access policies
 
-Named limits assigned to CIDR ranges (ADR 0022). A client in no assigned range has `anonymous`, and the most specific range that contains the client wins.
+Named limits assigned to networks (ADR 0022). A client in no assigned network has `anonymous`; the most specific network containing the client wins.
 
 | Limit | `anonymous` | `monitoring` | Meaning |
 |---|---|---|---|
-| `per_address` | 2/s, burst 10 | 50/s, burst 200 | Bucket per IPv4 /32 or IPv6 /64 |
-| `per_aggregate` | 20/s, burst 60 | none | Bucket per IPv4 /24 or IPv6 /48 |
-| `not_found_cost` | 3 | 1 | Tokens a lookup that finds nothing takes |
+| `perAddress` | 2/s, burst 10 | 50/s, burst 200 | Bucket per IPv4 /32 or IPv6 /64 |
+| `perAggregate` | 20/s, burst 60 | none | Bucket per IPv4 /24 or IPv6 /48. A zero rate and burst is no aggregate limit |
+| `notFoundCost` | 3 | 1 | Tokens a lookup that finds nothing takes: one to be admitted, the rest owed once it is answered. At most every burst |
 
-A refused request gets a 429 with `Retry-After` and an RDAP error naming the limit and the scope.
+A request takes one token from each of its buckets at once, or from none, before any database work. Refused, it gets a 429 with `Retry-After` and an RDAP error naming the scope (`address` or `aggregate`), and is counted in `rdap_policy_decisions_total{action="refused"}`.
 
 `monitoring` must hold ICANN's SLA monitoring networks and, for an RST run, RST's `rdap.clientACL`. A throttled probe counts against the SLA.
+
+Changed through the admin API, under `rdap:policy:admin`:
+
+| Endpoint | Does |
+|---|---|
+| `GET /rdap/access-policies` | Every policy, the built-ins included |
+| `GET`, `PUT`, `DELETE /rdap/access-policies/{name}` | Read, create or replace, delete one. The built-ins can be changed, not deleted; an assigned policy cannot be deleted |
+| `GET /rdap/access-networks` | Every assigned network, most specific first |
+| `PUT /rdap/access-networks` | `{"network": "192.0.2.0/24", "policy": "monitoring"}` assigns; `"policy": ""` removes the assignment |
+
+Every change writes an outbox event (`rdap.access_policy.saved`, `.deleted`, `rdap.access_network.assigned`). Nodes apply it within `RDAP_POLICY_REFRESH_INTERVAL`.

@@ -1,6 +1,6 @@
 {
   "schema_version": "4",
-  "generated": "2026-10-26T21:08:28Z",
+  "generated": "2026-10-26T21:17:16Z",
   "services": {
     "admin-api": {
       "image": "gprins/domain-os-api",
@@ -236,7 +236,7 @@
           {
             "name": "REDIS_HOST",
             "default": "localhost",
-            "description": "Redis holding the EPP session registry and lockouts. The admin API reads it to list and end EPP sessions"
+            "description": "Redis holding the EPP session registry, lockouts and command rates, and the RDAP request rates. The admin API reads it to list and end EPP sessions"
           },
           {
             "name": "REDIS_PORT",
@@ -546,7 +546,7 @@
           {
             "name": "REDIS_HOST",
             "default": "localhost",
-            "description": "Redis holding the EPP session registry and lockouts. The admin API reads it to list and end EPP sessions"
+            "description": "Redis holding the EPP session registry, lockouts and command rates, and the RDAP request rates. The admin API reads it to list and end EPP sessions"
           },
           {
             "name": "REDIS_PORT",
@@ -752,6 +752,21 @@
             "description": "Log level (debug/info/warn/error)"
           },
           {
+            "name": "REDIS_HOST",
+            "default": "localhost",
+            "description": "Redis holding the EPP session registry, lockouts and command rates, and the RDAP request rates. The admin API reads it to list and end EPP sessions"
+          },
+          {
+            "name": "REDIS_PORT",
+            "default": "6379",
+            "description": "Redis port"
+          },
+          {
+            "name": "REDIS_PASSWORD",
+            "secret": true,
+            "description": "Redis password (empty = no auth)"
+          },
+          {
             "name": "RDAP_PORT",
             "default": "443",
             "description": "RDAP HTTPS listen port. RST requires base URLs on 443"
@@ -824,9 +839,19 @@
             "description": "The RDAP service's terms of use, linked from the gTLD profile's Terms of Use notice in every response. Unset leaves that notice out, which a gTLD may not do"
           },
           {
+            "name": "RDAP_MAX_IN_FLIGHT",
+            "default": "200",
+            "description": "Requests one RDAP node serves at once. More are answered 503 at once, to protect the node; alerted on"
+          },
+          {
+            "name": "RDAP_MAX_CONNECTIONS",
+            "default": "5000",
+            "description": "Connections one RDAP node holds open. More are closed at accept"
+          },
+          {
             "name": "RDAP_POLICY_REFRESH_INTERVAL",
             "default": "30s",
-            "description": "How often an RDAP node reloads the TLDs' publication policies. A failed reload keeps the set last loaded"
+            "description": "How often an RDAP node reloads the publication and access policies. A failed reload keeps the set last loaded"
           },
           {
             "name": "RDAP_DB_MAX_OPEN_CONNS",
@@ -1253,7 +1278,8 @@
       "port": 6379,
       "used_by": [
         "admin-api",
-        "epp-server"
+        "epp-server",
+        "rdap-server"
       ]
     },
     {

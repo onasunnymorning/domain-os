@@ -178,7 +178,7 @@ func TestRedis(t *testing.T) {
 	t.Run("every bucket is charged from when the command runs", func(t *testing.T) {
 		redisNow, err := client.Time(ctx).Result() // the script's clock, not this machine's
 		require.NoError(t, err)
-		require.NoError(t, client.Set(ctx, bucketKey("x:fam"), redisNow.Add(1990*time.Millisecond).UnixMicro(), time.Minute).Err())
+		require.NoError(t, client.Set(ctx, eppKeys.bucketKey("x:fam"), redisNow.Add(1990*time.Millisecond).UnixMicro(), time.Minute).Err())
 		b := []entities.EPPRateBucket{bucket("x:reg", 1, 1), bucket("x:fam", 100, 100)}
 		res, err := r.Take(ctx, b, 1, 1500*time.Millisecond)
 		require.NoError(t, err)
@@ -210,10 +210,10 @@ func TestRedis(t *testing.T) {
 		assert.True(t, res.Taken, "within the wait accepted")
 		assert.InDelta(t, time.Second, res.Wait, float64(100*time.Millisecond))
 
-		ttl, err := client.PTTL(ctx, bucketKey("t:reg")).Result()
+		ttl, err := client.PTTL(ctx, eppKeys.bucketKey("t:reg")).Result()
 		require.NoError(t, err)
 		assert.InDelta(t, 4*time.Second, ttl, float64(200*time.Millisecond), "a bucket's key expires when it is full again")
-		tat, err := client.Get(ctx, bucketKey("t:reg")).Int64()
+		tat, err := client.Get(ctx, eppKeys.bucketKey("t:reg")).Int64()
 		require.NoError(t, err, "the TAT is stored as whole microseconds")
 		assert.Greater(t, tat, time.Now().UnixMicro())
 	})
@@ -233,7 +233,7 @@ func TestRedis(t *testing.T) {
 		release(ctx)
 		n, _ = r.QuotaCount(ctx, "q")
 		assert.Equal(t, 1, n)
-		ttl, _ := client.PTTL(ctx, quotaKey("q")).Result()
+		ttl, _ := client.PTTL(ctx, eppKeys.quotaKey("q")).Result()
 		assert.InDelta(t, time.Hour, ttl, float64(time.Minute))
 	})
 
@@ -297,4 +297,13 @@ func TestFailOpenBoundsAStalledRedis(t *testing.T) {
 func (f *failing) MarkQuotaReached(context.Context, string, time.Duration) (bool, error) {
 	f.calls++
 	return false, errors.New("down")
+}
+
+// eppKeys names keys as the EPP server's limiter does.
+var eppKeys = &Redis{prefix: "epp"}
+
+func TestServicesKeepSeparateBuckets(t *testing.T) {
+	assert.Equal(t, "epp:rate:x", NewRedis(nil).bucketKey("x"))
+	assert.Equal(t, "rdap:rate:x", NewRedisFor(nil, "rdap").bucketKey("x"))
+	assert.Equal(t, "rdap:quota:x", NewRedisFor(nil, "rdap").quotaKey("x"))
 }

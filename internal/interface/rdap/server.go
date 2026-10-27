@@ -27,6 +27,9 @@ type Options struct {
 	// Lookups reads the registry. Required.
 	Lookups interfaces.RDAPLookups
 	Logger  *slog.Logger
+	// Limiter limits clients by their access policy (ADR 0022). Nil
+	// limits no one: local development and tests only.
+	Limiter RateLimiter
 	// Now is the clock, for the "last update of RDAP database" event and
 	// grace-period statuses. Defaults to time.Now.
 	Now func() time.Time
@@ -42,6 +45,9 @@ type Server struct {
 	certs   *tlsconfig.CertSource
 	http    *http.Server
 	now     func() time.Time
+	limiter RateLimiter
+	// inFlight holds a slot per request being served.
+	inFlight chan struct{}
 
 	// baseURL is the public base, ending in "/". basePath is its path,
 	// decoded, which requests are routed by; escapedBasePath is the same
@@ -51,6 +57,9 @@ type Server struct {
 	// and the request's own path and query.
 	origin         string
 	termsOfService string
+
+	// charges are the not-found surcharges still being charged.
+	charges sync.WaitGroup
 
 	startOnce sync.Once
 	serving   atomic.Bool
@@ -86,6 +95,8 @@ func NewServer(opts Options) (*Server, error) {
 		origin:          base.Scheme + "://" + base.Host,
 		termsOfService:  opts.Config.Notices.TermsOfServiceURL,
 		now:             opts.Now,
+		limiter:         opts.Limiter,
+		inFlight:        make(chan struct{}, max(opts.Config.Limits.MaxInFlight, 1)),
 	}
 	if s.now == nil {
 		s.now = time.Now
@@ -132,7 +143,7 @@ func NewServer(opts Options) (*Server, error) {
 		// routine; they are not errors of this server.
 		ErrorLog: slog.NewLogLogger(s.logger.Handler(), slog.LevelDebug),
 	}
-	s.life, s.end = context.WithCancel(context.Background())
+	s.life, s.end = context.WithCancel(context.Background()) // #nosec G118 -- s.end is called by Shutdown, which ends the server's life
 	return s, nil
 }
 
@@ -152,11 +163,15 @@ func (s *Server) Serve(l net.Listener) error {
 		l = pl
 	}
 
+	if s.cfg.Limits.MaxConnections > 0 {
+		l = newConnLimitListener(l, s.cfg.Limits.MaxConnections, s.metrics.shed.WithLabelValues(shedConnections).Inc)
+	}
+
 	// The publication policies decide what a response may show, so the
 	// node serves nothing until it holds the stored set: built-ins could
 	// publish what a stricter stored policy withholds. Shutdown cancels the
 	// load, so a stalled database cannot hold a draining node past its
-	// drain timeout.
+	// drain timeout. The access policies are loaded with them.
 	if err := s.loadPolicies(s.life); err != nil {
 		if s.life.Err() != nil {
 			return nil
@@ -175,7 +190,11 @@ func (s *Server) Serve(l net.Listener) error {
 		"addr", l.Addr().String(),
 		"base_url", s.baseURL,
 		"proxy_protocol", s.cfg.Proxy.Enabled,
+		"rate_limited", s.limiter != nil,
 		"cert_not_after", s.certs.NotAfter().UTC().Format(time.RFC3339))
+	if s.limiter == nil {
+		s.logger.Warn("RDAP server has no rate limiter; clients are not limited (local development only)")
+	}
 	if s.termsOfService == "" {
 		s.logger.Warn("RDAP_TERMS_OF_SERVICE_URL is unset; responses carry no Terms of Use notice, which the gTLD RDAP Profile requires")
 	}
@@ -196,7 +215,16 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.draining.Store(true)
 	s.metrics.draining.Set(1)
 	s.end()
-	return s.http.Shutdown(ctx)
+	err := s.http.Shutdown(ctx)
+	// Handlers have returned; their surcharges are bounded by the
+	// limiter's own timeout.
+	done := make(chan struct{})
+	go func() { s.charges.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
+	return err
 }
 
 // Ready reports whether the node should receive traffic.
@@ -231,12 +259,12 @@ func (s *Server) policyInterval() time.Duration {
 	return 30 * time.Second
 }
 
-// loadPolicies loads the publication policies once, bounded by the reload
-// interval, and records the outcome.
+// loadPolicies loads the publication and access policies once, bounded by
+// the reload interval, and records the outcome.
 func (s *Server) loadPolicies(ctx context.Context) error {
 	loadCtx, cancel := context.WithTimeout(ctx, s.policyInterval())
 	defer cancel()
-	if err := s.lookups.RefreshPublicationPolicies(loadCtx); err != nil {
+	if err := s.lookups.RefreshPolicies(loadCtx); err != nil {
 		s.metrics.policyRefreshErrors.Inc()
 		return err
 	}
@@ -244,9 +272,9 @@ func (s *Server) loadPolicies(ctx context.Context) error {
 	return nil
 }
 
-// watchPolicies reloads the publication policies every PolicyRefresh, until
-// ctx is done. Serve has loaded them once already; a later load that fails
-// keeps the set last loaded (ADR 0021).
+// watchPolicies reloads the publication and access policies every
+// PolicyRefresh, until ctx is done. Serve has loaded them once already; a
+// later load that fails keeps the set last loaded (ADR 0021, ADR 0022).
 func (s *Server) watchPolicies(ctx context.Context) {
 	ticker := time.NewTicker(s.policyInterval())
 	defer ticker.Stop()
@@ -257,7 +285,7 @@ func (s *Server) watchPolicies(ctx context.Context) {
 		case <-ticker.C:
 		}
 		if err := s.loadPolicies(ctx); err != nil && ctx.Err() == nil {
-			s.logger.Warn("RDAP publication policies not refreshed; keeping the previous set", "error", err)
+			s.logger.Warn("RDAP policies not refreshed; keeping the previous set", "error", err)
 		}
 	}
 }

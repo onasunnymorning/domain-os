@@ -15,10 +15,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/buildinfo"
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/ratelimit"
 	"github.com/onasunnymorning/domain-os/internal/interface/rdap"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
@@ -76,6 +79,22 @@ func run(cfg config.RDAP, repositoryID entities.RepositoryID, logger *slog.Logge
 	}
 	logger.Info("Connected to the database", "host", cfg.DB.Host, "name", cfg.DB.Name)
 
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     cfg.Redis.Addr(),
+		Password: cfg.Redis.Password,
+		// The limiter bounds each call and falls back to the node when
+		// Redis does not answer in time; without this the client ignores
+		// that deadline on an open connection.
+		ContextTimeoutEnabled: true,
+	})
+	// The limiter fails open without Redis (ADR 0022), so an unreachable
+	// Redis is a warning; rdap_ratelimit_degraded shows it.
+	if err := redisClient.Ping(context.Background()).Err(); err != nil {
+		logger.Warn("Redis unreachable at start; clients are limited per node until it answers", "addr", cfg.Redis.Addr(), "error", err)
+	} else {
+		logger.Info("Connected to Redis", "addr", cfg.Redis.Addr())
+	}
+
 	tlds := postgres.NewGormTLDRepo(db)
 	lookups := services.NewRDAPService(services.RDAPServiceDeps{
 		Domains:    postgres.NewDomainRepository(db, repositoryID),
@@ -86,8 +105,17 @@ func run(cfg config.RDAP, repositoryID entities.RepositoryID, logger *slog.Logge
 		// The TLDs' publication policies (ADR 0021), reloaded every
 		// RDAP_POLICY_REFRESH_INTERVAL.
 		Publication: services.NewRDAPPublicationPolicyService(postgres.NewRDAPPublicationPolicyRepository(db), tlds),
+		// The networks' access policies (ADR 0022), reloaded with them.
+		Access: services.NewRDAPAccessPolicyService(postgres.NewRDAPAccessPolicyRepository(db)),
 	})
-	srv, err := rdap.NewServer(rdap.Options{Config: cfg, Lookups: lookups, Logger: logger})
+	// srv reports the limiter's health once it exists.
+	var srv *rdap.Server
+	limiter := ratelimit.NewFailOpen(ratelimit.NewRedisFor(redisClient, "rdap"), ratelimit.NewMemory(), func(degraded bool) {
+		if srv != nil {
+			srv.ReportRatesDegraded(degraded)
+		}
+	})
+	srv, err = rdap.NewServer(rdap.Options{Config: cfg, Lookups: lookups, Logger: logger, Limiter: limiter})
 	if err != nil {
 		return err
 	}

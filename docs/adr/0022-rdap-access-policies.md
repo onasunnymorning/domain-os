@@ -26,7 +26,7 @@ RDAP has no logged-in identity, so its unit is the client's network, not a regis
 ## Decision
 
 1. **The EPP limiter becomes shared, not copied.**
-   - The GCRA script, the fail-open breaker and the per-node fallback move from `internal/infrastructure/epp/ratelimit` to `internal/infrastructure/ratelimit`, with a key prefix per service.
+   - The GCRA script, the fail-open breaker and the per-node fallback move from `internal/infrastructure/epp/ratelimit` to `internal/infrastructure/ratelimit`, with a key prefix per service. (Built: the whole package moved, its failed-create budget with it, which keeps EPP's keys since it is EPP's alone.)
    - EPP moves to the shared package with no change in behaviour.
    - Two copies of a limiter would drift, as the first EPP limiter did.
 
@@ -35,7 +35,7 @@ RDAP has no logged-in identity, so its unit is the client's network, not a regis
    - Policies are assigned to CIDR ranges (`rdap_policy_assignments`). The most specific range that contains the client wins, and a client in no range has `anonymous`.
    - There are no per-network overrides: a network that needs different limits gets its own policy.
    - Changes go through the admin API under `rdap:policy:admin`, serialised by an advisory lock, with an outbox event carrying before and after.
-   - Nodes reload the whole set every `RDAP_POLICY_REFRESH_INTERVAL`, keep the last good set if a load fails, and use the built-in starting limits before the first load.
+   - Nodes reload the whole set every `RDAP_POLICY_REFRESH_INTERVAL`, and keep the last good set if a load fails. They are loaded with the publication policies, and a node serves nothing until that first load succeeds (ADR 0021, amendment of 2026-10-27), so the built-in starting limits apply only to a node built without a policy store.
 
 3. **Two policies are built in**, seeded from code. They can be edited but not deleted:
    - `anonymous`, which every client has unless assigned another;
@@ -73,3 +73,12 @@ RDAP has no logged-in identity, so its unit is the client's network, not a regis
 - The admin API gains RDAP policy endpoints. As for EPP policies, there is no admin UI yet.
 - Raising limits is a policy change that takes effect within one refresh interval. The alerts (Phase 5) show refusals per policy and the sources nearest their caps, so the evidence for a raise is in the dashboard.
 - A client behind carrier-grade NAT shares its aggregate with its neighbours. If a legitimate network needs more, it gets its own policy.
+
+## Amendments
+
+### 2026-10-26: as built (Phase 4)
+
+- **No per-address connection cap.** Behind PROXY protocol a connection's client address is known only once the header is read, and reading it at accept would let one slow client stall every accept. The request limit already bounds what one address can do, so the node caps its total connections (`RDAP_MAX_CONNECTIONS`) and requests in flight (`RDAP_MAX_IN_FLIGHT`) only.
+- **Requests over the in-flight cap are a 503**, with `Retry-After: 1`. Decision 6 keeps 503 out of client limits; this is the node itself being full, which the SLA should see and an alert should fire on.
+- **The not-found cost is charged after the answer.** Whether a lookup finds anything is only known once it has run, so a request is admitted on one token and a 404 then takes `notFoundCost - 1` more, owed rather than refused. The debt pushes the client's next requests back.
+- **Rates reuse `entities.EPPRate`** (`per_second`, `burst`), the limiter's existing type, rather than a copy.

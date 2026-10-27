@@ -32,9 +32,22 @@ type RDAP struct {
 	Timeouts RDAPTimeouts
 	Notices  RDAPNotices
 	DB       RDAPDatabase
-	// PolicyRefresh is how often the node reloads the TLDs' publication
-	// policies (and, from Phase 4, access policies).
+	// PolicyRefresh is how often the node reloads the publication and
+	// access policies.
 	PolicyRefresh time.Duration
+	Limits        RDAPLimits
+	Redis         EPPRedis
+}
+
+// RDAPLimits protect the node, whoever is asking (ADR 0022 decision 7).
+// The limits on clients are access policies, in the database.
+type RDAPLimits struct {
+	// MaxInFlight is how many requests the node serves at once. More are
+	// answered 503 at once rather than queued.
+	MaxInFlight int
+	// MaxConnections is how many connections the node holds open. More
+	// are closed at accept.
+	MaxConnections int
 }
 
 // RDAPTLS says where the server certificate comes from. Exactly one of a
@@ -97,6 +110,8 @@ var rdapDefaults = RDAP{
 		Drain: 20 * time.Second,
 	},
 	PolicyRefresh: 30 * time.Second,
+	Limits:        RDAPLimits{MaxInFlight: 200, MaxConnections: 5000},
+	Redis:         EPPRedis{Host: "localhost", Port: "6379"},
 	DB:            RDAPDatabase{MaxOpenConns: 20, User: "postgres", Pass: "postgres", Host: "localhost", Port: "5432", Name: "domain_os", SSLMode: "disable"},
 }
 
@@ -136,6 +151,11 @@ func LoadRDAP() (RDAP, error) {
 	collect(setDuration(&cfg.Timeouts.Idle, "RDAP_IDLE_TIMEOUT", os.Getenv("RDAP_IDLE_TIMEOUT")))
 	collect(setDuration(&cfg.Timeouts.Drain, "RDAP_DRAIN_TIMEOUT", os.Getenv("RDAP_DRAIN_TIMEOUT")))
 	collect(setDuration(&cfg.PolicyRefresh, "RDAP_POLICY_REFRESH_INTERVAL", os.Getenv("RDAP_POLICY_REFRESH_INTERVAL")))
+	collect(setPositiveInt(&cfg.Limits.MaxInFlight, "RDAP_MAX_IN_FLIGHT", os.Getenv("RDAP_MAX_IN_FLIGHT")))
+	collect(setPositiveInt(&cfg.Limits.MaxConnections, "RDAP_MAX_CONNECTIONS", os.Getenv("RDAP_MAX_CONNECTIONS")))
+	cfg.Redis.Host = valueOr(os.Getenv("REDIS_HOST"), cfg.Redis.Host)
+	cfg.Redis.Port = valueOr(os.Getenv("REDIS_PORT"), cfg.Redis.Port)
+	cfg.Redis.Password = os.Getenv("REDIS_PASSWORD")
 
 	cfg.BaseURL, err = parseRDAPBaseURL(os.Getenv("RDAP_BASE_URL"), cfg.TLS.ServerName)
 	collect(err)
@@ -172,6 +192,9 @@ func (c RDAP) validate() error {
 	}
 	if c.Port == c.OpsPort {
 		errs = append(errs, fmt.Errorf("RDAP_PORT and RDAP_OPS_PORT are both %d", c.Port))
+	}
+	if c.Limits.MaxInFlight > c.Limits.MaxConnections {
+		errs = append(errs, fmt.Errorf("RDAP_MAX_IN_FLIGHT (%d) exceeds RDAP_MAX_CONNECTIONS (%d)", c.Limits.MaxInFlight, c.Limits.MaxConnections))
 	}
 	return errors.Join(errs...)
 }

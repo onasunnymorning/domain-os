@@ -255,15 +255,15 @@ func TestRDAPServiceAppliesTheLoadedPolicyAndKeepsIt(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, entities.RDAPPolicyGTLDRDP2024, rec.Publication.Name, "before any load, the built-in")
 
-	require.NoError(t, svc.RefreshPublicationPolicies(context.Background()))
+	require.NoError(t, svc.RefreshPolicies(context.Background()))
 	check("after the load")
 
 	repo.err = errors.New("database unavailable")
-	require.Error(t, svc.RefreshPublicationPolicies(context.Background()))
+	require.Error(t, svc.RefreshPolicies(context.Background()))
 	check("after a failed load")
 
 	repo.err = nil
 	repo.assignments = map[entities.DomainName]string{"example": "created-later"}
-	require.Error(t, svc.RefreshPublicationPolicies(context.Background()), "an assignment to a policy not in the snapshot")
+	require.Error(t, svc.RefreshPolicies(context.Background()), "an assignment to a policy not in the snapshot")
 	check("after an inconsistent snapshot")
 }

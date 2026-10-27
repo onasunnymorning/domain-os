@@ -26,6 +26,23 @@ func (s *Server) handler() http.Handler {
 			s.metrics.requestDuration.WithLabelValues(route).Observe(time.Since(start).Seconds())
 		}()
 
+		select {
+		case s.inFlight <- struct{}{}:
+			defer func() { <-s.inFlight }()
+		default:
+			// The node is full. A 503 is an outage to the SLA monitors,
+			// so this is alerted on; it is not how clients are limited.
+			s.metrics.shed.WithLabelValues(shedInFlight).Inc()
+			rec.Header().Set("Retry-After", "1")
+			s.fail(rec, r, http.StatusServiceUnavailable, "the server is busy; retry shortly")
+			return
+		}
+
+		chargeNotFound, admitted := s.admit(rec, r)
+		if !admitted {
+			return
+		}
+
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			rec.Header().Set("Allow", "GET, HEAD")
 			s.fail(rec, r, http.StatusMethodNotAllowed, "RDAP is read-only: only GET and HEAD are served")
@@ -43,6 +60,17 @@ func (s *Server) handler() http.Handler {
 		ctx, cancel := context.WithTimeout(r.Context(), s.lookupDeadline())
 		defer cancel()
 		s.serve(rec, r.WithContext(ctx), q)
+		// A lookup that found nothing costs more, to slow enumeration. The
+		// charge runs after the handler returns, so it adds nothing to the
+		// client's wait on any protocol (an HTTP/2 stream ends only when the
+		// handler does). Shutdown waits for it.
+		if rec.status == http.StatusNotFound && (q.kind == queryDomain || q.kind == queryNameserver || q.kind == queryEntity) {
+			s.charges.Add(1)
+			go func() {
+				defer s.charges.Done()
+				chargeNotFound()
+			}()
+		}
 	})
 }
 

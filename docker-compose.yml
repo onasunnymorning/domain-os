@@ -458,6 +458,9 @@ services:
     restart: unless-stopped
     profiles: [ full ]
     depends_on:
+      # Request rates live in Redis; without it the node limits on its own.
+      redis:
+        condition: service_healthy
       # admin-api migrates the schema the RDAP server reads.
       admin-api:
         condition: service_healthy
@@ -480,6 +483,9 @@ services:
       - RDAP_TLS_SELF_SIGNED=true
       - RDAP_SERVER_NAME=localhost
       - RDAP_BASE_URL=https://localhost:8443/
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - ROID_REPOSITORY_ID=${ROID_REPOSITORY_ID:-LOCAL}
       - DB_HOST=db
       - DB_PORT=${DB_PORT}

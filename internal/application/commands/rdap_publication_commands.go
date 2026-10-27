@@ -18,3 +18,18 @@ type SaveRDAPPublicationPolicyCommand struct {
 type AssignRDAPPublicationPolicyCommand struct {
 	Policy string `json:"policy"`
 }
+
+// SaveRDAPAccessPolicyCommand creates or replaces an RDAP access policy
+// (PUT /rdap/access-policies/{name}). The entity validates it (INV-08).
+type SaveRDAPAccessPolicyCommand struct {
+	Description string                    `json:"description"`
+	Limits      entities.RDAPAccessLimits `json:"limits" binding:"required"`
+}
+
+// AssignRDAPAccessNetworkCommand assigns a network an RDAP access policy
+// (PUT /rdap/access-networks). An empty policy removes the assignment, so
+// the network's clients have "anonymous".
+type AssignRDAPAccessNetworkCommand struct {
+	Network string `json:"network" binding:"required"`
+	Policy  string `json:"policy"`
+}
