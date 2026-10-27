@@ -77,7 +77,8 @@ func GTLDRegistrationDataPolicy2024() Policy { return builtIn(entities.RDAPPolic
 // CCTLDMinimal is the built-in cctld-minimal.
 func CCTLDMinimal() Policy { return builtIn(entities.RDAPPolicyCCTLDMinimal) }
 
-// BuiltInFor is the built-in a TLD of type t has when assigned none.
-func BuiltInFor(t entities.TLDType) Policy {
-	return builtIn(entities.BuiltInRDAPPublicationPolicyFor(t))
+// BuiltInFor is the built-in a TLD has when assigned none
+// (entities.BuiltInRDAPPublicationPolicyFor).
+func BuiltInFor(name entities.DomainName, t entities.TLDType) Policy {
+	return builtIn(entities.BuiltInRDAPPublicationPolicyFor(name, t))
 }
