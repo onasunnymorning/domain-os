@@ -205,6 +205,13 @@ func (r *HostRepository) CreateHostUnder(ctx context.Context, host *entities.Hos
 	return ToHost(stored, r.repository), nil
 }
 
+// hostUnderDomainSQL is the condition on hosts h whose name is below a
+// domain; its one parameter is the domain's name. "name LIKE '%.x'" is a
+// sequential scan of hosts, taken while the domain's row is locked, on
+// every delete and transfer approval. Reversed, the suffix is a prefix,
+// and idx_hosts_name_reverse serves it as a range scan.
+const hostUnderDomainSQL = "reverse(h.name) LIKE reverse('.' || ?) || '%'"
+
 // lockParent locks the row of the domain a host is placed under (parent,
 // empty if none) for the rest of the transaction, before any host row:
 // domains are locked before hosts everywhere, so writes do not deadlock.
