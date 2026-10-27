@@ -886,6 +886,22 @@ func (v registryHosts) CountHostsByName(_ context.Context, name string) (int64, 
 	return n, nil
 }
 
+func (v registryHosts) ListHostNamesUnder(_ context.Context, clid, domain string) ([]string, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return nil, v.r.err
+	}
+	var out []string
+	for k := range v.r.hosts {
+		if k.clid == clid && strings.HasSuffix(k.name, "."+domain) {
+			out = append(out, k.name)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
 func (v registryHosts) GetHostAssociationCount(_ context.Context, roid int64) (int64, error) {
 	return v.links(roid, func(*entities.Domain) bool { return true })
 }

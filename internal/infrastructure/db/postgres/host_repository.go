@@ -260,6 +260,15 @@ func (r *HostRepository) ListHostsByName(ctx context.Context, name string) ([]*e
 	return out, nil
 }
 
+// ListHostNamesUnder implements repositories.HostRepository, on
+// idx_hosts_name_reverse.
+func (r *HostRepository) ListHostNamesUnder(ctx context.Context, clid, domain string) ([]string, error) {
+	var names []string
+	err := dbFrom(ctx, r.db).Table("hosts h").Where("h.cl_id = ? AND "+hostUnderDomainSQL, clid, domain).
+		Order("h.name").Pluck("h.name", &names).Error
+	return names, err
+}
+
 // CountHostLinksFromOtherSponsors counts the domains that have the host as a
 // nameserver and that clid does not sponsor.
 func (r *HostRepository) CountHostLinksFromOtherSponsors(ctx context.Context, roid int64, clid string) (int64, error) {
