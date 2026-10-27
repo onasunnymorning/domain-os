@@ -37,13 +37,15 @@ const (
 // push the client's next requests back.
 const notFoundDebtWait = time.Hour
 
-// clientBuckets are the buckets a request from addr takes from under p.
+// clientBuckets are the buckets a request from addr takes from under p. The
+// keys carry the policy: a monitoring /128 inside an anonymous /64 has its
+// own allowance, not a share of its neighbours'.
 func clientBuckets(addr netip.Addr, p *entities.RDAPAccessPolicy) ([]entities.EPPRateBucket, []string) {
 	address, aggregate := entities.RDAPAddressBuckets(addr)
-	buckets := []entities.EPPRateBucket{{Key: "addr:" + address.String(), Rate: p.Limits.PerAddress}}
+	buckets := []entities.EPPRateBucket{{Key: "addr:" + p.Name + ":" + address.String(), Rate: p.Limits.PerAddress}}
 	scopes := []string{scopeAddress}
 	if p.Limits.PerAggregate.PerSecond > 0 {
-		buckets = append(buckets, entities.EPPRateBucket{Key: "agg:" + aggregate.String(), Rate: p.Limits.PerAggregate})
+		buckets = append(buckets, entities.EPPRateBucket{Key: "agg:" + p.Name + ":" + aggregate.String(), Rate: p.Limits.PerAggregate})
 		scopes = append(scopes, scopeAggregate)
 	}
 	return buckets, scopes

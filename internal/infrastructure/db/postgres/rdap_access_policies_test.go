@@ -46,6 +46,14 @@ func TestRDAPAccessPolicyRepository(t *testing.T) {
 		nets, err := repo.ListNetworks(ctx)
 		require.NoError(t, err)
 		assert.Contains(t, nets, entities.RDAPAccessNetwork{Network: network, Policy: "partner-test"})
+		policies, snapNets, err := repo.Snapshot(ctx)
+		require.NoError(t, err)
+		assert.Contains(t, snapNets, entities.RDAPAccessNetwork{Network: network, Policy: "partner-test"})
+		var names []string
+		for _, p := range policies {
+			names = append(names, p.Name)
+		}
+		assert.Contains(t, names, "partner-test", "the snapshot holds every assigned network's policy")
 		assert.ErrorIs(t, repo.DeletePolicy(ctx, "partner-test", func(*entities.RDAPAccessPolicy) []entities.DomainEvent { return nil }), entities.ErrRDAPAccessPolicyInUse)
 		assert.ErrorIs(t, repo.AssignNetwork(ctx, network, "no-such", none), entities.ErrRDAPAccessPolicyNotFound)
 	})

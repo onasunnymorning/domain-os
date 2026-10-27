@@ -156,3 +156,21 @@ func TestConnectionsOverTheCapAreClosed(t *testing.T) {
 		t.Fatal("a slot freed by a close is used again")
 	}
 }
+
+func TestBucketsAreKeptApartByPolicy(t *testing.T) {
+	// A monitoring /128 and an anonymous neighbour share an IPv6 /64 and
+	// /48, but not their allowance.
+	set := entities.NewRDAPAccessSet(nil, []entities.RDAPAccessNetwork{
+		{Network: netip.MustParsePrefix("2001:db8:1:2::7/128"), Policy: entities.RDAPAccessMonitoring},
+	}, time.Now())
+	probe, neighbour := netip.MustParseAddr("2001:db8:1:2::7"), netip.MustParseAddr("2001:db8:1:2::8")
+	pb, _ := clientBuckets(probe, set.ForAddress(probe))
+	nb, _ := clientBuckets(neighbour, set.ForAddress(neighbour))
+	require.Equal(t, entities.RDAPAccessMonitoring, set.ForAddress(probe).Name)
+	for _, b := range nb {
+		for _, m := range pb {
+			assert.NotEqual(t, m.Key, b.Key, "an anonymous neighbour must not spend the probe's tokens")
+		}
+	}
+	assert.Contains(t, pb[0].Key, entities.RDAPAccessMonitoring)
+}

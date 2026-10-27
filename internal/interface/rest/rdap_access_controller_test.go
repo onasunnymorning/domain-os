@@ -70,6 +70,15 @@ func (f *fakeRDAPAccess) DeletePolicy(_ context.Context, name string, events fun
 	return nil
 }
 
+func (f *fakeRDAPAccess) Snapshot(ctx context.Context) ([]*entities.RDAPAccessPolicy, []entities.RDAPAccessNetwork, error) {
+	policies, err := f.ListPolicies(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	networks, err := f.ListNetworks(ctx)
+	return policies, networks, err
+}
+
 func (f *fakeRDAPAccess) ListNetworks(context.Context) ([]entities.RDAPAccessNetwork, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

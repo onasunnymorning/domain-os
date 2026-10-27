@@ -22,6 +22,9 @@ type RDAPAccessPolicyRepository interface {
 	// (entities.ErrRDAPAccessPolicyInUse otherwise).
 	DeletePolicy(ctx context.Context, name string, events func(before *entities.RDAPAccessPolicy) []entities.DomainEvent) error
 
+	// Snapshot returns every stored policy and every assigned network, read
+	// together so that each network's policy is among the policies.
+	Snapshot(ctx context.Context) ([]*entities.RDAPAccessPolicy, []entities.RDAPAccessNetwork, error)
 	// ListNetworks returns every assigned network.
 	ListNetworks(ctx context.Context) ([]entities.RDAPAccessNetwork, error)
 	// AssignNetwork assigns policy, which must exist, to network; an empty
