@@ -1039,28 +1039,6 @@ func (svc *DomainService) CheckDomainAvailability(ctx context.Context, domainNam
 		return response, err
 	}
 
-	// Check if the domain exists
-	exists, err := svc.CheckDomainExists(ctx, domainName)
-	if err != nil {
-		response.Reason = err.Error()
-		return response, err
-	}
-	if exists {
-		response.Reason = ErrDomainExists.Error()
-		return response, err
-	}
-
-	// Check if the domain is blocked
-	blocked, err := svc.CheckDomainIsBlocked(ctx, domainName)
-	if err != nil {
-		response.Reason = err.Error()
-		return response, err
-	}
-	if blocked {
-		response.Reason = ErrDomainBlocked.Error()
-		return response, err
-	}
-
 	// Retrieve the phase by name if provided, otherwise get the current GA phase
 	// This will also error if the TLD does not exist
 	phase := &entities.Phase{}
@@ -1086,6 +1064,37 @@ func (svc *DomainService) CheckDomainAvailability(ctx context.Context, domainNam
 			return response, err
 		}
 		response.PhaseName = phase.Name.String()
+	}
+
+	return svc.availabilityIn(ctx, response, dom, phase)
+}
+
+// availabilityIn is CheckDomainAvailability once the phase is known: the
+// name must be neither registered nor reserved, and its label allowed in
+// the phase. It fills response in, and returns it with the error, as
+// CheckDomainAvailability does. RegisterDomain calls it with the phase it
+// has already loaded, so the TLD is read once per registration.
+func (svc *DomainService) availabilityIn(ctx context.Context, response *queries.DomainCheckResult, dom *entities.DomainName, phase *entities.Phase) (*queries.DomainCheckResult, error) {
+	// Check if the domain exists
+	exists, err := svc.CheckDomainExists(ctx, dom.String())
+	if err != nil {
+		response.Reason = err.Error()
+		return response, err
+	}
+	if exists {
+		response.Reason = ErrDomainExists.Error()
+		return response, nil
+	}
+
+	// Check if the domain is blocked
+	blocked, err := svc.CheckDomainIsBlocked(ctx, dom.String())
+	if err != nil {
+		response.Reason = err.Error()
+		return response, err
+	}
+	if blocked {
+		response.Reason = ErrDomainBlocked.Error()
+		return response, nil
 	}
 
 	// Check if the domain label is valid in the current phase
@@ -1163,20 +1172,34 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 		return nil, errors.Join(ErrRegistrarNotAccredited, fmt.Errorf("Registrar.ClID: %s, TLD: %s", cmd.ClID, dom.ParentDomain()))
 	}
 
-	// Check if the domain is available
-	includeFees := false // We will be removing includefees from DomainCheckQuery as this is replaced with QuoteRequest a bit down the line
-	q, err := queries.NewDomainCheckQuery(cmd.Name, includeFees)
+	// The TLD, with its phases, prices and fees, is read once here: the
+	// availability check and the quote below work from the phase it gives.
+	// Before 2026-10-27 each of them loaded it again, three round trips
+	// apiece, on every registration.
+	domainName, err := entities.NewDomainName(cmd.Name)
 	if err != nil {
 		return nil, err
 	}
-	q.ClID = entities.ClIDType(cmd.ClID)
-	if cmd.PhaseName != "" {
-		q.PhaseName = cmd.PhaseName
+	tld, err := svc.tldRepo.GetByName(ctx, domainName.ParentDomain(), true)
+	if err != nil {
+		return nil, err
 	}
-	if includeFees {
-		q.Currency = cmd.Fee.Currency
+	var phase *entities.Phase
+	if cmd.PhaseName == "" {
+		// If no phase is provided we will use the current GA phase
+		phase, err = tld.GetCurrentGAPhase()
+	} else {
+		// If a phase is provided we will use that
+		phase, err = tld.FindPhaseByName(entities.ClIDType(cmd.PhaseName))
 	}
-	checkResult, err := svc.CheckDomainAvailability(ctx, cmd.Name, cmd.PhaseName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if the domain is available
+	checkResult, err := svc.availabilityIn(ctx, &queries.DomainCheckResult{
+		TimeStamp: time.Now().UTC(), DomainName: cmd.Name, PhaseName: phase.Name.String(),
+	}, domainName, phase)
 	if err != nil {
 		return nil, err
 	}
@@ -1199,24 +1222,6 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 		return nil, err
 	}
 
-	// Get the Phase through the TLD
-	domainName := entities.DomainName(cmd.Name)
-	tld, err := svc.tldRepo.GetByName(ctx, domainName.ParentDomain(), true)
-	if err != nil {
-		return nil, err
-	}
-	var phase *entities.Phase
-	if cmd.PhaseName == "" {
-		// If no phase is provided we will use the current GA phase
-		phase, err = tld.GetCurrentGAPhase()
-	} else {
-		// If a phase is provided we will use that
-		phase, err = tld.FindPhaseByName(entities.ClIDType(cmd.PhaseName))
-	}
-	if err != nil {
-		return nil, err
-	}
-
 	// Get a quote
 	var cur string
 	// If the currency is not specified, use the base currency of the Registrar
@@ -1225,19 +1230,20 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	} else {
 		cur = cmd.Fee.Currency
 	}
-	quote, err := svc.GetQuote(ctx, &queries.QuoteRequest{
+	// The name is unregistered (checked above), so the price engine gets a
+	// bare domain, as GetQuote would build for it.
+	quote, err := svc.quoteIn(ctx, &queries.QuoteRequest{
 		DomainName:      cmd.Name,
 		ClID:            cmd.ClID,
 		TransactionType: entities.TransactionTypeRegistration,
 		Currency:        cur,
 		Years:           cmd.Years,
 		PhaseName:       cmd.PhaseName,
-	})
+	}, phase, &entities.Domain{Name: *domainName})
 	if err != nil {
 		return nil, err
 	}
 	event.Quote = *quote
-	checkResult.Quote = quote
 
 	// Check the fee extension against the quote ONLY if it is provided
 	if cmd.Fee.Currency != "" && cmd.Fee.Amount != 0 {
@@ -1856,6 +1862,20 @@ func (s *DomainService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (
 		// grandfathering, so it needs no ROID, sponsor or transfer code.
 		domain = &entities.Domain{Name: *domainName}
 	}
+
+	return s.quoteIn(ctx, q, phase, domain)
+}
+
+// quoteIn is GetQuote once the phase and the domain are known: the premium
+// labels and the FX rate are read, and the price engine runs. RegisterDomain
+// calls it with the phase it has already loaded and the unregistered name,
+// so the TLD and the domain are not read again.
+func (s *DomainService) quoteIn(ctx context.Context, q *queries.QuoteRequest, phase *entities.Phase, domain *entities.Domain) (*entities.Quote, error) {
+	err := q.Validate()
+	if err != nil {
+		return nil, err
+	}
+	domainName := entities.DomainName(q.DomainName)
 
 	// Get the PremiumLabels in all currencies
 	pe := []*entities.PremiumLabel{}
