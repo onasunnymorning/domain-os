@@ -129,7 +129,7 @@ func newEPPFixture(t *testing.T) *eppFixture {
 		postgres.NewGORMPremiumLabelRepository(db), postgres.NewFXRepository(db), rarRepo, events, postgres.NewTransactor(db))
 	svc := NewEPPDomainService(EPPDomainServiceDeps{
 		Domains: domainRepo, NNDNs: postgres.NewGormNNDNRepository(db), TLDs: tldRepo, Phases: phaseRepo,
-		Contacts: contactRepo, Hosts: hostRepo, Registrars: rarRepo, Register: registry, CheckParallelism: 2,
+		Contacts: contactRepo, Hosts: hostRepo, Registrars: rarRepo, Register: registry,
 	})
 	return &eppFixture{
 		db: db, tld: tld, rar1: rar1, rar2: rar2, roids: roids, events: events,

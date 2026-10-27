@@ -27,7 +27,7 @@ func TestEPPDomainTransferOverPostgres(t *testing.T) {
 	svc := NewEPPDomainService(EPPDomainServiceDeps{
 		Domains: f.domainRepo, NNDNs: postgres.NewGormNNDNRepository(db), TLDs: f.tldRepo, Phases: postgres.NewGormPhaseRepository(db),
 		Contacts: postgres.NewContactRepository(db, "EPPTEST"), Hosts: f.hostRepo, Registrars: postgres.NewGormRegistrarRepository(db),
-		Transfers: transfers, Register: f.registry, CheckParallelism: 2,
+		Transfers: transfers, Register: f.registry,
 	})
 	hosts := NewEPPHostService(EPPHostServiceDeps{Hosts: f.hostRepo, Domains: f.domainRepo, TLDs: f.tldRepo, Roids: f.roids})
 	polls := NewEPPPollService(transfers)
@@ -200,7 +200,7 @@ func TestTransferAutoApprovalOverPostgres(t *testing.T) {
 	svc := NewEPPDomainService(EPPDomainServiceDeps{
 		Domains: f.domainRepo, NNDNs: postgres.NewGormNNDNRepository(db), TLDs: f.tldRepo, Phases: postgres.NewGormPhaseRepository(db),
 		Contacts: postgres.NewContactRepository(db, "EPPTEST"), Hosts: f.hostRepo, Registrars: postgres.NewGormRegistrarRepository(db),
-		Transfers: transfers, Register: f.registry, CheckParallelism: 2,
+		Transfers: transfers, Register: f.registry,
 	})
 	polls := NewEPPPollService(transfers)
 	require.NoError(t, NewAccreditationService(postgres.NewAccreditationRepository(db), postgres.NewGormRegistrarRepository(db), f.tldRepo, f.events).

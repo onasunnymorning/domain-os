@@ -40,8 +40,6 @@ type EPP struct {
 
 // EPPCommands bounds what one command may ask of the registry.
 type EPPCommands struct {
-	// CheckParallelism is how many lookups one <check> runs at once.
-	CheckParallelism int
 	// CreatesInFlight is how many <domain:create>s the node runs at once.
 	// Creates waiting for a slot are let in fairly: one registrar (or
 	// family) at a time, in turn.
@@ -200,9 +198,8 @@ var eppDefaults = EPP{
 		PerSource: 20,
 	},
 	Commands: EPPCommands{
-		CheckParallelism: 8,
-		CreatesInFlight:  10,
-		CreateQueueWait:  5 * time.Second,
+		CreatesInFlight: 10,
+		CreateQueueWait: 5 * time.Second,
 	},
 	Audit: EPPAudit{
 		Retention: 365 * 24 * time.Hour,
@@ -274,7 +271,6 @@ func LoadEPP() (EPP, error) {
 	collect(setDuration(&cfg.Sessions.Heartbeat, "EPP_SESSION_HEARTBEAT", os.Getenv("EPP_SESSION_HEARTBEAT")))
 	collect(setPositiveInt(&cfg.Sessions.PerSource, "EPP_MAX_SESSIONS_PER_SOURCE_IP", os.Getenv("EPP_MAX_SESSIONS_PER_SOURCE_IP")))
 
-	collect(setPositiveInt(&cfg.Commands.CheckParallelism, "EPP_CHECK_PARALLELISM", os.Getenv("EPP_CHECK_PARALLELISM")))
 	collect(setPositiveInt(&cfg.Commands.CreatesInFlight, "EPP_MAX_CREATES_IN_FLIGHT", os.Getenv("EPP_MAX_CREATES_IN_FLIGHT")))
 	collect(setDuration(&cfg.Commands.CreateQueueWait, "EPP_CREATE_QUEUE_WAIT", os.Getenv("EPP_CREATE_QUEUE_WAIT")))
 
@@ -319,9 +315,6 @@ func (c EPP) validate() error {
 	}
 	if c.Sessions.NodeID == "" {
 		errs = append(errs, errors.New("EPP_NODE_ID is unset and the hostname is unknown; set EPP_NODE_ID"))
-	}
-	if c.Commands.CheckParallelism >= c.DB.MaxOpenConns {
-		errs = append(errs, fmt.Errorf("EPP_CHECK_PARALLELISM (%d) must be below EPP_DB_MAX_OPEN_CONNS (%d), so one <check> cannot take every connection", c.Commands.CheckParallelism, c.DB.MaxOpenConns))
 	}
 	if c.Commands.CreatesInFlight >= c.DB.MaxOpenConns {
 		errs = append(errs, fmt.Errorf("EPP_MAX_CREATES_IN_FLIGHT (%d) must be below EPP_DB_MAX_OPEN_CONNS (%d), so creates cannot take every connection", c.Commands.CreatesInFlight, c.DB.MaxOpenConns))

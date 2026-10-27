@@ -39,7 +39,6 @@ func objectRegistry(t *testing.T) (*EPPDomainService, *memstore.Registry, *entit
 	svc := NewEPPDomainService(EPPDomainServiceDeps{
 		Domains: reg.Domains(), NNDNs: reg.NNDNs(), TLDs: reg.TLDs(), Phases: reg.Phases(),
 		Contacts: reg.Contacts(), Hosts: reg.Hosts(), Registrars: reg.Registrars(), Register: reg,
-		CheckParallelism: 2,
 	})
 	return svc, reg, phase
 }

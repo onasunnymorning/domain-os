@@ -53,7 +53,6 @@ func newTestDomains() *testDomains {
 		EPPDomainService: services.NewEPPDomainService(services.EPPDomainServiceDeps{
 			Domains: reg.Domains(), NNDNs: reg.NNDNs(), TLDs: reg.TLDs(), Phases: reg.Phases(),
 			Contacts: reg.Contacts(), Hosts: reg.Hosts(), Registrars: reg.Registrars(), Transfers: reg.Transfers(), Register: reg,
-			CheckParallelism: 4,
 		}),
 	}
 }

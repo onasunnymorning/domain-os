@@ -23,7 +23,7 @@ var eppEnv = []string{
 	"DB_USER", "DB_PASS", "DB_HOST", "DB_PORT", "DB_NAME", "DB_SSLMODE",
 	"EPP_NODE_ID", "EPP_SESSION_LEASE", "EPP_SESSION_HEARTBEAT",
 	"EPP_MAX_SESSIONS_PER_SOURCE_IP",
-	"EPP_CHECK_PARALLELISM", "EPP_MAX_CREATES_IN_FLIGHT", "EPP_CREATE_QUEUE_WAIT",
+	"EPP_MAX_CREATES_IN_FLIGHT", "EPP_CREATE_QUEUE_WAIT",
 	"EPP_AUDIT_RETENTION", "EPP_AUDIT_QUERY_RESPONSES", "EPP_AUDIT_BUFFER", "EPP_DB_MAX_OPEN_CONNS",
 }
 
@@ -63,7 +63,7 @@ func TestLoadEPPDefaults(t *testing.T) {
 	assert.Equal(t, "localhost:6379", cfg.Redis.Addr())
 	assert.Equal(t, EPPSessions{NodeID: want.Sessions.NodeID, Lease: 90 * time.Second, Heartbeat: 30 * time.Second, PerSource: 20}, cfg.Sessions)
 	assert.Equal(t, EPPAuth{RequireAllowlist: true, RefreshInterval: 30 * time.Second, MaxConcurrentVerify: 8, MaxLoginAttempts: 3}, cfg.Auth)
-	assert.Equal(t, EPPCommands{CheckParallelism: 8, CreatesInFlight: 10, CreateQueueWait: 5 * time.Second}, cfg.Commands)
+	assert.Equal(t, EPPCommands{CreatesInFlight: 10, CreateQueueWait: 5 * time.Second}, cfg.Commands)
 	assert.Equal(t, EPPAudit{Retention: 365 * 24 * time.Hour, QueryResponses: false, Buffer: 10000}, cfg.Audit)
 	assert.Equal(t, 20, cfg.DB.MaxOpenConns)
 }
@@ -83,7 +83,6 @@ func TestLoadEPPOverrides(t *testing.T) {
 		"EPP_NODE_ID": "epp-1", "EPP_SESSION_LEASE": "60s", "EPP_SESSION_HEARTBEAT": "20s",
 		"EPP_MAX_SESSIONS_PER_SOURCE_IP": "30",
 		"DB_USER":                        "epp", "DB_PASS": "pw", "DB_HOST": "db", "DB_PORT": "5433", "DB_NAME": "dos", "DB_SSLMODE": "require",
-		"EPP_CHECK_PARALLELISM":     "4",
 		"EPP_MAX_CREATES_IN_FLIGHT": "6",
 		"EPP_CREATE_QUEUE_WAIT":     "2s",
 		"EPP_AUDIT_RETENTION":       "720h", "EPP_AUDIT_QUERY_RESPONSES": "true", "EPP_AUDIT_BUFFER": "500", "EPP_DB_MAX_OPEN_CONNS": "12",
@@ -108,7 +107,7 @@ func TestLoadEPPOverrides(t *testing.T) {
 		},
 		Auth:     EPPAuth{RequireAllowlist: false, RefreshInterval: 10 * time.Second, MaxConcurrentVerify: 4, MaxLoginAttempts: 5},
 		Sessions: EPPSessions{NodeID: "epp-1", Lease: time.Minute, Heartbeat: 20 * time.Second, PerSource: 30},
-		Commands: EPPCommands{CheckParallelism: 4, CreatesInFlight: 6, CreateQueueWait: 2 * time.Second},
+		Commands: EPPCommands{CreatesInFlight: 6, CreateQueueWait: 2 * time.Second},
 		Audit:    EPPAudit{Retention: 720 * time.Hour, QueryResponses: true, Buffer: 500},
 		DB:       EPPDatabase{MaxOpenConns: 12, User: "epp", Pass: "pw", Host: "db", Port: "5433", Name: "dos", SSLMode: "require"},
 	}, cfg)
@@ -138,7 +137,6 @@ func TestLoadEPPRejects(t *testing.T) {
 		{"non-boolean allowlist flag", map[string]string{"EPP_REQUIRE_ALLOWLIST": "sometimes"}, "EPP_REQUIRE_ALLOWLIST"},
 		{"heartbeat too close to the lease", map[string]string{"EPP_SESSION_HEARTBEAT": "60s"}, "EPP_SESSION_HEARTBEAT"},
 		{"zero login attempts", map[string]string{"EPP_MAX_LOGIN_ATTEMPTS": "0"}, "EPP_MAX_LOGIN_ATTEMPTS"},
-		{"check parallelism takes the pool", map[string]string{"EPP_CHECK_PARALLELISM": "20"}, "EPP_CHECK_PARALLELISM"},
 		{"creates take the pool", map[string]string{"EPP_MAX_CREATES_IN_FLIGHT": "20"}, "EPP_MAX_CREATES_IN_FLIGHT"},
 		{"no queue wait", map[string]string{"EPP_CREATE_QUEUE_WAIT": "0s"}, "EPP_CREATE_QUEUE_WAIT"},
 		{"retention without unit", map[string]string{"EPP_AUDIT_RETENTION": "365"}, "EPP_AUDIT_RETENTION"},

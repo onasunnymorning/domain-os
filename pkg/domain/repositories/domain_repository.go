@@ -52,6 +52,10 @@ type DomainRepository interface {
 	ListLapsedRestores(ctx context.Context, dueBy, afterEnd time.Time, afterRoID int64, limit int) ([]*entities.Domain, error)
 	BulkCreate(ctx context.Context, domains []*entities.Domain) error
 	GetDomainsByNames(ctx context.Context, names []string, preloadHosts bool) ([]*entities.Domain, error)
+	// ExistingNames returns the names among names that are registered, in
+	// no particular order. One lookup however many names: the EPP <check>
+	// asks it for a whole command at once.
+	ExistingNames(ctx context.Context, names []string) ([]string, error)
 	ListEventsByDomain(ctx context.Context, domainName string) ([]entities.DomainEvent, error)
 	ListRecentEvents(ctx context.Context, limit int) ([]entities.DomainEvent, error)
 }
@@ -89,6 +93,15 @@ func (m *MockDomainRepository) BulkCreate(ctx context.Context, domains []*entiti
 func (m *MockDomainRepository) GetDomainByName(ctx context.Context, name string, preloadHosts bool) (*entities.Domain, error) {
 	args := m.Called(ctx, name, preloadHosts)
 	return args.Get(0).(*entities.Domain), args.Error(1)
+}
+
+// ExistingNames returns the names among names that are registered
+func (m *MockDomainRepository) ExistingNames(ctx context.Context, names []string) ([]string, error) {
+	args := m.Called(ctx, names)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]string), args.Error(1)
 }
 
 // GetDomainsByNames retrieves multiple domains by their names

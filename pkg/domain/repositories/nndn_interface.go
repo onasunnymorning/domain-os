@@ -15,6 +15,11 @@ type NNDNRepository interface {
 	// GetNNDN retrieves an NNDN object by its ID/Name from the repository.
 	GetNNDN(ctx context.Context, name string) (*entities.NNDN, error)
 
+	// ExistingNames returns the names among names that are on the list, in
+	// no particular order. One lookup however many names: the EPP <check>
+	// asks it for a whole command at once.
+	ExistingNames(ctx context.Context, names []string) ([]string, error)
+
 	// UpdateNNDN updates an existing NNDN object in the repository.
 	UpdateNNDN(ctx context.Context, nndn *entities.NNDN) (*entities.NNDN, error)
 
