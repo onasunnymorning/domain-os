@@ -55,6 +55,7 @@ if tilt_mode == 'docker':
     docker_build('gprins/domain-os-api:'      + tag, '.', dockerfile='Dockerfile',                        build_args={'SKIP_SWAG': 'true'})
     docker_build('gprins/domain-os-whois:'          + tag, '.', dockerfile='./cmd/whois/Dockerfile')
     docker_build('gprins/domain-os-epp:'     + tag, '.', dockerfile='Dockerfile.epp')
+    docker_build('gprins/domain-os-rdap:'    + tag, '.', dockerfile='Dockerfile.rdap')
     docker_build('gprins/domain-os-worker:' + tag, '.', dockerfile='./cmd/workers/unified/Dockerfile')
     docker_build('gprins/domain-os-mcp:'     + tag, '.', dockerfile='Dockerfile.mcp')
 
@@ -70,6 +71,7 @@ if tilt_mode == 'docker':
     dc_resource('admin-api',        labels=['app'],  resource_deps=['db'])
     dc_resource('unified-worker',   labels=['app'],  resource_deps=['db', 'temporal'])
     dc_resource('epp-server',       labels=['app'],  auto_init=False)
+    dc_resource('rdap-server',      labels=['app'],  auto_init=False)
     dc_resource('whois',            labels=['app'],  auto_init=False)
     dc_resource('mcp-server',       labels=['app'],  auto_init=False, resource_deps=['db'])
     dc_resource('admin-init',       labels=['init'], trigger_mode=TRIGGER_MODE_MANUAL, resource_deps=['admin-api'])
@@ -124,6 +126,16 @@ else:
         # (/healthz, /readyz, /metrics) is on EPP_OPS_PORT, 9700 by default.
         serve_cmd=DOPPLER_NATIVE + ' ' + WITH_LOCAL_ROID + ' env EPP_TLS_SELF_SIGNED=true EPP_REQUIRE_ALLOWLIST=false go run ./cmd/epp',
         deps=['./internal', './pkg', './cmd/epp'],
+        labels=['app'],
+        auto_init=False,
+    )
+
+    local_resource(
+        'rdap-server',
+        # Self-signed on 8443: there is no real certificate locally, and 443
+        # needs privileges. The ops endpoint is on RDAP_OPS_PORT, 9701.
+        serve_cmd=DOPPLER_NATIVE + ' ' + WITH_LOCAL_ROID + ' env RDAP_PORT=8443 RDAP_TLS_SELF_SIGNED=true RDAP_SERVER_NAME=localhost RDAP_BASE_URL=https://localhost:8443/ go run ./cmd/rdap',
+        deps=['./internal', './pkg', './cmd/rdap'],
         labels=['app'],
         auto_init=False,
     )

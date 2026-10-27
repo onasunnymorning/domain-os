@@ -1,0 +1,135 @@
+rdap.baseURLs:
+  Description: |
+    The RDAP base URL(s) for the TLD(s). A base URL **MUST** be provided for
+    each TLD being tested.
+
+    The host name component of each URL **MUST** comply with the requirements
+    for valid hostnames described in [RFC
+    1123](https://www.rfc-editor.org/rfc/rfc1123.html), section 2.1.
+    Additionally, all IDN labels in the host name **MUST** comply with IDNA2008.
+
+  Type: input
+  Required: true
+  Example:
+    - tld: example
+      baseURL: "https://rdap.example.com/example/"
+  Schema:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      required:
+        - tld
+        - baseURL
+      properties:
+        tld:
+          description: The TLD or equivalent registry-class domain name.
+          type: string
+          format: hostname
+        baseURL:
+          description: |
+            The RDAP Base URL. The URL **MUST** have trailing slash (`/`). If
+            specified, the port **MUST** be 443.
+          type: string
+          format: url
+          pattern: .+/$
+
+rdap.testDomains:
+  Description: |
+    The domain(s) that will be queried to validate domain responses. This
+    input parameter is an array of domain names, which **MUST** include at least
+    one domain name for each TLD being tested.
+  Example:
+    - tld: example
+      name: example.example
+  Type: input
+  Required: true
+  Schema:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      required:
+        - tld
+        - name
+      properties:
+        tld:
+          description: The TLD or equivalent registry-class domain name.
+          type: string
+          format: hostname
+        name:
+          description: The domain name.
+          type: string
+          format: hostname
+
+rdap.testEntities:
+  Description: |
+    The entities(s) that will be queried to validate entity responses. This
+    input parameter is an array of objects. At least one entity **MUST** be
+    provided for each TLD being tested.
+  Example:
+    - tld: example
+      handle: "9995"
+  Type: input
+  Required: true
+  Schema:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      required:
+        - tld
+        - handle
+      properties:
+        tld:
+          description: The TLD.
+          type: string
+          format: hostname
+        handle:
+          description: the entity handle.
+          type: string
+
+rdap.testNameservers:
+  Description: |
+    The nameservers(s) that will be queried to validate nameserver responses.
+    This input parameter is an array of objects. At least one nameserver
+    **MUST** be provided for each TLD being tested.
+  Type: input
+  Required: true
+  Example:
+    - tld: example1
+      nameserver: ns1.example.com
+    - tld: example2
+      nameserver: ns1.example.com
+  Schema:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      required:
+        - tld
+        - nameserver
+      properties:
+        tld:
+          description: The TLD.
+          type: string
+          format: hostname
+        nameserver:
+          description: The nameserver name.
+          type: string
+          format: hostname
+
+rdap.profileVersion:
+  Description: |
+    The version of the gTLD RDAP Profile that is supported. For more information
+    please see <https://www.icann.org/gtld-rdap-profile>.
+
+    From 2025-08-21 onwards, gTLD registries **MUST** implement the
+    February-2024 version of the gTLD RDAP profile.
+  Type: input
+  Required: true
+  Example: february-2024
+  Schema:
+    type: string
+    enum:
+      - february-2024

@@ -448,6 +448,55 @@ services:
     networks:
       - dos
 
+  # RDAP server (docs/rdap/ARCHITECTURE.md). Local stack: self-signed TLS on
+  # 8443, since the non-root image cannot bind 443.
+  rdap-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.rdap
+    image: gprins/domain-os-rdap:${BRANCH:-latest}
+    restart: unless-stopped
+    profiles: [ full ]
+    depends_on:
+      # admin-api migrates the schema the RDAP server reads.
+      admin-api:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9701/readyz" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    ports:
+      - 8443:8443
+      # Ops port: /healthz, /readyz, /metrics. Loopback only, so the
+      # unauthenticated endpoint is not reachable from other machines.
+      - 127.0.0.1:9701:9701
+    networks:
+      - dos
+    environment:
+      - RDAP_PORT=8443
+      # Local stack: no real certificate. Deployments set RDAP_TLS_CERT_PATH/RDAP_TLS_KEY_PATH.
+      - RDAP_TLS_SELF_SIGNED=true
+      - RDAP_SERVER_NAME=localhost
+      - RDAP_BASE_URL=https://localhost:8443/
+      - ROID_REPOSITORY_ID=${ROID_REPOSITORY_ID:-LOCAL}
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+      - DB_SSLMODE=${DB_SSLMODE}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    develop:
+      watch:
+        - action: rebuild
+          path: ./cmd/rdap
+        - action: rebuild
+          path: ./internal/interface/rdap
+        - action: rebuild
+          path: ./internal/application/services
+
   # Whois container
   whois:
     # Without a build stanza this service can only ever pull. On any branch

@@ -113,6 +113,16 @@ var serviceMetaRegistry = []serviceMeta{
 		Services:    []Service{ServiceEPP},
 	},
 	{
+		ContractName: "rdap-server",
+		Image:        "gprins/domain-os-rdap",
+		Port:         443,
+		Protocol:     "tls",
+		// The ops port: a TCP probe on 443 would be a failed TLS handshake
+		// every interval.
+		HealthCheck: &HealthCheck{Type: "http", Path: "/readyz", Port: 9701},
+		Services:    []Service{ServiceRDAP},
+	},
+	{
 		ContractName: "whois",
 		Image:        "gprins/domain-os-whois",
 		Port:         43,

@@ -315,6 +315,9 @@ test-epp: ## Run EPP-specific tests
 	@go test ./cmd/epp/... ./internal/interface/epp/... -v -race -short
 	@go test -tags eppcli ./cmd/cli/epp/... -v -race -short
 
+test-rdap: ## Run RDAP-specific tests
+	@go test ./cmd/rdap/... ./internal/interface/rdap/... ./internal/infrastructure/tlsconfig/... -v -race -short
+
 rst-epp: ## ICANN RST v2.0 EPP readiness scoreboard (ADR 0015)
 	@out=$$(mktemp); \
 	go test -count=1 -run '^TestRST' -v ./internal/interface/epp/ > $$out 2>&1; status=$$?; \
@@ -322,6 +325,22 @@ rst-epp: ## ICANN RST v2.0 EPP readiness scoreboard (ADR 0015)
 	grep -E '^\s+--- (PASS|FAIL|SKIP): TestRST_[^/]+/' $$out | sed -E 's/^ +--- //; s/ \([0-9.]+s\)$$//'; \
 	echo ""; echo "Pending and operational reasons:"; \
 	grep -E 'RST (pending|operational)' $$out | sed -E 's/^ +rst_epp_test.go:[0-9]+: /  /' | sort | uniq -c | sort -rn; \
+	echo ""; \
+	printf "passed %s  failed %s  pending %s  operational %s\n" \
+		"$$(grep -cE '^\s+--- PASS: TestRST_[^/]+/' $$out)" \
+		"$$(grep -cE '^\s+--- FAIL: TestRST_[^/]+/' $$out)" \
+		"$$(grep -cE 'RST pending:' $$out)" \
+		"$$(grep -cE 'RST operational' $$out)"; \
+	if [ $$status -ne 0 ]; then echo ""; grep -E -- '--- FAIL|Error' $$out | head -40; fi; \
+	rm -f $$out; exit $$status
+
+rst-rdap: ## ICANN RST v2.0 RDAP readiness scoreboard (ADR 0015)
+	@out=$$(mktemp); \
+	go test -count=1 -run '^TestRST' -v ./internal/interface/rdap/ > $$out 2>&1; status=$$?; \
+	echo "RST v2.0 StandardRDAP (pinned: internal/interface/rdap/testdata/rst/PROVENANCE.md)"; \
+	grep -E '^\s+--- (PASS|FAIL|SKIP): TestRST_[^/]+/' $$out | sed -E 's/^ +--- //; s/ \([0-9.]+s\)$$//'; \
+	echo ""; echo "Pending and operational reasons:"; \
+	grep -E 'RST (pending|operational)' $$out | sed -E 's/^ +rst_rdap_test.go:[0-9]+: /  /' | sort | uniq -c | sort -rn; \
 	echo ""; \
 	printf "passed %s  failed %s  pending %s  operational %s\n" \
 		"$$(grep -cE '^\s+--- PASS: TestRST_[^/]+/' $$out)" \
@@ -486,6 +505,12 @@ build-epp: ## Build the EPP server Docker image
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_SHA=$(GIT_SHA) .
 
+build-rdap: ## Build the RDAP server Docker image
+	@echo "Building RDAP server image for branch $(BRANCH) version $(VERSION)..."
+	@docker build -t gprins/domain-os-rdap:$(TAG) -f Dockerfile.rdap \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_SHA=$(GIT_SHA) .
+
 build-whois: ## Build the WHOIS server Docker image
 	@echo "Building WHOIS server image for branch $(BRANCH) version $(VERSION)..."
 	@docker build -t gprins/domain-os-whois:$(TAG) -f ./cmd/whois/Dockerfile \
@@ -502,7 +527,7 @@ build-mcp: ## Build the MCP server Docker image
 	@echo "Building MCP server image for branch $(BRANCH)..."
 	@docker build -t gprins/domain-os-mcp:$(TAG) -f Dockerfile.mcp .
 
-build-all: build build-worker build-epp build-whois build-mcp ## Build all Docker images
+build-all: build build-worker build-epp build-rdap build-whois build-mcp ## Build all Docker images
 
 push: build ## Build and push main API image to Docker Hub
 	@echo "Pushing API image to Docker Hub..."
@@ -514,12 +539,17 @@ push-epp: build-epp ## Build and push EPP server image to Docker Hub
 	@docker push gprins/domain-os-epp:$(TAG)
 	@docker scout quickview 2>/dev/null || true
 
+push-rdap: build-rdap ## Build and push RDAP server image to Docker Hub
+	@echo "Pushing RDAP server image to Docker Hub..."
+	@docker push gprins/domain-os-rdap:$(TAG)
+	@docker scout quickview 2>/dev/null || true
+
 push-whois: build-whois ## Build and push WHOIS image to Docker Hub
 	@echo "Pushing WHOIS server image to Docker Hub..."
 	@docker push gprins/domain-os-whois:$(TAG)
 	@docker scout quickview 2>/dev/null || true
 
-push-all: push push-epp push-whois ## Build and push all images to Docker Hub
+push-all: push push-epp push-rdap push-whois ## Build and push all images to Docker Hub
 
 ###################
 # Code Quality

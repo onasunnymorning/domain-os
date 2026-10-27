@@ -190,18 +190,3 @@ func tcpConn(c net.Conn) *net.TCPConn {
 		return nil
 	}
 }
-
-// proxyListener wraps l so the client address comes from a PROXY protocol
-// header. Only peers in trusted may connect, and each must send a header;
-// anything else is closed before it reaches the node caps.
-func proxyListener(l net.Listener, trusted []string, headerTimeout time.Duration) (net.Listener, error) {
-	policy, err := proxyproto.TrustProxyHeaderFromRanges(trusted)
-	if err != nil {
-		return nil, err
-	}
-	return &proxyproto.Listener{
-		Listener:          l,
-		ConnPolicy:        policy,
-		ReadHeaderTimeout: headerTimeout,
-	}, nil
-}
