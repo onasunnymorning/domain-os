@@ -8,7 +8,8 @@ import (
 )
 
 // The process has one node, so the tests that touch it run in one order:
-// SetNodeID first, then every generator is on that node.
+// SetNodeID first, then every generator is on that node. A test added to
+// this package must not build a generator before this one runs.
 func TestSetNodeID(t *testing.T) {
 	require.Error(t, SetNodeID(-1))
 	require.Error(t, SetNodeID(MaxNodeID+1))

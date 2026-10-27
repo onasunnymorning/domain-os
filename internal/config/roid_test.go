@@ -38,14 +38,13 @@ func TestLoadSnowflakeNodeID(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, set)
 	})
-	for _, v := range []string{"0", " 42 ", "1023"} {
+	for v, want := range map[string]int64{"0": 0, " 42 ": 42, "1023": 1023} {
 		t.Run(v+" is set", func(t *testing.T) {
 			t.Setenv("SNOWFLAKE_NODE_ID", v)
 			id, set, err := LoadSnowflakeNodeID()
 			require.NoError(t, err)
 			assert.True(t, set)
-			assert.GreaterOrEqual(t, id, int64(0))
-			assert.LessOrEqual(t, id, int64(MaxSnowflakeNodeID))
+			assert.Equal(t, want, id)
 		})
 	}
 	for _, bad := range []string{"-1", "1024", "seven", "1.5"} {

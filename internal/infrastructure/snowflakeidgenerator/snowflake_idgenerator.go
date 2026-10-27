@@ -97,8 +97,8 @@ func generateHostID() int {
 	return hostIDFromParts(getContainerID(), getHostname(), getMACAddress())
 }
 
-// hostIDFromParts is generateHostID on the given parts: the first ten bits
-// of their SHA-256. Until 2026-10-27 it was one byte of the hash, so only
+// hostIDFromParts is generateHostID on the given parts: ten bits of their
+// SHA-256. Until 2026-10-27 it was one byte of the hash, so only
 // 256 of the 1024 node IDs could ever be used.
 func hostIDFromParts(containerID, hostname, macAddress string) int {
 	hash := sha256.Sum256([]byte(fmt.Sprintf("%s-%s-%s", containerID, hostname, macAddress)))

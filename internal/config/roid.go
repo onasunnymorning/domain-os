@@ -37,10 +37,12 @@ const MaxSnowflakeNodeID = 1023
 // LoadSnowflakeNodeID reads SNOWFLAKE_NODE_ID: the process's snowflake node,
 // 0 to MaxSnowflakeNodeID, which every ROID it mints carries. Two processes
 // on the same node can mint the same ROID in the same millisecond, so each
-// replica that mints — the admin API and its seed, the EPP server, the
-// worker and the JISC importer — is given a node of its own (a StatefulSet
-// ordinal, say). Unset is not an error: the generator then derives a node
-// from the host, which is fine for one process and a gamble for a fleet.
+// process that mints into the database — the admin API and its seed, the
+// EPP server, the worker and the JISC importer, every replica of each — is
+// given a node of its own. The range is shared by all of them, so the
+// registry entry assigns each service a block and each replica its offset
+// in it. Unset is not an error: the generator then derives a node from the
+// host, which is fine for one process and a gamble for a fleet.
 func LoadSnowflakeNodeID() (id int64, set bool, err error) {
 	v := strings.TrimSpace(os.Getenv("SNOWFLAKE_NODE_ID"))
 	if v == "" {
