@@ -20,3 +20,12 @@ type TLDRepository interface {
 	DeleteByName(ctx context.Context, scope entities.RegistryScope, name string) error
 	Count(ctx context.Context, filter queries.ListTldsFilter) (int64, error)
 }
+
+// TLDPhaseReader reads a TLD with its phases and their policies, and nothing
+// else: no prices, fees or counts. A per-request reader (RDAP) uses it, so a
+// lookup's cost does not grow with the TLD.
+type TLDPhaseReader interface {
+	// GetWithPhases returns the TLD and its phases, or
+	// entities.ErrTLDNotFound.
+	GetWithPhases(ctx context.Context, name string) (*entities.TLD, error)
+}
