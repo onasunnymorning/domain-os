@@ -31,6 +31,16 @@ make ci-local         # full pipeline, mirrors GitHub Actions
 
 See the enforcement assessment at the end of `docs/INVARIANTS.md` for which rules are machine-checkable.
 
+## Workflow: push, review, merge
+
+CI runs the full suite on every push to a PR (about six minutes) and cancels the run it supersedes. Reviewer attention, human or Copilot, is the scarce resource, so the flow is built to spend CI freely and reviews once:
+
+1. **Before every push**, run `make ci-arch ci-lint` (and `make secrets` if gitleaks is installed; `ci-lint-go` alone if the worktree has no `node_modules`). `make hooks` installs a pre-push hook that does this for you, once per clone, and covers every worktree. `make ci-local` is for when you want the whole pipeline locally; it is not required before a push.
+2. **Open the PR as a draft** (`gh pr create --draft`). CI runs on drafts; Copilot review does not. Iterate on the draft until CI is green.
+3. **Mark it ready** (`gh pr ready`) when the work is complete. That is what requests the review.
+4. **Batch review fixes** into one push rather than one commit per comment. Every push is a CI run and a fresh review pass.
+5. **Merge only when green.** The `main` ruleset requires every CI job to pass and the branch to be up to date, so the merge button enforces this; `gh pr merge --auto` merges the moment it is.
+
 ## Other project docs
 
 - [`docs/adr/0006-tenancy-model.md`](docs/adr/0006-tenancy-model.md) — the tenancy model behind `INV-02`. Read it before adding a tenant column, a scope parameter, or an EPP transactional verb; it carries the guardrails those changes are reviewed against.
