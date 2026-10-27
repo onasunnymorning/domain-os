@@ -1083,20 +1083,28 @@ func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB
 		}
 	}
 
+	// The dedup table below is a TEMP table, which lives in one session: every
+	// statement that touches it, from its creation through each batch to the
+	// drop, must run on the same connection. Hold one from the pool for the
+	// whole operation; the pool is shared, and another linking activity on
+	// another connection cannot see or drop this session's table.
+	conn := s.PG.Conn()
+	defer conn.Close()
+
 	// Pre-materialize a host dedup lookup table (once, before the loop).
 	// When multiple hosts share the same name (from cross-TLD imports with
 	// different cl_id), we pick one deterministically. This avoids a costly
 	// DISTINCT ON + ORDER BY sort in every batch INSERT.
-	if _, err := s.PG.Exec(`
+	if _, err := conn.ExecContext(ctx, `
 		CREATE TEMP TABLE IF NOT EXISTS _host_dedup AS
 		SELECT DISTINCT ON (name) name, ro_id FROM hosts ORDER BY name, ro_id
 	`); err != nil {
 		return 0, 0, fmt.Errorf("LinkDomainHosts: failed to build host dedup table: %w", err)
 	}
-	if _, err := s.PG.Exec(`CREATE INDEX IF NOT EXISTS _idx_host_dedup_name ON _host_dedup(name)`); err != nil {
+	if _, err := conn.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS _idx_host_dedup_name ON _host_dedup(name)`); err != nil {
 		log.Printf("LinkDomainHosts: index on _host_dedup failed (non-fatal): %v", err)
 	}
-	defer func() { _, _ = s.PG.Exec("DROP TABLE IF EXISTS _host_dedup") }() // best-effort cleanup of a scratch object
+	defer func() { _, _ = conn.Exec("DROP TABLE IF EXISTS _host_dedup") }() // best-effort cleanup of a scratch object, on the session that owns it
 
 	for {
 		rows, err := sqliteDB.Query(`SELECT domain_name, nameserver FROM domain_nameservers WHERE (domain_name > ?) OR (domain_name = ? AND nameserver > ?) ORDER BY domain_name, nameserver LIMIT ?`, lastDomain, lastDomain, lastNS, batchSize)
@@ -1147,7 +1155,7 @@ func (s *DirectDBImporter) LinkDomainHosts(ctx context.Context, sqliteDB *sql.DB
 		`, strings.Join(valueStrings, ","))
 
 		var batchInserted int64
-		if err := s.PG.RunInTransaction(ctx, func(tx *pg.Tx) error {
+		if err := conn.RunInTransaction(ctx, func(tx *pg.Tx) error {
 			res, err := tx.Exec(q, args...)
 			if err == nil {
 				batchInserted = int64(res.RowsAffected())
