@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -268,9 +269,14 @@ func BuiltInRDAPPublicationPolicies() []*RDAPPublicationPolicy {
 			},
 		},
 	}
+	// The country is published in the jCard's address and a jCard always
+	// has a name, so the name and the other address parts are kept empty.
 	registrant := map[RDAPField]RDAPFieldRule{}
 	for _, f := range RDAPFields {
 		registrant[f] = rdapWithhold(RDAPRemoval)
+	}
+	for _, f := range []RDAPField{RDAPFieldName, RDAPFieldStreet, RDAPFieldCity, RDAPFieldSP, RDAPFieldPC} {
+		registrant[f] = rdapWithhold(RDAPEmptyValue)
 	}
 	registrant[RDAPFieldCC] = publish
 	cc := &RDAPPublicationPolicy{
@@ -316,11 +322,16 @@ func DefaultRDAPPublicationSet() *RDAPPublicationSet {
 	return NewRDAPPublicationSet(nil, nil, time.Time{})
 }
 
-// BuiltInRDAPPublicationPolicyFor names the built-in a TLD of type t has
-// when it is assigned none: gtld-rdp-2024 for a generic TLD,
-// cctld-minimal for any other.
-func BuiltInRDAPPublicationPolicyFor(t TLDType) string {
-	if t == TLDTypeGTLD {
+// BuiltInRDAPPublicationPolicyFor names the built-in a TLD has when it is
+// assigned none: gtld-rdp-2024 for a generic TLD, cctld-minimal for any
+// other.
+//
+// The TLD type is inferred from the name (two letters is a ccTLD), which
+// files an IDN ccTLD such as xn--p1ai as generic. When the type is
+// uncertain the less revealing policy is the safe one, so an IDN TLD has
+// cctld-minimal unless a policy is assigned to it.
+func BuiltInRDAPPublicationPolicyFor(name DomainName, t TLDType) string {
+	if t == TLDTypeGTLD && !strings.HasPrefix(strings.ToLower(string(name)), "xn--") {
 		return RDAPPolicyGTLDRDP2024
 	}
 	return RDAPPolicyCCTLDMinimal
@@ -334,7 +345,7 @@ func (s *RDAPPublicationSet) ForTLD(tld DomainName, t TLDType) *RDAPPublicationP
 			return p
 		}
 	}
-	return s.policies[BuiltInRDAPPublicationPolicyFor(t)]
+	return s.policies[BuiltInRDAPPublicationPolicyFor(tld, t)]
 }
 
 // Policies returns every policy, by name.

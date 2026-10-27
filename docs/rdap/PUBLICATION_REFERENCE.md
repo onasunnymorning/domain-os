@@ -15,7 +15,7 @@ What the RDAP server publishes for each contact field, per publication policy ([
    | `publish-if-disclosed` | Published only if the contact's RFC 5733 disclose flag for the field is set |
    | `withhold` | Not published, and listed in `redacted` |
 
-3. **Disclose flags** can only narrow a `publish-if-disclosed` field. They never widen a `withhold`.
+3. **Disclose flags** can only narrow a `publish-if-disclosed` field. They never widen a `withhold`. For the name, organisation and address, the flag that counts is that of the postal form shown (the internationalised one when a contact has both).
 4. **Absent data** (for example no fax number) is simply absent, and is not listed in `redacted`.
 
 Redaction methods (RFC 9537): `removal` (the member is left out), `emptyValue` (the member is present but empty), and `replacementValue` (another value is shown instead, for example a contact form URI in place of an email address).
@@ -26,7 +26,7 @@ Redaction methods (RFC 9537): `removal` (the member is left out), `emptyValue` (
 
 A role a policy does not list is **not published**: no entity is served for it and nothing about it is listed in `redacted`, the same as a role the TLD prohibits.
 
-A TLD is assigned a policy through the admin API ([POLICY_REFERENCE.md § Publication policies](POLICY_REFERENCE.md#publication-policies)). A TLD with none has `gtld-rdp-2024` if it is generic and `cctld-minimal` otherwise. The built-ins' starting rules are code (`entities.BuiltInRDAPPublicationPolicies`), seeded by the migration and editable afterwards; this page lists the starting rules and must match that code.
+A TLD is assigned a policy through the admin API ([POLICY_REFERENCE.md § Publication policies](POLICY_REFERENCE.md#publication-policies)). A TLD with none has `gtld-rdp-2024` if it is generic and `cctld-minimal` otherwise. The built-ins' starting rules are code (`entities.BuiltInRDAPPublicationPolicies`), seeded by the migration and editable afterwards; this page lists the starting rules and must match that code. An IDN TLD (`xn--…`) with no assignment has `cctld-minimal` whatever its stored type: the registry infers the type from the name and files IDN ccTLDs as generic, so when the type is uncertain the less revealing policy applies. Assign an IDN gTLD `gtld-rdp-2024` explicitly.
 
 ### `gtld-rdp-2024`: ICANN Registration Data Policy baseline
 
@@ -52,7 +52,7 @@ The internationalised (`int`) postal information is used when a contact has both
 
 ### `cctld-minimal`: country only
 
-Only the registrant role is published. Every field is `W (removal)`, except the country, which is `P`.
+Only the registrant role is published. The country is `P`. The name, street, city, state or province and postal code are `W (emptyValue)`: the country is published in the jCard's address, whose other parts are then kept as empty slots, and a jCard always has a name. Every other field is `W (removal)`.
 
 ## Sign-off
 
