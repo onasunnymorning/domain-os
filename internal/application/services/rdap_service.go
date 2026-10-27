@@ -134,17 +134,27 @@ func (s *RDAPService) Nameserver(ctx context.Context, name string) (*interfaces.
 	return out, nil
 }
 
-// superordinateSponsor is the sponsor of the registered domain that host
-// name sits under, or empty if it sits under none: an external host. A host
-// may be named like the domain itself, so the full name is tried first.
+// superordinateSponsor is the sponsor of the registered domain host name
+// sits under, or empty if it sits under none: an external host, or one whose
+// superordinate domain is not registered. The placement is EPP's
+// (EPPHostService.place): the host's TLD is the longest suffix that is a
+// TLD this registry serves, so a host under x.co.uk is placed under co.uk
+// when both uk and co.uk are served, and its superordinate domain is that
+// TLD and one more label, which may be the host's whole name.
 func (s *RDAPService) superordinateSponsor(ctx context.Context, name string) (entities.ClIDType, error) {
 	labels := strings.Split(name, ".")
-	// A registered domain has at least two labels: try the name and every
-	// ancestor of it that does.
-	for i := 0; i+2 <= len(labels); i++ {
-		d, err := s.domains.GetDomainByName(ctx, strings.Join(labels[i:], "."), false)
-		if errors.Is(err, entities.ErrDomainNotFound) {
+	for k := 1; k < len(labels); k++ {
+		tld := strings.Join(labels[k:], ".")
+		_, err := s.tlds.GetWithPhases(ctx, tld)
+		if errors.Is(err, entities.ErrTLDNotFound) {
 			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("look up TLD %s: %w", tld, err)
+		}
+		d, err := s.domains.GetDomainByName(ctx, strings.Join(labels[k-1:], "."), false)
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			return "", nil
 		}
 		if err != nil {
 			return "", err

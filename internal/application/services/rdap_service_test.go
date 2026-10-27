@@ -34,6 +34,16 @@ type rdapTLDs struct {
 	t *entities.TLD
 }
 
+// rdapServedTLDs serves the TLDs named.
+type rdapServedTLDs map[string]bool
+
+func (f rdapServedTLDs) GetWithPhases(_ context.Context, name string) (*entities.TLD, error) {
+	if f[name] {
+		return &entities.TLD{Name: entities.DomainName(name)}, nil
+	}
+	return nil, entities.ErrTLDNotFound
+}
+
 func (f rdapTLDs) GetWithPhases(context.Context, string) (*entities.TLD, error) { return f.t, nil }
 
 // rdapContacts records every contact read.
@@ -143,7 +153,7 @@ func TestRDAPNameserverResolution(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := NewRDAPService(RDAPServiceDeps{
-				Hosts: rdapHosts{hosts: tc.hosts}, Domains: rdapDomainsByName{byName: tc.domains}, Registrars: rdapRegistrars{},
+				Hosts: rdapHosts{hosts: tc.hosts}, Domains: rdapDomainsByName{byName: tc.domains}, Registrars: rdapRegistrars{}, TLDs: rdapServedTLDs{"example": true},
 			})
 			rec, err := svc.Nameserver(context.Background(), "ns1.a.example")
 			require.NoError(t, err)
@@ -156,7 +166,7 @@ func TestRDAPNameserverResolution(t *testing.T) {
 		olderApex := &entities.Host{RoID: "3_HOST-TEST", Name: "a.example", ClID: "other", CreatedAt: time.Unix(1, 0)}
 		ownerApex := &entities.Host{RoID: "4_HOST-TEST", Name: "a.example", ClID: "owner", CreatedAt: time.Unix(2, 0)}
 		svc := NewRDAPService(RDAPServiceDeps{
-			Hosts: rdapHosts{hosts: []*entities.Host{olderApex, ownerApex}}, Registrars: rdapRegistrars{},
+			Hosts: rdapHosts{hosts: []*entities.Host{olderApex, ownerApex}}, Registrars: rdapRegistrars{}, TLDs: rdapServedTLDs{"example": true},
 			Domains: rdapDomainsByName{byName: map[string]*entities.Domain{"a.example": {Name: "a.example", ClID: "owner"}}},
 		})
 		rec, err := svc.Nameserver(context.Background(), "a.example")
@@ -164,21 +174,38 @@ func TestRDAPNameserverResolution(t *testing.T) {
 		assert.Same(t, ownerApex, rec.Host)
 	})
 
+	t.Run("overlapping TLDs: the host sits under the longest served TLD", func(t *testing.T) {
+		// uk and co.uk are both served, and co.uk is also registered under
+		// uk. ns.x.co.uk sits under x.co.uk, which is not registered, so it
+		// has no superordinate sponsor: the oldest host is served, not the
+		// co.uk domain's sponsor's.
+		older := &entities.Host{RoID: "7_HOST-TEST", Name: "ns.x.co.uk", ClID: "other", CreatedAt: time.Unix(1, 0)}
+		coUKSponsors := &entities.Host{RoID: "8_HOST-TEST", Name: "ns.x.co.uk", ClID: "co-uk-owner", CreatedAt: time.Unix(2, 0)}
+		svc := NewRDAPService(RDAPServiceDeps{
+			Hosts: rdapHosts{hosts: []*entities.Host{older, coUKSponsors}}, Registrars: rdapRegistrars{},
+			TLDs:    rdapServedTLDs{"uk": true, "co.uk": true},
+			Domains: rdapDomainsByName{byName: map[string]*entities.Domain{"co.uk": {Name: "co.uk", ClID: "co-uk-owner"}}},
+		})
+		rec, err := svc.Nameserver(context.Background(), "ns.x.co.uk")
+		require.NoError(t, err)
+		assert.Same(t, older, rec.Host)
+	})
+
 	t.Run("linked is counted, not read", func(t *testing.T) {
 		stale := &entities.Host{RoID: "5_HOST-TEST", Name: "ns1.a.example", Status: entities.HostStatus{Linked: true}}
-		svc := NewRDAPService(RDAPServiceDeps{Hosts: rdapHosts{hosts: []*entities.Host{stale}, links: 0}, Domains: rdapDomainsByName{}, Registrars: rdapRegistrars{}})
+		svc := NewRDAPService(RDAPServiceDeps{Hosts: rdapHosts{hosts: []*entities.Host{stale}, links: 0}, Domains: rdapDomainsByName{}, Registrars: rdapRegistrars{}, TLDs: rdapServedTLDs{}})
 		rec, err := svc.Nameserver(context.Background(), "ns1.a.example")
 		require.NoError(t, err)
 		assert.False(t, rec.Host.Status.Linked, "its last association was removed")
 
-		svc = NewRDAPService(RDAPServiceDeps{Hosts: rdapHosts{hosts: []*entities.Host{{RoID: "6_HOST-TEST", Name: "ns1.a.example"}}, links: 2}, Domains: rdapDomainsByName{}, Registrars: rdapRegistrars{}})
+		svc = NewRDAPService(RDAPServiceDeps{Hosts: rdapHosts{hosts: []*entities.Host{{RoID: "6_HOST-TEST", Name: "ns1.a.example"}}, links: 2}, Domains: rdapDomainsByName{}, Registrars: rdapRegistrars{}, TLDs: rdapServedTLDs{}})
 		rec, err = svc.Nameserver(context.Background(), "ns1.a.example")
 		require.NoError(t, err)
 		assert.True(t, rec.Host.Status.Linked)
 	})
 
 	t.Run("no host is not found", func(t *testing.T) {
-		svc := NewRDAPService(RDAPServiceDeps{Hosts: rdapHosts{}, Domains: rdapDomainsByName{}, Registrars: rdapRegistrars{}})
+		svc := NewRDAPService(RDAPServiceDeps{Hosts: rdapHosts{}, Domains: rdapDomainsByName{}, Registrars: rdapRegistrars{}, TLDs: rdapServedTLDs{}})
 		_, err := svc.Nameserver(context.Background(), "ns1.a.example")
 		assert.ErrorIs(t, err, entities.ErrHostNotFound)
 	})
