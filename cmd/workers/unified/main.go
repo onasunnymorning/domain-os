@@ -22,6 +22,10 @@ import (
 	"gorm.io/gorm"
 )
 
+// workerMinOpenConns is the smallest DB_MAX_OPEN_CONNS the worker accepts:
+// the GORM pool's minimum plus one connection for the escrow importers.
+const workerMinOpenConns = postgres.MinMaxOpenConns + 1
+
 func main() {
 	log.Printf("unified-worker version=%s sha=%s", buildinfo.Version, buildinfo.GitSHA)
 
@@ -35,7 +39,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Refusing to start: %v", err)
 	}
-	db, importDSN, importConns := openDB(repositoryID)
+	// Both pools live as long as the process, like the Temporal client's
+	// connections: nothing closes them on the way out.
+	db, importPool := openDB(repositoryID)
 	log.Printf("unified-worker ROID repository ID %s", repositoryID)
 	// Create a shared Temporal client
 	cfg := temporal.NewClientConfigFromEnv("")
@@ -183,7 +189,7 @@ func main() {
 
 	// Escrow Import (Heavy Batch + Drain Data). The importer's driver has a
 	// pool apart from the GORM one; both come out of the same budget.
-	escrowImportActs := &activities.EscrowImportActivities{RepositoryID: repositoryID, DSN: importDSN, ImportConns: importConns}
+	escrowImportActs := &activities.EscrowImportActivities{RepositoryID: repositoryID, ImportPool: importPool}
 	heavyBatchWorker.RegisterActivity(escrowImportActs)
 	drainDataWorker.RegisterActivity(escrowImportActs)
 
@@ -381,23 +387,31 @@ func newEscrowIntakeActivities(db *gorm.DB) (*activities.EscrowIntakeActivities,
 // (docs/adr/0010-database-migrations.md) on it, exiting when the guard
 // refuses. A connection failure is fatal too: a worker that cannot reach the
 // database cannot do useful work, and failing here names the cause instead of
-// failing every activity later. It also returns what the escrow importer,
-// which has a pool of its own, may use: the connection string and its share
-// of the budget.
-func openDB(repositoryID entities.RepositoryID) (db *gorm.DB, importDSN string, importConns int) {
+// failing every activity later. It also opens the one pool the escrow
+// importers share, out of the same budget.
+func openDB(repositoryID entities.RepositoryID) (db *gorm.DB, importPool *services.ImportPool) {
 	dbCfg, err := config.LoadDatabase()
 	if err != nil {
 		log.Fatalf("Refusing to start: %v", err)
 	}
 	// One budget, DB_MAX_OPEN_CONNS, split between the GORM pool every
-	// activity shares and the escrow importer's own (go-pg) pool: a quarter
-	// of it, at most DefaultImportConns, for the importer, the rest for GORM.
-	importConns = min(services.DefaultImportConns, max(1, dbCfg.MaxOpenConns/4))
+	// activity shares and the escrow importers' one shared (go-pg) pool: a
+	// quarter of it, at least one and at most DefaultImportConns, for the
+	// importers, the rest for GORM. The sum never exceeds the budget, so
+	// the budget must leave GORM its minimum beside one import connection.
+	if dbCfg.MaxOpenConns < workerMinOpenConns {
+		log.Fatalf("Refusing to start: DB_MAX_OPEN_CONNS=%d is below %d, the least the worker needs (%d for its shared pool and one for the escrow importer)", dbCfg.MaxOpenConns, workerMinOpenConns, postgres.MinMaxOpenConns)
+	}
+	importConns := min(services.DefaultImportConns, max(1, dbCfg.MaxOpenConns/4))
 	gormCfg := dbCfg
-	gormCfg.MaxOpenConns = max(postgres.MinMaxOpenConns, dbCfg.MaxOpenConns-importConns)
+	gormCfg.MaxOpenConns = dbCfg.MaxOpenConns - importConns
 	db, err = postgres.NewConnection(postgres.Config(gormCfg))
 	if err != nil {
 		log.Fatalf("schema guard: cannot connect to the database: %v", err)
+	}
+	importPool, err = services.OpenImportPool(dbCfg.DSN(), importConns)
+	if err != nil {
+		log.Fatalf("escrow import pool: %v", err)
 	}
 	// The guard logs its own refusal.
 	if err := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), log.Printf); err != nil {
@@ -407,5 +421,5 @@ func openDB(repositoryID entities.RepositoryID) (db *gorm.DB, importDSN string, 
 		log.Printf("Refusing to start: %v", err)
 		os.Exit(1)
 	}
-	return db, dbCfg.DSN(), importConns
+	return db, importPool
 }

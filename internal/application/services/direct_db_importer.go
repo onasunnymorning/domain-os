@@ -77,28 +77,49 @@ func (s *DirectDBImporter) rowsPerBatch() int {
 // sets no budget: bulk upserts need a few, never many.
 const DefaultImportConns = 5
 
+// ImportPool is the importer's own connection pool (its driver is go-pg,
+// apart from the process's GORM pool). A process opens one and shares it
+// across every importer it builds, so concurrent imports draw on one bounded
+// pool rather than one each.
+type ImportPool struct{ db *pg.DB }
+
+// Close closes the pool.
+func (p *ImportPool) Close() error { return p.db.Close() }
+
 // NewDirectDBImporter connects an importer that mints ROIDs with repository,
 // the process's configured repository ID (config.LoadRepositoryID), to the
 // database the environment names: DATABASE_URL (Neon/Render), else the
 // DB_* variables (the production credential path on AWS ECS, also used
-// locally). The CLI import path uses it; the worker passes its own
-// connection string and budget to NewDirectDBImporterOn.
+// locally), on a pool of its own that the caller closes (importer.PG). The
+// CLI import path uses it; the worker opens one ImportPool and builds its
+// importers on it with NewDirectDBImporterWith.
 func NewDirectDBImporter(repository entities.RepositoryID) (*DirectDBImporter, error) {
 	pgURL := os.Getenv("DATABASE_URL")
 	if pgURL == "" {
 		pgURL = fallbackPGURL()
 	}
-	return NewDirectDBImporterOn(repository, pgURL, DefaultImportConns)
+	pool, err := OpenImportPool(pgURL, DefaultImportConns)
+	if err != nil {
+		return nil, err
+	}
+	return NewDirectDBImporterWith(repository, pool)
 }
 
-// NewDirectDBImporterOn connects an importer to the database at pgURL with
-// a pool of at most conns connections (DefaultImportConns when conns is not
-// positive). The importer's driver (go-pg) has a pool of its own, apart from
-// the process's GORM pool, so the caller counts conns within its budget.
-func NewDirectDBImporterOn(repository entities.RepositoryID, pgURL string, conns int) (*DirectDBImporter, error) {
+// NewDirectDBImporterWith builds an importer on pool, which it does not own:
+// the caller closes it, after every importer built on it is done.
+func NewDirectDBImporterWith(repository entities.RepositoryID, pool *ImportPool) (*DirectDBImporter, error) {
 	if err := repository.Validate(); err != nil {
 		return nil, fmt.Errorf("direct importer: %w", err)
 	}
+	if pool == nil || pool.db == nil {
+		return nil, errors.New("direct importer: no import pool")
+	}
+	return newDirectDBImporter(repository, pool.db)
+}
+
+// OpenImportPool connects to the database at pgURL with a pool of at most
+// conns connections (DefaultImportConns when conns is not positive).
+func OpenImportPool(pgURL string, conns int) (*ImportPool, error) {
 	if conns <= 0 {
 		conns = DefaultImportConns
 	}
@@ -131,8 +152,12 @@ func NewDirectDBImporterOn(repository entities.RepositoryID, pgURL string, conns
 	opt.MaxRetries = 3               // Retry transient connection failures
 	opt.RetryStatementTimeout = true // Retry on statement_timeout errors too
 
-	db := pg.Connect(opt)
+	return &ImportPool{db: pg.Connect(opt)}, nil
+}
 
+// newDirectDBImporter assembles an importer on db with its S3 client, ID
+// generator and an empty run report.
+func newDirectDBImporter(repository entities.RepositoryID, db *pg.DB) (*DirectDBImporter, error) {
 	// S3 Client is optional for some use-cases (like local CLI import)
 	s3c, err := storage.NewS3ClientFromEnv()
 	if err != nil {

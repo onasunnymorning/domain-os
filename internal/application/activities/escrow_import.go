@@ -46,13 +46,12 @@ type EscrowImportActivities struct {
 	// RepositoryID is the repository ID imported objects' new ROIDs are
 	// minted with (ADR 0017).
 	RepositoryID entities.RepositoryID
-	// DSN is the database the importer writes to, and ImportConns the
-	// connections it may open for that: the importer's driver (go-pg) has
-	// a pool apart from the worker's GORM pool, so the worker sets both
-	// from one budget (config.Database.MaxOpenConns). Zero means the
-	// importer's own default.
-	DSN         string
-	ImportConns int
+	// ImportPool is the one pool every ingestion activity's importer shares:
+	// the importer's driver (go-pg) has a pool apart from the worker's GORM
+	// pool, so the worker opens this one out of the same budget
+	// (config.Database.MaxOpenConns), bounded once for the process however
+	// many imports run at once.
+	ImportPool *services.ImportPool
 }
 
 // ValidateEscrowSource checks that required inputs are present, the TLD allows
@@ -1300,11 +1299,10 @@ func (a *EscrowImportActivities) IngestContacts(ctx context.Context, args Ingest
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
+	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return IngestContactsResult{}, fmt.Errorf("failed to init importer: %w", err)
 	}
-	defer destImporter.PG.Close()
 
 	// Identity mapping (staged DB has correct IDs)
 	// We pass nil to indicate trust/passthrough mode
@@ -1383,11 +1381,10 @@ func (a *EscrowImportActivities) ValidateRegistrantRefs(ctx context.Context, arg
 	defer sqliteDB.Close()
 
 	// Open Postgres connection for live contact lookup.
-	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
+	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return ValidateRegistrantRefsResult{}, fmt.Errorf("ValidateRegistrantRefs: init PG importer: %w", err)
 	}
-	defer destImporter.PG.Close()
 
 	// Collect all distinct, non-empty contact IDs from the staged DB for each role.
 	type roleQuery struct {
@@ -1567,11 +1564,10 @@ func (a *EscrowImportActivities) IngestHosts(ctx context.Context, args IngestHos
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
+	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return IngestHostsResult{}, err
 	}
-	defer destImporter.PG.Close()
 
 	heartbeat := func(c services.ImportCursor) {
 		activity.RecordHeartbeat(ctx, c)
@@ -1629,11 +1625,10 @@ func (a *EscrowImportActivities) IngestDomains(ctx context.Context, args IngestD
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
+	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return IngestDomainsResult{}, err
 	}
-	defer destImporter.PG.Close()
 
 	heartbeat := func(c services.ImportCursor) {
 		activity.RecordHeartbeat(ctx, c)
@@ -1689,11 +1684,10 @@ func (a *EscrowImportActivities) IngestNNDNs(ctx context.Context, args IngestNND
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
+	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return IngestNNDNsResult{}, err
 	}
-	defer destImporter.PG.Close()
 
 	heartbeat := func(c services.ImportCursor) {
 		activity.RecordHeartbeat(ctx, c)
@@ -1749,11 +1743,10 @@ func (a *EscrowImportActivities) LinkDomainHosts(ctx context.Context, args LinkD
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
+	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return LinkDomainHostsResult{}, err
 	}
-	defer destImporter.PG.Close()
 
 	heartbeat := func(processed string) {
 		activity.RecordHeartbeat(ctx, processed)
@@ -1819,11 +1812,10 @@ func (a *EscrowImportActivities) AccreditRegistrars(ctx context.Context, args Ac
 	}
 	defer db.Close()
 
-	destImporter, err := services.NewDirectDBImporterOn(a.RepositoryID, a.DSN, a.ImportConns)
+	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return AccreditRegistrarsResult{}, fmt.Errorf("failed to init importer: %w", err)
 	}
-	defer destImporter.PG.Close()
 
 	heartbeat := func(processed string) {
 		activity.RecordHeartbeat(ctx, processed)
