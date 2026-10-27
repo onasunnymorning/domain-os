@@ -138,7 +138,7 @@ func (ctrl *RDAPPublicationController) GetTLDPolicy(ctx *gin.Context) {
 
 // AssignPolicy godoc
 // @Summary Assign a TLD its RDAP publication policy
-// @Description An empty policy removes the assignment, so the TLD has the built-in for its type.
+// @Description policy is required. An empty policy removes the assignment, so the TLD has the built-in for its type; a missing or null one is refused.
 // @Tags RDAP
 // @Accept json
 // @Produce json
@@ -148,12 +148,20 @@ func (ctrl *RDAPPublicationController) GetTLDPolicy(ctx *gin.Context) {
 // @Failure 404
 // @Router /tlds/{tldName}/rdap/publication-policy [put]
 func (ctrl *RDAPPublicationController) AssignPolicy(ctx *gin.Context) {
-	var cmd commands.AssignRDAPPublicationPolicyCommand
-	if err := ctx.ShouldBindJSON(&cmd); err != nil {
+	// policy must be present and a string: an empty one removes the
+	// assignment, so a body that merely misspells or omits it must not.
+	var body struct {
+		Policy *string `json:"policy"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	tp, err := ctrl.svc.AssignPolicy(ctx.Request.Context(), ctx.Param("tldName"), cmd)
+	if body.Policy == nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": `the body needs a "policy" member: a policy name, or "" to remove the assignment`})
+		return
+	}
+	tp, err := ctrl.svc.AssignPolicy(ctx.Request.Context(), ctx.Param("tldName"), commands.AssignRDAPPublicationPolicyCommand{Policy: *body.Policy})
 	if err != nil {
 		rdapPublicationError(ctx, err)
 		return
