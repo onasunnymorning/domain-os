@@ -7,12 +7,14 @@ import (
 
 // redaction is an RFC 9537 §4.2 redacted member.
 type redaction struct {
-	Name     redactionName   `json:"name"`
-	PrePath  string          `json:"prePath,omitempty"`
-	PostPath string          `json:"postPath,omitempty"`
-	PathLang string          `json:"pathLang"`
-	Method   string          `json:"method"`
-	Reason   redactionReason `json:"reason"`
+	Name     redactionName `json:"name"`
+	PrePath  string        `json:"prePath,omitempty"`
+	PostPath string        `json:"postPath,omitempty"`
+	// ReplacementPath locates the value shown instead (RFC 9537 §4.2).
+	ReplacementPath string          `json:"replacementPath,omitempty"`
+	PathLang        string          `json:"pathLang"`
+	Method          string          `json:"method"`
+	Reason          redactionReason `json:"reason"`
 
 	field string // for metrics only
 }
@@ -108,6 +110,7 @@ func contactEntity(role rdappolicy.Role, c *entities.Contact, dec rdappolicy.Con
 			// The email is replaced by a contact form (contact-uri below);
 			// the email property itself is removed.
 			rd.PrePath = path
+			rd.ReplacementPath = selector + ".vcardArray[1][?(@[0]=='contact-uri')][3]"
 			redacted = append(redacted, rd)
 			return "", false
 		default: // EmptyValue

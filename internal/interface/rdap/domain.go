@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
@@ -171,8 +172,9 @@ func (s *Server) buildDomain(r *http.Request, rec *interfaces.RDAPDomain, req rd
 				Href: s.baseURL + string(d.TLDName) + "/nameserver/" + string(h.Name),
 			}},
 		}
-		// Glue: the addresses of a host under this domain.
-		if h.InBailiwick && len(h.Addresses) > 0 {
+		// Glue: the addresses of a host under this domain. Decided by name:
+		// imported hosts can have addresses without InBailiwick set.
+		if underDomain(string(h.Name), name) && len(h.Addresses) > 0 {
 			ns.IPAddresses = &ipAddresses{}
 			for _, a := range h.Addresses {
 				if a.Is4() {
@@ -272,4 +274,10 @@ func (s *Server) domainNotices(r *http.Request, t entities.TLDType) []notice {
 		out = []notice{}
 	}
 	return out
+}
+
+// underDomain reports whether host is the domain or a name under it.
+func underDomain(host, domain string) bool {
+	host, domain = strings.ToLower(strings.TrimSuffix(host, ".")), strings.ToLower(strings.TrimSuffix(domain, "."))
+	return host == domain || strings.HasSuffix(host, "."+domain)
 }

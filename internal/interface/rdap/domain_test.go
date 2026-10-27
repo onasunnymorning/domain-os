@@ -246,3 +246,34 @@ func TestUndisclosedPostalFormIsNotShown(t *testing.T) {
 	assert.NotContains(t, string(raw), "Int Org")
 	assert.NotContains(t, string(raw), "Loc Org", "the local form is not shown at all")
 }
+
+func TestGlueIsDecidedByName(t *testing.T) {
+	rec := fullDomain()
+	for _, h := range rec.Domain.Hosts {
+		h.InBailiwick = false // as imported hosts are
+	}
+	resp := decoded(t, goldenServer(t), rec)
+	ns := resp["nameservers"].([]any)
+	assert.Contains(t, ns[0], "ipAddresses", "a host under the domain has glue, whatever the flag")
+	assert.NotContains(t, ns[1], "ipAddresses", "an external host has none")
+	assert.True(t, underDomain("ns1.example.tld.", "EXAMPLE.tld"))
+	assert.False(t, underDomain("ns1.otherexample.tld", "example.tld"))
+}
+
+func TestReplacedEmailNamesItsReplacement(t *testing.T) {
+	rec := fullDomain()
+	rec.Publication.ContactFormURI = "https://registry.example/contact"
+	resp := decoded(t, goldenServer(t), rec)
+	raw, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `["contact-uri",{},"uri","https://registry.example/contact"]`)
+	for _, rd := range resp["redacted"].([]any) {
+		r := rd.(map[string]any)
+		if r["name"].(map[string]any)["type"] == "Registrant Email" {
+			assert.Equal(t, "replacementValue", r["method"])
+			assert.Equal(t, "$.entities[?(@.roles[0]=='registrant')].vcardArray[1][?(@[0]=='contact-uri')][3]", r["replacementPath"])
+			return
+		}
+	}
+	t.Fatal("no Registrant Email redaction")
+}
