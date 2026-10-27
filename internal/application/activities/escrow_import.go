@@ -1299,6 +1299,12 @@ func (a *EscrowImportActivities) IngestContacts(ctx context.Context, args Ingest
 	}
 	defer db.Close()
 
+	// Wait for a connection of the shared pool, heartbeating meanwhile.
+	release, err := a.ImportPool.Acquire(ctx, func() { activity.RecordHeartbeat(ctx, cursor) })
+	if err != nil {
+		return IngestContactsResult{}, err
+	}
+	defer release()
 	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return IngestContactsResult{}, fmt.Errorf("failed to init importer: %w", err)
@@ -1381,6 +1387,12 @@ func (a *EscrowImportActivities) ValidateRegistrantRefs(ctx context.Context, arg
 	defer sqliteDB.Close()
 
 	// Open Postgres connection for live contact lookup.
+	// Wait for a connection of the shared pool, heartbeating meanwhile.
+	release, err := a.ImportPool.Acquire(ctx, func() { activity.RecordHeartbeat(ctx, "waiting for an import connection") })
+	if err != nil {
+		return ValidateRegistrantRefsResult{}, err
+	}
+	defer release()
 	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return ValidateRegistrantRefsResult{}, fmt.Errorf("ValidateRegistrantRefs: init PG importer: %w", err)
@@ -1564,6 +1576,12 @@ func (a *EscrowImportActivities) IngestHosts(ctx context.Context, args IngestHos
 	}
 	defer db.Close()
 
+	// Wait for a connection of the shared pool, heartbeating meanwhile.
+	release, err := a.ImportPool.Acquire(ctx, func() { activity.RecordHeartbeat(ctx, cursor) })
+	if err != nil {
+		return IngestHostsResult{}, err
+	}
+	defer release()
 	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return IngestHostsResult{}, err
@@ -1625,6 +1643,12 @@ func (a *EscrowImportActivities) IngestDomains(ctx context.Context, args IngestD
 	}
 	defer db.Close()
 
+	// Wait for a connection of the shared pool, heartbeating meanwhile.
+	release, err := a.ImportPool.Acquire(ctx, func() { activity.RecordHeartbeat(ctx, cursor) })
+	if err != nil {
+		return IngestDomainsResult{}, err
+	}
+	defer release()
 	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return IngestDomainsResult{}, err
@@ -1684,6 +1708,12 @@ func (a *EscrowImportActivities) IngestNNDNs(ctx context.Context, args IngestNND
 	}
 	defer db.Close()
 
+	// Wait for a connection of the shared pool, heartbeating meanwhile.
+	release, err := a.ImportPool.Acquire(ctx, func() { activity.RecordHeartbeat(ctx, cursor) })
+	if err != nil {
+		return IngestNNDNsResult{}, err
+	}
+	defer release()
 	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return IngestNNDNsResult{}, err
@@ -1743,6 +1773,12 @@ func (a *EscrowImportActivities) LinkDomainHosts(ctx context.Context, args LinkD
 	}
 	defer db.Close()
 
+	// Wait for a connection of the shared pool, heartbeating meanwhile.
+	release, err := a.ImportPool.Acquire(ctx, func() { activity.RecordHeartbeat(ctx, lastKey) })
+	if err != nil {
+		return LinkDomainHostsResult{}, err
+	}
+	defer release()
 	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return LinkDomainHostsResult{}, err
@@ -1812,6 +1848,12 @@ func (a *EscrowImportActivities) AccreditRegistrars(ctx context.Context, args Ac
 	}
 	defer db.Close()
 
+	// Wait for a connection of the shared pool, heartbeating meanwhile.
+	release, err := a.ImportPool.Acquire(ctx, func() { activity.RecordHeartbeat(ctx, "") })
+	if err != nil {
+		return AccreditRegistrarsResult{}, err
+	}
+	defer release()
 	destImporter, err := services.NewDirectDBImporterWith(a.RepositoryID, a.ImportPool)
 	if err != nil {
 		return AccreditRegistrarsResult{}, fmt.Errorf("failed to init importer: %w", err)

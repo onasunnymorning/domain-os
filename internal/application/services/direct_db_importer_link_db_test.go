@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/stretchr/testify/require"
@@ -121,4 +122,26 @@ func TestLinkDomainHosts_SharesOnePoolAcrossConcurrentLinkers(t *testing.T) {
 			require.Zero(t, leftover, "no linker's temp table outlives its session")
 		})
 	}
+}
+
+// Acquire admits as many importers as the pool has connections; the next
+// waits, heartbeating, until one releases, and gives up when its context
+// ends.
+func TestImportPoolAcquire_AdmitsPoolSizeAndHeartbeatsWhileWaiting(t *testing.T) {
+	pool, err := services.OpenImportPool(testImportDSN(), 1)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	release, err := pool.Acquire(context.Background(), nil)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_, err = pool.Acquire(ctx, func() { t.Fatal("no heartbeat is due within the wait") })
+	require.ErrorIs(t, err, context.DeadlineExceeded, "the second importer waits until its context ends")
+
+	release()
+	release2, err := pool.Acquire(context.Background(), nil)
+	require.NoError(t, err, "a released slot admits the next importer")
+	release2()
 }

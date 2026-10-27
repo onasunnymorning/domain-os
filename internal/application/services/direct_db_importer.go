@@ -20,6 +20,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"golang.org/x/sync/semaphore"
 )
 
 // RunReport collects details about the import execution
@@ -82,10 +83,41 @@ const DefaultImportConns = 5
 // connection budget loaded at the composition root (config.LoadDatabase),
 // and shares it across every importer it builds, so concurrent imports draw
 // on one bounded pool rather than one each.
-type ImportPool struct{ db *pg.DB }
+type ImportPool struct {
+	db *pg.DB
+	// slots admits as many importers at once as the pool has connections,
+	// so an importer admitted finds a connection rather than waiting on the
+	// driver's pool timeout.
+	slots *semaphore.Weighted
+}
 
 // Close closes the pool.
 func (p *ImportPool) Close() error { return p.db.Close() }
+
+// admissionHeartbeat is how often Acquire calls heartbeat while it waits.
+const admissionHeartbeat = 30 * time.Second
+
+// Acquire waits for one of the pool's connections to be free for an importer,
+// calling heartbeat every admissionHeartbeat while it waits, so a Temporal
+// activity queued behind a long import keeps its heartbeat (with its last
+// committed cursor) rather than timing out. It returns when ctx ends. The
+// caller releases the slot when its importer is done.
+func (p *ImportPool) Acquire(ctx context.Context, heartbeat func()) (release func(), err error) {
+	for {
+		wait, cancel := context.WithTimeout(ctx, admissionHeartbeat)
+		err := p.slots.Acquire(wait, 1)
+		cancel()
+		switch {
+		case err == nil:
+			return func() { p.slots.Release(1) }, nil
+		case ctx.Err() != nil:
+			return nil, fmt.Errorf("waiting for an import connection: %w", ctx.Err())
+		}
+		if heartbeat != nil {
+			heartbeat()
+		}
+	}
+}
 
 // NewDirectDBImporterWith builds an importer on pool, which it does not own:
 // the caller closes it, after every importer built on it is done.
@@ -130,16 +162,13 @@ func OpenImportPool(pgURL string, conns int) (*ImportPool, error) {
 	opt.DialTimeout = 10 * time.Second
 	opt.ReadTimeout = 90 * time.Second // Bulk upserts with 5K+ rows can take time
 	opt.WriteTimeout = 90 * time.Second
-	// A small budget serialises imports: a linking that holds its connection
-	// for an hour keeps the next activity waiting. That wait is the design,
-	// not a failure, so it is long here and bounded by the activity's own
-	// context (go-pg gives up the wait when the context ends), which Temporal
-	// cancels on the activity's timeouts.
-	opt.PoolTimeout = 30 * time.Minute
+	// Admission (Acquire) keeps importers to the pool's size, so a query
+	// rarely waits here; the timeout only has to outlast a long statement.
+	opt.PoolTimeout = 2 * time.Minute
 	opt.MaxRetries = 3               // Retry transient connection failures
 	opt.RetryStatementTimeout = true // Retry on statement_timeout errors too
 
-	return &ImportPool{db: pg.Connect(opt)}, nil
+	return &ImportPool{db: pg.Connect(opt), slots: semaphore.NewWeighted(int64(conns))}, nil
 }
 
 // newDirectDBImporter assembles an importer on db with its S3 client, ID
