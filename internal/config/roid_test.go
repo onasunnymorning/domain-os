@@ -38,7 +38,11 @@ func TestLoadSnowflakeNodeID(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, set)
 	})
-	for v, want := range map[string]int64{"0": 0, " 42 ": 42, "1023": 1023} {
+	for _, tc := range []struct {
+		raw  string
+		want int64
+	}{{"0", 0}, {" 42 ", 42}, {"1023", 1023}} {
+		v, want := tc.raw, tc.want
 		t.Run(v+" is set", func(t *testing.T) {
 			t.Setenv("SNOWFLAKE_NODE_ID", v)
 			id, set, err := LoadSnowflakeNodeID()
