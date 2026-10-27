@@ -1,0 +1,25 @@
+#!/bin/sh
+# Pre-push gate: the cheap, container-free part of CI, so a lint or
+# architecture failure never reaches GitHub (and never burns a 6-minute
+# CI run or a reviewer's attention). The full suite still runs in CI on
+# every push; this is not a substitute for it.
+#
+# Install once per clone (covers every worktree):  make hooks
+# Skip for a single push:                          git push --no-verify
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+echo "pre-push: make ci-arch ci-lint-go"
+make ci-arch ci-lint-go
+
+if [ -d frontend/node_modules ]; then
+  make ci-lint-frontend
+else
+  echo "pre-push: frontend/node_modules missing, skipping frontend lint (cd frontend && npm ci)"
+fi
+
+if command -v gitleaks >/dev/null 2>&1; then
+  make secrets
+else
+  echo "pre-push: gitleaks not installed, skipping 'make secrets' (brew install gitleaks)"
+fi
