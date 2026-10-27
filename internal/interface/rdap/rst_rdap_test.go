@@ -212,6 +212,14 @@ func TestRST_rdap91_TLS(t *testing.T) {
 		require.NoError(t, os.WriteFile(cfg.TLS.CertPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]}), 0o600))
 		_, err = NewServer(Options{Config: cfg, Lookups: &fakeLookups{}})
 		assert.ErrorContains(t, err, "RDAP_SERVER_NAME")
+
+		// With no server name, the base URL's host is checked instead.
+		cfg.TLS.ServerName = ""
+		_, err = NewServer(Options{Config: cfg, Lookups: &fakeLookups{}})
+		assert.ErrorContains(t, err, `"rdap.example.test"`)
+		cfg.BaseURL = "https://other.example.test/"
+		_, err = NewServer(Options{Config: cfg, Lookups: &fakeLookups{}})
+		assert.NoError(t, err, "the certificate covers the base URL's host")
 	})
 	t.Run("rdap-91/6 only RFC 9325 cipher suites on TLS 1.2", func(t *testing.T) {
 		// The test certificate has an RSA key, so the ECDSA suites cannot be
