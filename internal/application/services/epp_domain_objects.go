@@ -37,10 +37,6 @@ var (
 // MaxDSRecords is the most DS records one domain may have.
 const MaxDSRecords = 8
 
-// subordinateHostPage is how many hosts one listing of a domain's
-// subordinate hosts reads.
-const subordinateHostPage = 100
-
 // Info returns a domain the session's registrar sponsors, with its
 // nameservers and the host objects subordinate to it (RFC 5731 §3.1.2). A
 // missing domain is entities.ErrDomainNotFound.
@@ -82,27 +78,11 @@ func (s *EPPDomainService) Info(ctx context.Context, scope entities.RegistrarClI
 // subordinateHosts lists the host objects named under domain. They are
 // sponsored by the domain's sponsor (RFC 5732 §1.1).
 func (s *EPPDomainService) subordinateHosts(ctx context.Context, clid, domain string) ([]string, error) {
-	suffix := "." + domain
-	var names []string
-	cursor := ""
-	for {
-		page, next, err := s.hosts.ListHosts(ctx, queries.ListItemsQuery{
-			PageSize: subordinateHostPage, PageCursor: cursor,
-			Filter: queries.ListHostsFilter{ClidEquals: clid, NameLike: suffix},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("list hosts under %s: %w", domain, err)
-		}
-		for _, h := range page {
-			if strings.HasSuffix(h.Name.String(), suffix) {
-				names = append(names, h.Name.String())
-			}
-		}
-		if next == "" || len(page) == 0 {
-			return names, nil
-		}
-		cursor = next
+	names, err := s.hosts.ListHostNamesUnder(ctx, clid, domain)
+	if err != nil {
+		return nil, fmt.Errorf("list hosts under %s: %w", domain, err)
 	}
+	return names, nil
 }
 
 // Create registers a domain for the session's registrar (RFC 5731 §3.2.1).

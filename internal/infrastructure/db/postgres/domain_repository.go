@@ -302,7 +302,7 @@ func (dr *DomainRepository) UpdateDomainIfUnchanged(ctx context.Context, d *enti
 		}
 		if d.Status.PendingDelete {
 			var sub int64
-			if err := tx.Model(&Host{}).Where("cl_id = ? AND name LIKE ?", dbDomain.ClID, "%."+dbDomain.Name).Count(&sub).Error; err != nil {
+			if err := tx.Table("hosts h").Where("h.cl_id = ? AND "+hostUnderDomainSQL, dbDomain.ClID, dbDomain.Name).Count(&sub).Error; err != nil {
 				return err
 			}
 			if sub > 0 {

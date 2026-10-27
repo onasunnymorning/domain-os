@@ -103,6 +103,10 @@ func AutoMigrate(db *gorm.DB) error {
 	manualIndexes := []string{
 		// domain_hosts: reverse lookup by host_ro_id — PK is (domain_ro_id, host_ro_id) so host-only lookups are full table scans
 		"CREATE INDEX IF NOT EXISTS idx_domain_hosts_host_ro_id ON domain_hosts (host_ro_id)",
+		// hosts: the hosts under a domain (hostUnderDomainSQL). A name's suffix
+		// is a prefix of its reverse, and text_pattern_ops lets LIKE 'x%' use
+		// the index whatever the database's collation.
+		"CREATE INDEX IF NOT EXISTS idx_hosts_name_reverse ON hosts (reverse(name) text_pattern_ops)",
 		// phases: composite for activeGAPhaseFilter EXISTS subquery that runs on every lifecycle query
 		"CREATE INDEX IF NOT EXISTS idx_phases_tld_type_starts ON phases (tld_name, type, starts)",
 		// accreditations: tld_name is second in composite PK, can't be used for tld_name-only GROUP BY
