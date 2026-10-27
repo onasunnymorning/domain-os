@@ -1,8 +1,10 @@
 package rdap
 
 import (
+	"context"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"strconv"
 	"sync"
@@ -173,4 +175,96 @@ func TestBucketsAreKeptApartByPolicy(t *testing.T) {
 		}
 	}
 	assert.Contains(t, pb[0].Key, entities.RDAPAccessMonitoring)
+}
+
+// recordingLimiter allows everything and records each call.
+type recordingLimiter struct {
+	mu    sync.Mutex
+	calls []recordedTake
+}
+
+type recordedTake struct {
+	keys      []string
+	cost      int
+	maxWait   time.Duration
+	cancelled bool
+}
+
+func (l *recordingLimiter) Take(ctx context.Context, buckets []entities.EPPRateBucket, cost int, maxWait time.Duration) (entities.EPPRateTake, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var keys []string
+	for _, b := range buckets {
+		keys = append(keys, b.Key)
+	}
+	l.calls = append(l.calls, recordedTake{keys: keys, cost: cost, maxWait: maxWait, cancelled: ctx.Err() != nil})
+	return entities.EPPRateTake{Taken: true}, nil
+}
+
+func TestAdmissionAndNotFoundCharge(t *testing.T) {
+	lim := &recordingLimiter{}
+	lookups := registry()
+	srv, err := NewServer(Options{Config: testConfig("https://rdap.example.test/"), Lookups: lookups, Limiter: lim})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	r := httptest.NewRequest(http.MethodGet, "/domain/missing.tld", nil).WithContext(ctx)
+	r.RemoteAddr = "192.0.2.7:4242"
+	notFound, ok := srv.admit(httptest.NewRecorder(), r)
+	require.True(t, ok)
+
+	// The client disconnects, and a reload moves its network to a policy
+	// with no surcharge, before the 404 is charged.
+	cancel()
+	lookups.access = entities.NewRDAPAccessSet(nil, []entities.RDAPAccessNetwork{
+		{Network: netip.MustParsePrefix("192.0.2.0/24"), Policy: entities.RDAPAccessMonitoring},
+	}, time.Now())
+	notFound()
+
+	require.Len(t, lim.calls, 2)
+	admitted, owed := lim.calls[0], lim.calls[1]
+	assert.False(t, admitted.cancelled, "a disconnect must not reach the store as a failure")
+	assert.False(t, owed.cancelled)
+	assert.Equal(t, entities.AnonymousRDAPAccessLimits().NotFoundCost-1, owed.cost, "the policy the request was admitted under")
+	assert.Equal(t, admitted.keys, owed.keys, "charged to the buckets it was admitted from")
+	assert.Equal(t, notFoundDebtWait, owed.maxWait)
+	assert.Greater(t, owed.maxWait, 100*24*time.Hour, "a surcharge is never dropped for being far off")
+}
+
+func TestConcurrentCloseReleasesOneSlot(t *testing.T) {
+	inner, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	l := newConnLimitListener(inner, 2, func() {}).(*connLimitListener)
+	defer func() { _ = l.Close() }()
+
+	dial := func() {
+		c, err := net.Dial("tcp", inner.Addr().String())
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = c.Close() })
+	}
+	dial()
+	dial()
+	a, err := l.Accept()
+	require.NoError(t, err)
+	b, err := l.Accept()
+	require.NoError(t, err)
+	defer func() { _ = b.Close() }()
+	require.Len(t, l.slots, 2)
+
+	done := make(chan struct{})
+	go func() {
+		var wg sync.WaitGroup
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() { defer wg.Done(); _ = a.Close() }()
+		}
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("closing one connection many times blocked")
+	}
+	assert.Len(t, l.slots, 1, "one slot back, and the other connection keeps its own")
 }

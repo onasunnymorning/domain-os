@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -39,7 +38,7 @@ func (s *Server) handler() http.Handler {
 			return
 		}
 
-		charge, admitted := s.admit(rec, r)
+		chargeNotFound, admitted := s.admit(rec, r)
 		if !admitted {
 			return
 		}
@@ -63,9 +62,7 @@ func (s *Server) handler() http.Handler {
 		s.serve(rec, r.WithContext(ctx), q)
 		// A lookup that found nothing costs more, to slow enumeration.
 		if rec.status == http.StatusNotFound && (q.kind == queryDomain || q.kind == queryNameserver || q.kind == queryEntity) {
-			if p := s.lookups.AccessPolicy(clientAddrOrZero(r)); p.Limits.NotFoundCost > 1 {
-				charge(p.Limits.NotFoundCost - 1)
-			}
+			chargeNotFound()
 		}
 	})
 }
@@ -178,9 +175,4 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(status int) {
 	r.status = status
 	r.ResponseWriter.WriteHeader(status)
-}
-
-func clientAddrOrZero(r *http.Request) netip.Addr {
-	a, _ := clientAddr(r)
-	return a
 }
