@@ -62,6 +62,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	h := w.Header()
 	h.Set("Content-Type", contentType)
 	h.Set("Access-Control-Allow-Origin", "*")
+	// A browser reads only safelisted headers from a cross-origin answer
+	// unless told otherwise: the 429 and 503 backoff is in Retry-After.
+	h.Set("Access-Control-Expose-Headers", "Retry-After")
 	h.Set("Vary", "Authorization")
 	switch status {
 	case http.StatusOK, http.StatusNotFound:

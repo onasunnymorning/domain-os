@@ -2,6 +2,7 @@ package rdap
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -41,6 +42,7 @@ func TestAnonymousClientsAreLimited(t *testing.T) {
 	assert.Equal(t, 429, e.ErrorCode)
 	assert.Contains(t, e.Description[0], "scope=address")
 	assert.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, "Retry-After", resp.Header.Get("Access-Control-Expose-Headers"), "a browser can read the backoff")
 	retry, err := strconv.Atoi(resp.Header.Get("Retry-After"))
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, retry, 1)
@@ -61,6 +63,7 @@ func TestNotFoundCostsMore(t *testing.T) {
 	for i := 0; i < misses; i++ {
 		resp, _ := ts.do(t, http.MethodGet, "domain/missing"+strconv.Itoa(i)+".tld")
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+		ts.Server.charges.Wait() // the surcharge is charged after the answer
 	}
 	resp, _ := ts.do(t, http.MethodGet, "help")
 	assert.Equal(t, http.StatusTooManyRequests, resp.StatusCode, "%d misses spent a burst of %d", misses, l.PerAddress.Burst)
@@ -316,19 +319,36 @@ func (l *stallingLimiter) Take(context.Context, []entities.EPPRateBucket, int, t
 }
 
 func TestNotFoundIsDeliveredBeforeTheCharge(t *testing.T) {
-	lim := &stallingLimiter{release: make(chan struct{})}
-	ts := startServerWith(t, Options{Config: testConfig("https://rdap.example.test/"), Lookups: registry(), Limiter: lim})
-	defer close(lim.release)
+	for _, h2 := range []bool{false, true} {
+		t.Run(map[bool]string{false: "HTTP/1.1", true: "HTTP/2"}[h2], func(t *testing.T) {
+			lim := &stallingLimiter{release: make(chan struct{})}
+			ts := startServerWith(t, Options{Config: testConfig("https://rdap.example.test/"), Lookups: registry(), Limiter: lim})
+			defer close(lim.release)
+			ts.client.Transport.(*http.Transport).ForceAttemptHTTP2 = h2
 
-	got := make(chan int, 1)
-	go func() {
-		resp, _ := ts.do(t, http.MethodGet, "domain/missing.tld")
-		got <- resp.StatusCode
-	}()
-	select {
-	case code := <-got:
-		assert.Equal(t, http.StatusNotFound, code)
-	case <-time.After(2 * time.Second):
-		t.Fatal("the 404 waited on the surcharge")
+			type answer struct {
+				code, proto int
+				err         error
+			}
+			got := make(chan answer, 1)
+			go func() {
+				resp, err := ts.client.Get(ts.url + "domain/missing.tld")
+				if err != nil {
+					got <- answer{err: err}
+					return
+				}
+				defer func() { _ = resp.Body.Close() }()
+				_, err = io.ReadAll(resp.Body) // to the end of the stream
+				got <- answer{code: resp.StatusCode, proto: resp.ProtoMajor, err: err}
+			}()
+			select {
+			case a := <-got:
+				require.NoError(t, a.err)
+				assert.Equal(t, http.StatusNotFound, a.code)
+				assert.Equal(t, map[bool]int{false: 1, true: 2}[h2], a.proto)
+			case <-time.After(2 * time.Second):
+				t.Fatal("the 404 waited on the surcharge")
+			}
+		})
 	}
 }

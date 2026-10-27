@@ -58,6 +58,9 @@ type Server struct {
 	origin         string
 	termsOfService string
 
+	// charges are the not-found surcharges still being charged.
+	charges sync.WaitGroup
+
 	startOnce sync.Once
 	serving   atomic.Bool
 	draining  atomic.Bool
@@ -140,7 +143,7 @@ func NewServer(opts Options) (*Server, error) {
 		// routine; they are not errors of this server.
 		ErrorLog: slog.NewLogLogger(s.logger.Handler(), slog.LevelDebug),
 	}
-	s.life, s.end = context.WithCancel(context.Background())
+	s.life, s.end = context.WithCancel(context.Background()) // #nosec G118 -- s.end is called by Shutdown, which ends the server's life
 	return s, nil
 }
 
@@ -212,7 +215,16 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	s.draining.Store(true)
 	s.metrics.draining.Set(1)
 	s.end()
-	return s.http.Shutdown(ctx)
+	err := s.http.Shutdown(ctx)
+	// Handlers have returned; their surcharges are bounded by the
+	// limiter's own timeout.
+	done := make(chan struct{})
+	go func() { s.charges.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
+	return err
 }
 
 // Ready reports whether the node should receive traffic.

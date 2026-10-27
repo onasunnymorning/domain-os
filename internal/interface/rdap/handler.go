@@ -61,13 +61,15 @@ func (s *Server) handler() http.Handler {
 		defer cancel()
 		s.serve(rec, r.WithContext(ctx), q)
 		// A lookup that found nothing costs more, to slow enumeration. The
-		// complete 404 is sent first, so the charge adds nothing to the
-		// client's wait.
+		// charge runs after the handler returns, so it adds nothing to the
+		// client's wait on any protocol (an HTTP/2 stream ends only when the
+		// handler does). Shutdown waits for it.
 		if rec.status == http.StatusNotFound && (q.kind == queryDomain || q.kind == queryNameserver || q.kind == queryEntity) {
-			if f, ok := rec.ResponseWriter.(http.Flusher); ok {
-				f.Flush()
-			}
-			chargeNotFound()
+			s.charges.Add(1)
+			go func() {
+				defer s.charges.Done()
+				chargeNotFound()
+			}()
 		}
 	})
 }
