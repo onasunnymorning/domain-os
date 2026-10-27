@@ -139,6 +139,18 @@ func (s *RDAPService) Nameserver(ctx context.Context, name string) (*interfaces.
 			}
 		}
 	}
+	// The stored linked flag can outlive the host's last association, so
+	// it is counted now, as EPP's <host:info> does.
+	id, err := out.Host.RoID.Int64()
+	if err != nil {
+		return nil, fmt.Errorf("nameserver %s: %w", name, err)
+	}
+	links, err := s.hosts.GetHostAssociationCount(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("count domains using nameserver %s: %w", name, err)
+	}
+	out.Host.Status.Linked = links > 0
+
 	out.Registrar, err = s.registrars.GetByClID(ctx, out.Host.ClID.String(), false)
 	if err != nil && !errors.Is(err, entities.ErrRegistrarNotFound) {
 		return nil, fmt.Errorf("sponsor %s of nameserver %s: %w", out.Host.ClID, name, err)
@@ -146,16 +158,27 @@ func (s *RDAPService) Nameserver(ctx context.Context, name string) (*interfaces.
 	return out, nil
 }
 
-// superordinateSponsor is the sponsor of the registered domain that host
-// name sits under, or empty if it sits under none: an external host.
+// superordinateSponsor is the sponsor of the registered domain host name
+// sits under, or empty if it sits under none: an external host, or one whose
+// superordinate domain is not registered. The placement is EPP's
+// (EPPHostService.place): the host's TLD is the longest suffix that is a
+// TLD this registry serves, so a host under x.co.uk is placed under co.uk
+// when both uk and co.uk are served, and its superordinate domain is that
+// TLD and one more label, which may be the host's whole name.
 func (s *RDAPService) superordinateSponsor(ctx context.Context, name string) (entities.ClIDType, error) {
 	labels := strings.Split(name, ".")
-	// A registered domain has at least two labels: try every ancestor of
-	// the host that does.
-	for i := 1; i+2 <= len(labels); i++ {
-		d, err := s.domains.GetDomainByName(ctx, strings.Join(labels[i:], "."), false)
-		if errors.Is(err, entities.ErrDomainNotFound) {
+	for k := 1; k < len(labels); k++ {
+		tld := strings.Join(labels[k:], ".")
+		_, err := s.tlds.GetWithPhases(ctx, tld)
+		if errors.Is(err, entities.ErrTLDNotFound) {
 			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("look up TLD %s: %w", tld, err)
+		}
+		d, err := s.domains.GetDomainByName(ctx, strings.Join(labels[k-1:], "."), false)
+		if errors.Is(err, entities.ErrDomainNotFound) {
+			return "", nil
 		}
 		if err != nil {
 			return "", err
