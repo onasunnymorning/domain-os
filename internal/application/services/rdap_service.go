@@ -115,6 +115,18 @@ func (s *RDAPService) Nameserver(ctx context.Context, name string) (*interfaces.
 			}
 		}
 	}
+	// The stored linked flag can outlive the host's last association, so
+	// it is counted now, as EPP's <host:info> does.
+	id, err := out.Host.RoID.Int64()
+	if err != nil {
+		return nil, fmt.Errorf("nameserver %s: %w", name, err)
+	}
+	links, err := s.hosts.GetHostAssociationCount(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("count domains using nameserver %s: %w", name, err)
+	}
+	out.Host.Status.Linked = links > 0
+
 	out.Registrar, err = s.registrars.GetByClID(ctx, out.Host.ClID.String(), false)
 	if err != nil && !errors.Is(err, entities.ErrRegistrarNotFound) {
 		return nil, fmt.Errorf("sponsor %s of nameserver %s: %w", out.Host.ClID, name, err)
@@ -123,12 +135,13 @@ func (s *RDAPService) Nameserver(ctx context.Context, name string) (*interfaces.
 }
 
 // superordinateSponsor is the sponsor of the registered domain that host
-// name sits under, or empty if it sits under none: an external host.
+// name sits under, or empty if it sits under none: an external host. A host
+// may be named like the domain itself, so the full name is tried first.
 func (s *RDAPService) superordinateSponsor(ctx context.Context, name string) (entities.ClIDType, error) {
 	labels := strings.Split(name, ".")
-	// A registered domain has at least two labels: try every ancestor of
-	// the host that does.
-	for i := 1; i+2 <= len(labels); i++ {
+	// A registered domain has at least two labels: try the name and every
+	// ancestor of it that does.
+	for i := 0; i+2 <= len(labels); i++ {
 		d, err := s.domains.GetDomainByName(ctx, strings.Join(labels[i:], "."), false)
 		if errors.Is(err, entities.ErrDomainNotFound) {
 			continue

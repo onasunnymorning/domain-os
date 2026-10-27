@@ -99,6 +99,11 @@ func TestRDAPServicePublicationFollowsTLDType(t *testing.T) {
 type rdapHosts struct {
 	repositories.HostRepository
 	hosts []*entities.Host
+	links int64 // what GetHostAssociationCount answers
+}
+
+func (f rdapHosts) GetHostAssociationCount(context.Context, int64) (int64, error) {
+	return f.links, nil
 }
 
 func (f rdapHosts) ListHostsByName(context.Context, string) ([]*entities.Host, error) {
@@ -119,8 +124,8 @@ func (f rdapDomainsByName) GetDomainByName(_ context.Context, name string, _ boo
 }
 
 func TestRDAPNameserverResolution(t *testing.T) {
-	older := &entities.Host{Name: "ns1.a.example", ClID: "other", CreatedAt: time.Unix(1, 0)}
-	sponsors := &entities.Host{Name: "ns1.a.example", ClID: "owner", CreatedAt: time.Unix(2, 0)}
+	older := &entities.Host{RoID: "1_HOST-TEST", Name: "ns1.a.example", ClID: "other", CreatedAt: time.Unix(1, 0)}
+	sponsors := &entities.Host{RoID: "2_HOST-TEST", Name: "ns1.a.example", ClID: "owner", CreatedAt: time.Unix(2, 0)}
 
 	for _, tc := range []struct {
 		name      string
@@ -146,6 +151,31 @@ func TestRDAPNameserverResolution(t *testing.T) {
 			assert.Equal(t, tc.ambiguous, rec.Ambiguous)
 		})
 	}
+
+	t.Run("a host named like the domain itself belongs to its sponsor", func(t *testing.T) {
+		olderApex := &entities.Host{RoID: "3_HOST-TEST", Name: "a.example", ClID: "other", CreatedAt: time.Unix(1, 0)}
+		ownerApex := &entities.Host{RoID: "4_HOST-TEST", Name: "a.example", ClID: "owner", CreatedAt: time.Unix(2, 0)}
+		svc := NewRDAPService(RDAPServiceDeps{
+			Hosts: rdapHosts{hosts: []*entities.Host{olderApex, ownerApex}}, Registrars: rdapRegistrars{},
+			Domains: rdapDomainsByName{byName: map[string]*entities.Domain{"a.example": {Name: "a.example", ClID: "owner"}}},
+		})
+		rec, err := svc.Nameserver(context.Background(), "a.example")
+		require.NoError(t, err)
+		assert.Same(t, ownerApex, rec.Host)
+	})
+
+	t.Run("linked is counted, not read", func(t *testing.T) {
+		stale := &entities.Host{RoID: "5_HOST-TEST", Name: "ns1.a.example", Status: entities.HostStatus{Linked: true}}
+		svc := NewRDAPService(RDAPServiceDeps{Hosts: rdapHosts{hosts: []*entities.Host{stale}, links: 0}, Domains: rdapDomainsByName{}, Registrars: rdapRegistrars{}})
+		rec, err := svc.Nameserver(context.Background(), "ns1.a.example")
+		require.NoError(t, err)
+		assert.False(t, rec.Host.Status.Linked, "its last association was removed")
+
+		svc = NewRDAPService(RDAPServiceDeps{Hosts: rdapHosts{hosts: []*entities.Host{{RoID: "6_HOST-TEST", Name: "ns1.a.example"}}, links: 2}, Domains: rdapDomainsByName{}, Registrars: rdapRegistrars{}})
+		rec, err = svc.Nameserver(context.Background(), "ns1.a.example")
+		require.NoError(t, err)
+		assert.True(t, rec.Host.Status.Linked)
+	})
 
 	t.Run("no host is not found", func(t *testing.T) {
 		svc := NewRDAPService(RDAPServiceDeps{Hosts: rdapHosts{}, Domains: rdapDomainsByName{}, Registrars: rdapRegistrars{}})
