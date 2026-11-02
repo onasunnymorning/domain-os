@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { AlertTriangle, CheckCircle2, HelpCircle } from "lucide-react";
 import { differenceInCalendarDays, format } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -113,13 +114,16 @@ export interface StripQuery<T> {
 }
 
 export function EPPStatusStrip({
+  clid,
   access,
   lockouts,
   suspensions,
   sessionCount,
   moreSessions = false,
   isLoading,
+  onEndAllSessions,
 }: {
+  clid: string;
   access?: EPPRegistrarAccess;
   lockouts: StripQuery<EPPLoginLockout>;
   suspensions: StripQuery<EPPLoginSuspension>;
@@ -128,6 +132,8 @@ export function EPPStatusStrip({
   /** True when there is a further page, so the count is a lower bound. */
   moreSessions?: boolean;
   isLoading: boolean;
+  /** Offered when there is at least one session. */
+  onEndAllSessions?: () => void;
 }) {
   if (isLoading || !access || lockouts.isLoading || suspensions.isLoading) {
     return <Skeleton className="h-16 w-full" />;
@@ -137,16 +143,27 @@ export function EPPStatusStrip({
   const unknowns: string[] = [];
   if (lockouts.error) unknowns.push(eppQueryErrorText("lockouts", lockouts.error));
   if (suspensions.error) unknowns.push(eppQueryErrorText("suspensions", suspensions.error));
-  // Plain text until the sessions page exists (part 3 of the plan).
   const sessionsText =
     sessionCount === undefined ? null : `${sessionCount}${moreSessions ? "+" : ""} session${sessionCount === 1 && !moreSessions ? "" : "s"} open`;
+  const sessions = sessionsText ? (
+    <span className="inline-flex items-center gap-2">
+      <Link href={`/epp?tab=sessions&clid=${encodeURIComponent(clid)}`} className="underline underline-offset-2">
+        {sessionsText}
+      </Link>
+      {sessionCount! > 0 && onEndAllSessions && (
+        <button type="button" onClick={onEndAllSessions} className="text-xs text-destructive underline underline-offset-2">
+          End all
+        </button>
+      )}
+    </span>
+  ) : null;
 
   if (reasons.length === 0 && unknowns.length === 0) {
     return (
       <Alert className="border-emerald-300 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40">
         <CheckCircle2 className="text-emerald-600" />
         <AlertTitle>Ready: this registrar can log in</AlertTitle>
-        {sessionsText && <AlertDescription>{sessionsText}</AlertDescription>}
+        {sessions && <AlertDescription>{sessions}</AlertDescription>}
       </Alert>
     );
   }
@@ -155,8 +172,9 @@ export function EPPStatusStrip({
     return (
       <Alert>
         <HelpCircle className="text-muted-foreground" />
-        <AlertTitle>Nothing missing, but not every check could be made{sessionsText ? ` · ${sessionsText}` : ""}</AlertTitle>
+        <AlertTitle>Nothing missing, but not every check could be made</AlertTitle>
         <AlertDescription>
+          {sessions}
           <ul className="list-disc space-y-1 pl-4">
             {unknowns.map((u) => (
               <li key={u}>{u}</li>
@@ -172,9 +190,9 @@ export function EPPStatusStrip({
       <AlertTriangle className="text-amber-600" />
       <AlertTitle>
         {reasons.length === 1 ? "One thing needs attention" : `${reasons.length} things need attention`}
-        {sessionsText ? ` · ${sessionsText}` : ""}
       </AlertTitle>
       <AlertDescription>
+        {sessions}
         <ul className="list-disc space-y-1 pl-4">
           {reasons.map((r) => (
             <li key={r.key}>
