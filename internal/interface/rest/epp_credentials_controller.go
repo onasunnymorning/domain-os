@@ -8,7 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
+	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 )
 
 // EPPCredentialsController manages registrars' EPP logins, passwords,
@@ -36,8 +38,16 @@ func NewEPPCredentialsController(e *gin.Engine, svc interfaces.EPPCredentialServ
 		g.POST("/allowed-networks", ctrl.AddAllowedNetwork)
 		g.POST("/allowed-networks/:id/retire", ctrl.retire(entities.EPPCredentialAllowedNetwork))
 	}
+	e.GET("/epp/certificate-pins", handler, ctrl.requirePermission, ctrl.ListExpiringPins)
 	return ctrl
 }
+
+// defaultExpiringWithin is the window ListExpiringPins uses when the query
+// gives none: the first expiry notice (entities.EPPCertificateExpiryNotices).
+var defaultExpiringWithin = time.Duration(entities.EPPCertificateExpiryNotices[0]) * 24 * time.Hour
+
+// maxExpiringWithin bounds the window so a listing cannot be every pin.
+const maxExpiringWithin = 366 * 24 * time.Hour
 
 func (ctrl *EPPCredentialsController) requirePermission(ctx *gin.Context) {
 	if !requireAuthScope(ctx, ScopeEPPCredentialsAdmin) {
@@ -119,6 +129,67 @@ func (ctrl *EPPCredentialsController) GetAccess(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, ctrl.accessView(a))
+}
+
+type eppRegistrarPinView struct {
+	entities.EPPRegistrarCertificatePin
+	eppCredentialView
+}
+
+// expiringPinsFilter carries the window into the next-page link.
+type expiringPinsFilter struct {
+	Within time.Duration
+}
+
+func (f expiringPinsFilter) ToQueryParams() string {
+	return "&expiring_within=" + f.Within.String()
+}
+
+// ListExpiringPins godoc
+// @Summary List certificate pins expiring soon, across registrars
+// @Description A page of every registrar's usable pins whose certificate expires within expiring_within (a Go duration, default 720h, at most 366 days), expired ones included, soonest first. Cursor-paginated (INV-11)
+// @Tags EPP credentials
+// @Produce json
+// @Param expiring_within query string false "Go duration, e.g. 720h"
+// @Param pagesize query int false "Page size"
+// @Param cursor query string false "Cursor"
+// @Success 200 {object} response.ListItemResult
+// @Failure 400
+// @Failure 403
+// @Router /epp/certificate-pins [get]
+func (ctrl *EPPCredentialsController) ListExpiringPins(ctx *gin.Context) {
+	within := defaultExpiringWithin
+	if q := ctx.Query("expiring_within"); q != "" {
+		d, err := time.ParseDuration(q)
+		if err != nil || d <= 0 || d > maxExpiringWithin {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "expiring_within must be a duration between 1s and 366 days, such as 720h"})
+			return
+		}
+		within = d
+	}
+	var err error
+	q := queries.ListItemsQuery{Filter: expiringPinsFilter{Within: within}}
+	if q.PageSize, err = GetPageSize(ctx); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if q.PageCursor, err = GetAndDecodeCursor(ctx); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	pins, cursor, err := ctrl.svc.ListExpiringCertificatePins(ctx.Request.Context(), within, q)
+	if err != nil {
+		eppCredentialError(ctx, err)
+		return
+	}
+	now := ctrl.now()
+	out := make([]eppRegistrarPinView, 0, len(pins))
+	for _, p := range pins {
+		out = append(out, eppRegistrarPinView{p, eppCredentialView{p.State(now)}})
+	}
+	res := response.ListItemResult{Data: out}
+	res.SetMeta(ctx, cursor, len(out), q.PageSize, q.Filter)
+	ctx.JSON(http.StatusOK, res)
 }
 
 // CreateLogin godoc
@@ -314,7 +385,7 @@ func eppCredentialError(ctx *gin.Context, err error) {
 		errors.Is(err, entities.ErrEPPCredentialLimit), errors.Is(err, entities.ErrEPPCertificatePinExists),
 		errors.Is(err, entities.ErrEPPAllowedNetworkExists):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-	case errors.Is(err, entities.ErrInvalidEPPCredential), errors.Is(err, entities.ErrInvalidEPPPassword),
+	case errors.Is(err, entities.ErrInvalidEPPCredential), errors.Is(err, entities.ErrInvalidEPPPassword), errors.Is(err, entities.ErrInvalidEPPPinCursor),
 		errors.Is(err, entities.ErrInvalidEPPCertificate), errors.Is(err, entities.ErrInvalidEPPAllowedNetwork):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
