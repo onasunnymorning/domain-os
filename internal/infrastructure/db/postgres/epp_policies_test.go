@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -37,6 +38,15 @@ func TestEPPPolicyRepository(t *testing.T) {
 			return []entities.DomainEvent{entities.NewDomainEvent("test", typ, "subject", "msg", map[string]string{"k": "v"})}
 		}
 	}
+	// A save's callback may refuse; these adapt the recorders above to it.
+	savePolicyEvent := func(typ string) func(*entities.EPPPolicy) ([]entities.DomainEvent, error) {
+		f := policyEvent(typ)
+		return func(before *entities.EPPPolicy) ([]entities.DomainEvent, error) { return f(before), nil }
+	}
+	saveNoEvents := func() func(*entities.EPPPolicy) ([]entities.DomainEvent, error) {
+		return func(*entities.EPPPolicy) ([]entities.DomainEvent, error) { return nil, nil }
+	}
+	refuse := errors.New("refused by the caller")
 	countEvents := func(typ string) int64 {
 		var n int64
 		require.NoError(t, tx.Table("domain_events").Where("type = ?", typ).Count(&n).Error)
@@ -63,7 +73,7 @@ func TestEPPPolicyRepository(t *testing.T) {
 		}()}
 	t.Run("saved and replaced, each event told what was there", func(t *testing.T) {
 		before := countEvents(entities.EventEPPPolicySaved)
-		require.NoError(t, repo.SavePolicy(ctx, gold, policyEvent(entities.EventEPPPolicySaved)))
+		require.NoError(t, repo.SavePolicy(ctx, gold, savePolicyEvent(entities.EventEPPPolicySaved)))
 		assert.Nil(t, sawPolicy, "nothing before a create")
 		got, err := repo.GetPolicy(ctx, "gold-test")
 		require.NoError(t, err)
@@ -73,9 +83,24 @@ func TestEPPPolicyRepository(t *testing.T) {
 
 		replaced := *gold
 		replaced.Limits.CheckNames = 30
-		require.NoError(t, repo.SavePolicy(ctx, &replaced, policyEvent(entities.EventEPPPolicySaved)))
+		require.NoError(t, repo.SavePolicy(ctx, &replaced, savePolicyEvent(entities.EventEPPPolicySaved)))
 		require.NotNil(t, sawPolicy)
 		assert.Equal(t, 25, sawPolicy.Limits.CheckNames, "the version replaced, read in the change's transaction")
+
+		// A callback that refuses (a create-only save of an existing name) saves nothing.
+		third := *gold
+		third.Limits.CheckNames = 99
+		err = repo.SavePolicy(ctx, &third, func(before *entities.EPPPolicy) ([]entities.DomainEvent, error) {
+			if before != nil {
+				return nil, refuse
+			}
+			return nil, nil
+		})
+		assert.ErrorIs(t, err, refuse)
+		got, err = repo.GetPolicy(ctx, "gold-test")
+		require.NoError(t, err)
+		assert.Equal(t, 30, got.Limits.CheckNames, "unchanged by the refused save")
+		assert.Equal(t, before+2, countEvents(entities.EventEPPPolicySaved), "no event for the refused save")
 	})
 	t.Run("assigned, upserted, then not deletable", func(t *testing.T) {
 		var prev []string
@@ -106,7 +131,7 @@ func TestEPPPolicyRepository(t *testing.T) {
 	t.Run("families: members replaced, one family per registrar", func(t *testing.T) {
 		var saw *entities.RegistrarFamily
 		save := func(f *entities.RegistrarFamily) error {
-			return repo.SaveFamily(ctx, f, func(before *entities.RegistrarFamily) []entities.DomainEvent { saw = before; return nil })
+			return repo.SaveFamily(ctx, f, func(before *entities.RegistrarFamily) ([]entities.DomainEvent, error) { saw = before; return nil, nil })
 		}
 		f := &entities.RegistrarFamily{Name: "acme-test", Policy: "gold-test", Members: []entities.ClIDType{"rar-pol-a", "rar-pol-b"}, UpdatedAt: time.Now().UTC()}
 		require.NoError(t, save(f))
@@ -144,7 +169,7 @@ func TestEPPPolicyRepository(t *testing.T) {
 	t.Run("a registrar deleted takes its assignment and membership with it", func(t *testing.T) {
 		require.NoError(t, repo.AssignPolicy(ctx, "rar-pol-c", "gold-test", func(string) []entities.DomainEvent { return nil }))
 		require.NoError(t, repo.SaveFamily(ctx, &entities.RegistrarFamily{Name: "solo-test", Members: []entities.ClIDType{"rar-pol-c"}, UpdatedAt: time.Now()},
-			func(*entities.RegistrarFamily) []entities.DomainEvent { return nil }))
+			func(*entities.RegistrarFamily) ([]entities.DomainEvent, error) { return nil, nil }))
 		require.NoError(t, rars.Delete(ctx, "rar-pol-c"))
 		as, err := repo.ListAssignments(ctx)
 		require.NoError(t, err)
@@ -171,7 +196,7 @@ func TestEPPPolicyRepository(t *testing.T) {
 		old := *gold
 		old.Name = "old-test"
 		old.Limits.CheckNames, old.Limits.Rates.Check.Burst, old.Limits.FamilyRates.Check.Burst = 1500, 1500, 3000
-		require.NoError(t, repo.SavePolicy(ctx, &old, noEvents()))
+		require.NoError(t, repo.SavePolicy(ctx, &old, saveNoEvents()))
 		for _, prefix := range []string{"failed_creates_", "family_failed_creates_"} {
 			zero[prefix+"failures"], zero[prefix+"ratio_percent"] = 0, 0
 		}

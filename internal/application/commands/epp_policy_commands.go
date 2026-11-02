@@ -8,6 +8,9 @@ import "github.com/onasunnymorning/domain-os/pkg/domain/entities"
 type SaveEPPPolicyCommand struct {
 	Description string                   `json:"description"`
 	Limits      entities.EPPPolicyLimits `json:"limits" binding:"required"`
+	// CreateOnly refuses to replace an existing policy (set from the
+	// request's If-None-Match: *, never from the body).
+	CreateOnly bool `json:"-"`
 }
 
 // AssignEPPPolicyCommand assigns a registrar its EPP policy (PUT
@@ -23,4 +26,7 @@ type SaveRegistrarFamilyCommand struct {
 	Description string              `json:"description"`
 	Policy      string              `json:"policy"`
 	Members     []entities.ClIDType `json:"members"`
+	// CreateOnly refuses to replace an existing family (set from the
+	// request's If-None-Match: *, never from the body).
+	CreateOnly bool `json:"-"`
 }

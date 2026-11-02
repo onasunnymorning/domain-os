@@ -89,7 +89,7 @@ func (ctrl *EPPPoliciesController) GetPolicy(ctx *gin.Context) {
 
 // SavePolicy godoc
 // @Summary Create or replace an EPP policy
-// @Description Every limit must be given: at least 1, except creates_per_day (0 is no cap), and each check burst at least check_names. The built-in policies can be changed this way too.
+// @Description Every limit must be given: at least 1, except creates_per_day (0 is no cap), and each check burst at least check_names. The built-in policies can be changed this way too. With the header If-None-Match: * the save is create-only and an existing policy is 409, checked in the same transaction
 // @Tags EPP
 // @Accept json
 // @Produce json
@@ -104,6 +104,7 @@ func (ctrl *EPPPoliciesController) SavePolicy(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	cmd.CreateOnly = createOnly(ctx)
 	p, err := ctrl.svc.SavePolicy(ctx.Request.Context(), ctx.Param("name"), cmd)
 	if err != nil {
 		eppPolicyError(ctx, err)
@@ -242,7 +243,7 @@ func (ctrl *EPPPoliciesController) GetFamily(ctx *gin.Context) {
 
 // SaveFamily godoc
 // @Summary Create or replace a registrar family
-// @Description Its members are replaced. A registrar is in at most one family.
+// @Description Its members are replaced. A registrar is in at most one family. With the header If-None-Match: * the save is create-only and an existing family is 409, checked in the same transaction
 // @Tags EPP
 // @Accept json
 // @Produce json
@@ -259,6 +260,7 @@ func (ctrl *EPPPoliciesController) SaveFamily(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	cmd.CreateOnly = createOnly(ctx)
 	f, err := ctrl.svc.SaveFamily(ctx.Request.Context(), ctx.Param("name"), cmd)
 	if err != nil {
 		eppPolicyError(ctx, err)
@@ -282,13 +284,20 @@ func (ctrl *EPPPoliciesController) DeleteFamily(ctx *gin.Context) {
 	ctx.Status(http.StatusNoContent)
 }
 
+// createOnly is the RFC 9110 way to say "do not replace": PUT with
+// If-None-Match: * succeeds only if nothing is there yet.
+func createOnly(ctx *gin.Context) bool {
+	return ctx.GetHeader("If-None-Match") == "*"
+}
+
 func eppPolicyError(ctx *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entities.ErrEPPPolicyNotFound), errors.Is(err, entities.ErrRegistrarFamilyNotFound),
 		errors.Is(err, entities.ErrRegistrarNotFound):
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, entities.ErrEPPPolicyBuiltIn), errors.Is(err, entities.ErrEPPPolicyInUse),
-		errors.Is(err, entities.ErrRegistrarInFamily):
+		errors.Is(err, entities.ErrRegistrarInFamily), errors.Is(err, entities.ErrEPPPolicyExists),
+		errors.Is(err, entities.ErrRegistrarFamilyExists):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, entities.ErrInvalidEPPPolicy), errors.Is(err, entities.ErrInvalidRegistrarFamily),
 		errors.Is(err, entities.ErrInvalidCreateOutcomeRange):

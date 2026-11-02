@@ -102,9 +102,16 @@ func (s *EPPPolicyService) SavePolicy(ctx context.Context, name string, cmd comm
 	if err != nil {
 		return nil, err
 	}
+	// A built-in exists whether or not it is stored yet: a create never takes its name.
+	if cmd.CreateOnly && entities.IsBuiltInEPPPolicy(name) {
+		return nil, fmt.Errorf("%w: %s is built in", entities.ErrEPPPolicyExists, name)
+	}
 	p.UpdatedAt, p.UpdatedBy = s.now().UTC(), actorOf(ctx)
-	err = s.repo.SavePolicy(ctx, p, func(before *entities.EPPPolicy) []entities.DomainEvent {
-		return []entities.DomainEvent{s.event(ctx, entities.EventEPPPolicySaved, name, fmt.Sprintf("EPP policy %s saved", name), p, before, p)}
+	err = s.repo.SavePolicy(ctx, p, func(before *entities.EPPPolicy) ([]entities.DomainEvent, error) {
+		if cmd.CreateOnly && before != nil {
+			return nil, fmt.Errorf("%w: %s", entities.ErrEPPPolicyExists, name)
+		}
+		return []entities.DomainEvent{s.event(ctx, entities.EventEPPPolicySaved, name, fmt.Sprintf("EPP policy %s saved", name), p, before, p)}, nil
 	})
 	if err != nil {
 		return nil, err
@@ -196,8 +203,11 @@ func (s *EPPPolicyService) SaveFamily(ctx context.Context, name string, cmd comm
 		}
 	}
 	f.UpdatedAt, f.UpdatedBy = s.now().UTC(), actorOf(ctx)
-	err = s.repo.SaveFamily(ctx, f, func(before *entities.RegistrarFamily) []entities.DomainEvent {
-		return []entities.DomainEvent{s.event(ctx, entities.EventRegistrarFamilySaved, name, fmt.Sprintf("Registrar family %s saved", name), f, before, f)}
+	err = s.repo.SaveFamily(ctx, f, func(before *entities.RegistrarFamily) ([]entities.DomainEvent, error) {
+		if cmd.CreateOnly && before != nil {
+			return nil, fmt.Errorf("%w: %s", entities.ErrRegistrarFamilyExists, name)
+		}
+		return []entities.DomainEvent{s.event(ctx, entities.EventRegistrarFamilySaved, name, fmt.Sprintf("Registrar family %s saved", name), f, before, f)}, nil
 	})
 	if err != nil {
 		return nil, err

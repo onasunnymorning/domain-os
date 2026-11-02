@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Plug } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -16,11 +16,11 @@ function EPPPageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const initial = searchParams?.get("tab");
-  const [tab, setTab] = useState<Tab>(TABS.includes(initial as Tab) ? (initial as Tab) : "now");
+  // The URL is the state: sidebar and history navigation change the tab too.
+  const param = searchParams?.get("tab");
+  const tab: Tab = TABS.includes(param as Tab) ? (param as Tab) : "now";
 
   const onTabChange = (value: string) => {
-    setTab(value as Tab);
     const next = new URLSearchParams(searchParams?.toString() ?? "");
     next.set("tab", value);
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });

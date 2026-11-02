@@ -451,13 +451,13 @@ A command refused by one rule is not counted by the later ones. Session limits a
 |---|---|
 | List policies, the built-in ones included | `GET /epp/policies` |
 | One policy | `GET /epp/policies/{name}` |
-| Create or replace a policy (every limit given) | `PUT /epp/policies/{name}` with `{"description": "…", "limits": {"sessions_per_registrar": 20, "sessions_per_login": 10, "sessions_per_family": 60, "check_names": 50, "rates": {"check": {"per_second": 500, "burst": 2000}, "info": {"per_second": 40, "burst": 200}, "transform": {"per_second": 20, "burst": 100}, "poll": {"per_second": 10, "burst": 40}}, "family_rates": {…the same four…}, "creates_per_day": 0, "failed_creates": {"failures": 100, "ratio_percent": 90}, "family_failed_creates": {"failures": 300, "ratio_percent": 90}}}`. A name is 1 to 32 lower-case letters, digits and hyphens, starting with a letter. 400 for a limit below 1 (below 0 for `creates_per_day`), or a check burst below `check_names`; the error names each |
+| Create or replace a policy (every limit given). With the header `If-None-Match: *` the save is **create-only**: an existing policy is 409, checked in the same transaction, so a create can never replace what someone else saved | `PUT /epp/policies/{name}` with `{"description": "…", "limits": {"sessions_per_registrar": 20, "sessions_per_login": 10, "sessions_per_family": 60, "check_names": 50, "rates": {"check": {"per_second": 500, "burst": 2000}, "info": {"per_second": 40, "burst": 200}, "transform": {"per_second": 20, "burst": 100}, "poll": {"per_second": 10, "burst": 40}}, "family_rates": {…the same four…}, "creates_per_day": 0, "failed_creates": {"failures": 100, "ratio_percent": 90}, "family_failed_creates": {"failures": 300, "ratio_percent": 90}}}`. A name is 1 to 32 lower-case letters, digits and hyphens, starting with a letter. 400 for a limit below 1 (below 0 for `creates_per_day`), or a check burst below `check_names`; the error names each |
 | Delete a custom policy | `DELETE /epp/policies/{name}` → 204. 409 for a built-in policy, or one a registrar or family is assigned |
 | What applies to a registrar | `GET /registrars/{clid}/epp/policy`: its policy, and its family with the family's policy |
 | Assign a registrar its policy | `PUT /registrars/{clid}/epp/policy` with `{"policy": "gold"}`; `"default"` or `""` removes the assignment. 404 for an unknown registrar or policy |
 | List families | `GET /epp/families` |
 | One family | `GET /epp/families/{name}` |
-| Create or replace a family, its members included | `PUT /epp/families/{name}` with `{"description": "…", "policy": "gold", "members": ["clid1", "clid2"]}`. 409 for a member of another family; 404 for an unknown registrar or policy |
+| Create or replace a family, its members included. `If-None-Match: *` makes it create-only (409 if it exists), as for policies | `PUT /epp/families/{name}` with `{"description": "…", "policy": "gold", "members": ["clid1", "clid2"]}`. 409 for a member of another family; 404 for an unknown registrar or policy |
 | Delete a family | `DELETE /epp/families/{name}` → 204; its members belong to none |
 
 ### Sessions

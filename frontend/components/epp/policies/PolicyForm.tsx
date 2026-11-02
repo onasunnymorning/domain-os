@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, type Path, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -35,7 +35,7 @@ const budget = (who: string) =>
 export const policySchema = z
   .object({
     name: z.string().regex(POLICY_NAME_PATTERN, "1 to 32 lower-case letters, digits and hyphens, starting with a letter"),
-    description: z.string().max(200, "At most 200 characters").optional().or(z.literal("")),
+    description: z.string().optional().or(z.literal("")),
     limits: z.object({
       sessions_per_registrar: limit("Sessions per registrar"),
       sessions_per_login: limit("Sessions per login"),
@@ -201,10 +201,27 @@ export function PolicyForm({ mode, initial, builtIn = false, resetValues, saving
   const [limitCreates, setLimitCreates] = useState(initial.limits.creates_per_day > 0);
   const [showFamily, setShowFamily] = useState(false);
 
-  const submit = form.handleSubmit(async (v) => {
-    const limits: EPPPolicyLimits = { ...v.limits, creates_per_day: limitCreates ? v.limits.creates_per_day : 0 };
-    await onSave({ name: v.name, description: v.description ?? "", limits });
-  });
+  // Family rates are collapsed by default; an error there must be seen.
+  const familyErrors = form.formState.errors.limits?.family_rates;
+  useEffect(() => {
+    if (familyErrors) setShowFamily(true);
+  }, [familyErrors]);
+
+  const submit = form.handleSubmit(
+    async (v) => {
+      const limits: EPPPolicyLimits = { ...v.limits, creates_per_day: limitCreates ? v.limits.creates_per_day : 0 };
+      await onSave({ name: v.name, description: v.description ?? "", limits });
+    },
+    (errors) => {
+      if (errors.limits?.family_rates) setShowFamily(true);
+    },
+  );
+
+  // Off means 0, whatever the hidden field held (a cleared field is NaN).
+  const setLimitCreatesTo = (on: boolean) => {
+    setLimitCreates(on);
+    if (!on) form.setValue("limits.creates_per_day", 0, { shouldValidate: true });
+  };
 
   const setFamilyToTriple = () => {
     const r = form.getValues("limits.rates");
@@ -306,7 +323,7 @@ export function PolicyForm({ mode, initial, builtIn = false, resetValues, saving
 
         <Section title="Creates per day" description="A cap on successful domain creates per registrar per UTC day. Refused or failed creates do not count.">
           <label className="flex items-center gap-3 text-sm">
-            <Switch checked={limitCreates} onCheckedChange={setLimitCreates} aria-label="Limit successful domain creates per day" />
+            <Switch checked={limitCreates} onCheckedChange={setLimitCreatesTo} aria-label="Limit successful domain creates per day" />
             Limit successful domain creates per day
           </label>
           {limitCreates ? (

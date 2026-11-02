@@ -138,8 +138,9 @@ export async function getEPPPolicy(name: string): Promise<EPPPolicy> {
   return data;
 }
 
-export async function saveEPPPolicy(name: string, body: SaveEPPPolicyRequest): Promise<EPPPolicy> {
-  const { data } = await apiClient.put(`/epp/policies/${enc(name)}`, body);
+/** With createOnly the API refuses (409) if the name exists, atomically, instead of replacing it. */
+export async function saveEPPPolicy(name: string, body: SaveEPPPolicyRequest, opts?: { createOnly?: boolean }): Promise<EPPPolicy> {
+  const { data } = await apiClient.put(`/epp/policies/${enc(name)}`, body, opts?.createOnly ? { headers: { "If-None-Match": "*" } } : undefined);
   return data;
 }
 
@@ -173,8 +174,9 @@ export async function getRegistrarFamily(name: string): Promise<RegistrarFamily>
   return data;
 }
 
-export async function saveRegistrarFamily(name: string, body: SaveRegistrarFamilyRequest): Promise<RegistrarFamily> {
-  const { data } = await apiClient.put(`/epp/families/${enc(name)}`, body);
+/** With createOnly the API refuses (409) if the name exists, atomically, instead of replacing its members. */
+export async function saveRegistrarFamily(name: string, body: SaveRegistrarFamilyRequest, opts?: { createOnly?: boolean }): Promise<RegistrarFamily> {
+  const { data } = await apiClient.put(`/epp/families/${enc(name)}`, body, opts?.createOnly ? { headers: { "If-None-Match": "*" } } : undefined);
   return data;
 }
 

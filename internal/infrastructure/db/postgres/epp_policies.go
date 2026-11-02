@@ -225,16 +225,20 @@ func policyIn(tx *gorm.DB, name string) (*entities.EPPPolicy, error) {
 }
 
 // SavePolicy implements repositories.EPPPolicyRepository.
-func (r *EPPPolicyRepository) SavePolicy(ctx context.Context, p *entities.EPPPolicy, events func(*entities.EPPPolicy) []entities.DomainEvent) error {
+func (r *EPPPolicyRepository) SavePolicy(ctx context.Context, p *entities.EPPPolicy, events func(*entities.EPPPolicy) ([]entities.DomainEvent, error)) error {
 	return r.change(ctx, func(tx *gorm.DB) error {
 		before, err := policyIn(tx, p.Name)
+		if err != nil {
+			return err
+		}
+		evs, err := events(before)
 		if err != nil {
 			return err
 		}
 		if err := tx.Save(toPolicyRecord(p)).Error; err != nil {
 			return err
 		}
-		return writeEvents(tx, events(before))
+		return writeEvents(tx, evs)
 	})
 }
 
@@ -388,9 +392,13 @@ func (r *EPPPolicyRepository) GetFamily(ctx context.Context, name string) (*enti
 
 // SaveFamily implements repositories.EPPPolicyRepository. Its members are
 // replaced.
-func (r *EPPPolicyRepository) SaveFamily(ctx context.Context, f *entities.RegistrarFamily, events func(*entities.RegistrarFamily) []entities.DomainEvent) error {
+func (r *EPPPolicyRepository) SaveFamily(ctx context.Context, f *entities.RegistrarFamily, events func(*entities.RegistrarFamily) ([]entities.DomainEvent, error)) error {
 	return r.change(ctx, func(tx *gorm.DB) error {
 		before, err := familyIn(tx, f.Name)
+		if err != nil {
+			return err
+		}
+		evs, err := events(before)
 		if err != nil {
 			return err
 		}
@@ -432,7 +440,7 @@ func (r *EPPPolicyRepository) SaveFamily(ctx context.Context, f *entities.Regist
 				return err
 			}
 		}
-		return writeEvents(tx, events(before))
+		return writeEvents(tx, evs)
 	})
 }
 

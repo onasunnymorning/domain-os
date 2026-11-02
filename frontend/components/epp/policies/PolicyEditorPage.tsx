@@ -15,19 +15,23 @@ import { builtInLimits, DEFAULT_POLICY_LIMITS, isBuiltInPolicy } from "@/lib/con
 import { useDeleteEPPPolicy, useEPPPolicy, useSaveEPPPolicy, eppErrorMessage } from "@/lib/hooks/useEPP";
 import type { EPPPolicyLimits } from "@/lib/types/epp";
 
-/** `name` of "new" creates; anything else edits that policy. */
-export function PolicyEditorPage({ name }: { name: string }) {
+/** Creating (its own route) or editing the policy `name`. */
+export function PolicyEditorPage({ name = "", creating = false }: { name?: string; creating?: boolean }) {
   const router = useRouter();
-  const creating = name === "new";
-  const policy = useEPPPolicy(name, !creating);
+  // A fresh read: a cached copy could be older than a change made elsewhere since.
+  const policy = useEPPPolicy(name, !creating, { fresh: true });
   const save = useSaveEPPPolicy();
   const del = useDeleteEPPPolicy();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const builtIn = !creating && isBuiltInPolicy(name);
+  // The form mounts once the first fetch has completed, never from a cached copy;
+  // a later background refetch does not remount it over unsaved edits.
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+  if (!creating && policy.data && !policy.isFetching && fetchedAt === null) setFetchedAt(policy.dataUpdatedAt);
 
   const onSave = async (v: { name: string; description: string; limits: EPPPolicyLimits }) => {
     try {
-      await save.mutateAsync({ name: v.name, body: { description: v.description, limits: v.limits } });
+      await save.mutateAsync({ name: v.name, body: { description: v.description, limits: v.limits }, createOnly: creating });
       toast.success(creating ? `Policy ${v.name} created.` : `Policy ${v.name} saved. Nodes pick it up within about 30 seconds.`);
       router.push(creating ? `/epp/policies/${encodeURIComponent(v.name)}` : "/epp?tab=policies");
     } catch (err) {
@@ -72,7 +76,7 @@ export function PolicyEditorPage({ name }: { name: string }) {
             saving={save.isPending}
             onSave={onSave}
           />
-        ) : policy.isLoading ? (
+        ) : fetchedAt === null && !policy.error ? (
           <Skeleton className="h-64 w-full" />
         ) : policy.error || !policy.data ? (
           <div className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
@@ -80,6 +84,7 @@ export function PolicyEditorPage({ name }: { name: string }) {
           </div>
         ) : (
           <PolicyForm
+            key={fetchedAt}
             mode="edit"
             initial={{ name: policy.data.name, description: policy.data.description, limits: policy.data.limits }}
             builtIn={builtIn}

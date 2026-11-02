@@ -17,8 +17,11 @@ type EPPPolicyRepository interface {
 	ListPolicies(ctx context.Context) ([]*entities.EPPPolicy, error)
 	// GetPolicy returns a policy, or entities.ErrEPPPolicyNotFound.
 	GetPolicy(ctx context.Context, name string) (*entities.EPPPolicy, error)
-	// SavePolicy creates or replaces p.
-	SavePolicy(ctx context.Context, p *entities.EPPPolicy, events func(before *entities.EPPPolicy) []entities.DomainEvent) error
+	// SavePolicy creates or replaces p. events is called inside the
+	// transaction with the policy being replaced (nil when p is new) and
+	// returns the change's events; an error from it saves nothing, so a
+	// caller can refuse to replace what it finds.
+	SavePolicy(ctx context.Context, p *entities.EPPPolicy, events func(before *entities.EPPPolicy) ([]entities.DomainEvent, error)) error
 	// DeletePolicy deletes a policy no registrar or family is assigned
 	// (entities.ErrEPPPolicyInUse otherwise; entities.ErrEPPPolicyNotFound
 	// if there is none).
@@ -38,7 +41,8 @@ type EPPPolicyRepository interface {
 	// SaveFamily creates or replaces f, its members included. A member of
 	// another family is entities.ErrRegistrarInFamily. A registrar's
 	// deletion removes it from its family.
-	SaveFamily(ctx context.Context, f *entities.RegistrarFamily, events func(before *entities.RegistrarFamily) []entities.DomainEvent) error
+	// events is as for SavePolicy: an error from it saves nothing.
+	SaveFamily(ctx context.Context, f *entities.RegistrarFamily, events func(before *entities.RegistrarFamily) ([]entities.DomainEvent, error)) error
 	// DeleteFamily deletes a family; its members belong to none.
 	DeleteFamily(ctx context.Context, name string, events func(before *entities.RegistrarFamily) []entities.DomainEvent) error
 }

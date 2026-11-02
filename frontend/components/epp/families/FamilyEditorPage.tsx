@@ -12,24 +12,32 @@ import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { FamilyForm, type FamilyFormValues } from "./FamilyForm";
 import { useDeleteRegistrarFamily, useRegistrarFamily, useSaveRegistrarFamily, eppErrorMessage } from "@/lib/hooks/useEPP";
 
-/** Finds which member a 409 "already in family" message is about. */
+/**
+ * Which member a 409 "already in another family" message is about. The API
+ * says "…: <clid> is in <family>"; the client ID is read whole and compared
+ * exactly, so rar-001 is never taken for rar-0011.
+ */
 export function memberNamedIn(message: string, members: string[]): string | undefined {
-  return members.find((m) => message.includes(m));
+  const m = /:\s*(\S+) is in \S+\s*$/.exec(message);
+  if (!m) return undefined;
+  return members.find((c) => c === m[1]);
 }
 
-export function FamilyEditorPage({ name }: { name: string }) {
+/** Creating (its own route) or editing the family `name`. */
+export function FamilyEditorPage({ name = "", creating = false }: { name?: string; creating?: boolean }) {
   const router = useRouter();
-  const creating = name === "new";
-  const family = useRegistrarFamily(name, !creating);
+  const family = useRegistrarFamily(name, !creating, { fresh: true });
   const save = useSaveRegistrarFamily();
   const del = useDeleteRegistrarFamily();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [memberError, setMemberError] = useState<{ clid: string; message: string } | null>(null);
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+  if (!creating && family.data && !family.isFetching && fetchedAt === null) setFetchedAt(family.dataUpdatedAt);
 
   const onSave = async (v: FamilyFormValues) => {
     setMemberError(null);
     try {
-      await save.mutateAsync({ name: v.name, body: { description: v.description, policy: v.policy, members: v.members } });
+      await save.mutateAsync({ name: v.name, body: { description: v.description, policy: v.policy, members: v.members }, createOnly: creating });
       toast.success(creating ? `Family ${v.name} created.` : `Family ${v.name} saved.`);
       router.push("/epp?tab=families");
     } catch (err) {
@@ -69,7 +77,7 @@ export function FamilyEditorPage({ name }: { name: string }) {
 
         {creating ? (
           <FamilyForm mode="create" initial={{ name: "", description: "", policy: "", members: [] }} saving={save.isPending} memberError={memberError} onSave={onSave} />
-        ) : family.isLoading ? (
+        ) : fetchedAt === null && !family.error ? (
           <Skeleton className="h-64 w-full" />
         ) : family.error || !family.data ? (
           <div className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
@@ -77,6 +85,7 @@ export function FamilyEditorPage({ name }: { name: string }) {
           </div>
         ) : (
           <FamilyForm
+            key={fetchedAt}
             mode="edit"
             initial={{ name: family.data.name, description: family.data.description ?? "", policy: family.data.policy ?? "", members: family.data.members ?? [] }}
             saving={save.isPending}

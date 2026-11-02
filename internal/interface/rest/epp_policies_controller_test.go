@@ -120,6 +120,39 @@ func TestEPPPoliciesAPI(t *testing.T) {
 	assert.NotEmpty(t, repo.Events)
 }
 
+// PUT with If-None-Match: * is create-only: it never replaces what is there.
+func TestEPPPoliciesCreateOnly(t *testing.T) {
+	r, _ := eppPoliciesRouter(t, ScopeEPPPolicyAdmin)
+	limits := `{"description":"first","limits":{"sessions_per_registrar":20,"sessions_per_login":5,"sessions_per_family":60,"check_names":25,` +
+		`"rates":{"check":{"per_second":250,"burst":1000},"info":{"per_second":20,"burst":100},"transform":{"per_second":10,"burst":50},"poll":{"per_second":5,"burst":20}},` +
+		`"family_rates":{"check":{"per_second":750,"burst":3000},"info":{"per_second":60,"burst":300},"transform":{"per_second":30,"burst":150},"poll":{"per_second":15,"burst":60}},` +
+		`"creates_per_day":100,"failed_creates":{"failures":100,"ratio_percent":90},"family_failed_creates":{"failures":300,"ratio_percent":90}}}`
+	createOnly := func(method, path, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("If-None-Match", "*")
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	require.Equal(t, http.StatusOK, createOnly(http.MethodPut, "/epp/policies/gold", limits).Code, "a new name is created")
+	w := createOnly(http.MethodPut, "/epp/policies/gold", strings.Replace(limits, "first", "second", 1))
+	assert.Equal(t, http.StatusConflict, w.Code, "an existing name is refused")
+	assert.Contains(t, w.Body.String(), "already exists")
+	w = createOnly(http.MethodPut, "/epp/policies/default", limits)
+	assert.Equal(t, http.StatusConflict, w.Code, "a built-in is never replaced by a create")
+	w = do(r, http.MethodGet, "/epp/policies/gold", "")
+	assert.Contains(t, w.Body.String(), `"description":"first"`, "the refused save changed nothing")
+	assert.Equal(t, http.StatusOK, do(r, http.MethodPut, "/epp/policies/gold", strings.Replace(limits, "first", "second", 1)).Code, "a plain PUT still replaces")
+
+	require.Equal(t, http.StatusOK, createOnly(http.MethodPut, "/epp/families/acme", `{"members":["rar-a"]}`).Code)
+	w = createOnly(http.MethodPut, "/epp/families/acme", `{"members":[]}`)
+	assert.Equal(t, http.StatusConflict, w.Code, "an existing family keeps its members")
+	w = do(r, http.MethodGet, "/epp/families/acme", "")
+	assert.Contains(t, w.Body.String(), `"rar-a"`)
+}
+
 func TestEPPCreateOutcomesAPI(t *testing.T) {
 	r, _ := eppPoliciesRouter(t, ScopeEPPPolicyAdmin)
 	w := do(r, http.MethodGet, "/registrars/rar-a/epp/create-outcomes?from=2026-01-01&to=2026-01-31", "")

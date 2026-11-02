@@ -19,7 +19,7 @@ export function PoliciesTab() {
         description="A policy is a named set of limits: sessions, names per check, command rates, creates per day and the failed-create budget. Every registrar is on exactly one; default applies to any registrar not assigned another, probation is for new registrars."
         action={
           <Button size="sm" asChild>
-            <Link href="/epp/policies/new">New policy</Link>
+            <Link href="/epp/new-policy">New policy</Link>
           </Button>
         }
       />

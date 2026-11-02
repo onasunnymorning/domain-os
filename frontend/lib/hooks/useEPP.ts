@@ -198,14 +198,22 @@ export function useEPPPolicies(enabled = true) {
   return useQuery({ queryKey: eppKeys.policies(), queryFn: getEPPPolicies, enabled });
 }
 
-export function useEPPPolicy(name: string, enabled = true) {
-  return useQuery({ queryKey: eppKeys.policy(name), queryFn: () => getEPPPolicy(name), enabled: enabled && !!name });
+/** An editor reads fresh (never a cached copy) so a save cannot overwrite a newer change it never saw. */
+const freshRead = { staleTime: 0, refetchOnMount: "always" as const };
+
+export function useEPPPolicy(name: string, enabled = true, opts?: { fresh?: boolean }) {
+  return useQuery({
+    queryKey: eppKeys.policy(name),
+    queryFn: () => getEPPPolicy(name),
+    enabled: enabled && !!name,
+    ...(opts?.fresh ? freshRead : {}),
+  });
 }
 
 export function useSaveEPPPolicy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ name, body }: { name: string; body: SaveEPPPolicyRequest }) => saveEPPPolicy(name, body),
+    mutationFn: ({ name, body, createOnly }: { name: string; body: SaveEPPPolicyRequest; createOnly?: boolean }) => saveEPPPolicy(name, body, { createOnly }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: eppKeys.policies() });
       qc.invalidateQueries({ queryKey: ["epp", "policy"] });
@@ -249,14 +257,19 @@ export function useRegistrarFamilies(enabled = true) {
   return useQuery({ queryKey: eppKeys.families(), queryFn: getRegistrarFamilies, enabled });
 }
 
-export function useRegistrarFamily(name: string, enabled = true) {
-  return useQuery({ queryKey: eppKeys.family(name), queryFn: () => getRegistrarFamily(name), enabled: enabled && !!name });
+export function useRegistrarFamily(name: string, enabled = true, opts?: { fresh?: boolean }) {
+  return useQuery({
+    queryKey: eppKeys.family(name),
+    queryFn: () => getRegistrarFamily(name),
+    enabled: enabled && !!name,
+    ...(opts?.fresh ? freshRead : {}),
+  });
 }
 
 export function useSaveRegistrarFamily() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ name, body }: { name: string; body: SaveRegistrarFamilyRequest }) => saveRegistrarFamily(name, body),
+    mutationFn: ({ name, body, createOnly }: { name: string; body: SaveRegistrarFamilyRequest; createOnly?: boolean }) => saveRegistrarFamily(name, body, { createOnly }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: eppKeys.families() });
       qc.invalidateQueries({ queryKey: ["epp", "policy"] });
