@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/netip"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -150,6 +151,31 @@ func (s *EPPCredentials) ListCompromisedSince(_ context.Context, since time.Time
 			add(&n.EPPCredentialLifecycle)
 		}
 	}
+	return out, nil
+}
+
+// ListUsablePinsExpiringBefore implements
+// repositories.EPPCredentialRepository.
+func (s *EPPCredentials) ListUsablePinsExpiringBefore(_ context.Context, now, deadline time.Time) ([]entities.EPPRegistrarCertificatePin, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return nil, s.err
+	}
+	var out []entities.EPPRegistrarCertificatePin
+	for clid, a := range s.access {
+		for _, p := range a.Clone().CertificatePins {
+			if p.Usable(now) && p.NotAfter.Before(deadline) {
+				out = append(out, entities.EPPRegistrarCertificatePin{ClID: entities.ClIDType(clid), EPPCertificatePin: p})
+			}
+		}
+	}
+	slices.SortFunc(out, func(a, b entities.EPPRegistrarCertificatePin) int {
+		if c := a.NotAfter.Compare(b.NotAfter); c != 0 {
+			return c
+		}
+		return strings.Compare(string(a.ClID), string(b.ClID))
+	})
 	return out, nil
 }
 

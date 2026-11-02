@@ -18,9 +18,16 @@ import (
 )
 
 type fakeEPPCredentialService struct {
-	access  *entities.EPPRegistrarAccess
-	retired []entities.EPPCredentialRef
-	err     error
+	access   *entities.EPPRegistrarAccess
+	retired  []entities.EPPCredentialRef
+	expiring []entities.EPPRegistrarCertificatePin
+	within   time.Duration
+	err      error
+}
+
+func (f *fakeEPPCredentialService) ListExpiringCertificatePins(_ context.Context, within time.Duration) ([]entities.EPPRegistrarCertificatePin, error) {
+	f.within = within
+	return f.expiring, f.err
 }
 
 func (f *fakeEPPCredentialService) GetAccess(context.Context, string) (*entities.EPPRegistrarAccess, error) {
@@ -121,6 +128,47 @@ func TestEPPCredentialsAccessViewShowsStateNotHashes(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
 	require.Equal(t, "retiring", got.Logins[0].Passwords[0].State)
 	require.NotNil(t, got.CertificatePins, "empty lists are [], not null")
+}
+
+func TestEPPCredentialsListExpiringPins(t *testing.T) {
+	now := time.Now().UTC()
+	pin := &entities.EPPCertificatePin{
+		EPPCredentialLifecycle: entities.EPPCredentialLifecycle{ID: uuid.New(), CreatedAt: now},
+		SPKISHA256:             "abc", Subject: "CN=client", NotBefore: now.Add(-time.Hour), NotAfter: now.Add(48 * time.Hour),
+	}
+	svc := &fakeEPPCredentialService{expiring: []entities.EPPRegistrarCertificatePin{{ClID: "rar-001", EPPCertificatePin: pin}}}
+	r := eppCredentialRouter(svc, ScopeEPPCredentialsAdmin)
+
+	w := serveEPPCredential(r, http.MethodGet, "/epp/certificate-pins", "")
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, defaultExpiringWithin, svc.within, "defaults to the first expiry notice")
+	var got []struct {
+		ClID    string `json:"clid"`
+		Subject string `json:"subject"`
+		State   string `json:"state"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	require.Len(t, got, 1)
+	require.Equal(t, "rar-001", got[0].ClID)
+	require.Equal(t, "CN=client", got[0].Subject)
+	require.Equal(t, "active", got[0].State)
+
+	w = serveEPPCredential(r, http.MethodGet, "/epp/certificate-pins?expiring_within=168h", "")
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, 168*time.Hour, svc.within)
+
+	for _, bad := range []string{"soon", "-1h", "0s", "9000h"} {
+		w = serveEPPCredential(r, http.MethodGet, "/epp/certificate-pins?expiring_within="+bad, "")
+		require.Equal(t, http.StatusBadRequest, w.Code, bad)
+	}
+
+	svc.expiring = nil
+	w = serveEPPCredential(r, http.MethodGet, "/epp/certificate-pins", "")
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "[]", strings.TrimSpace(w.Body.String()), "an empty list is [], not null")
+
+	w = serveEPPCredential(eppCredentialRouter(svc, ScopeEscrowKeysAdmin), http.MethodGet, "/epp/certificate-pins", "")
+	require.Equal(t, http.StatusForbidden, w.Code)
 }
 
 func TestEPPCredentialsGeneratedPasswordIsShownOnce(t *testing.T) {

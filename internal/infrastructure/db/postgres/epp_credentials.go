@@ -238,6 +238,41 @@ func (r *EPPCredentialRepository) ListRegistrarsWithExpiringPins(ctx context.Con
 	return out, nil
 }
 
+// ListUsablePinsExpiringBefore implements
+// repositories.EPPCredentialRepository.
+func (r *EPPCredentialRepository) ListUsablePinsExpiringBefore(ctx context.Context, now, deadline time.Time) ([]entities.EPPRegistrarCertificatePin, error) {
+	var recs []EPPCertificatePinRecord
+	err := r.db.WithContext(ctx).
+		Where("retire_at IS NULL OR retire_at > ?", now).
+		Where("not_after < ?", deadline).
+		Order("not_after, cl_id, id").Find(&recs).Error
+	if err != nil {
+		return nil, fmt.Errorf("list expiring EPP certificate pins: %w", err)
+	}
+	out := make([]entities.EPPRegistrarCertificatePin, 0, len(recs))
+	for _, rec := range recs {
+		pin, err := rec.toPin()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, entities.EPPRegistrarCertificatePin{ClID: entities.ClIDType(rec.ClID), EPPCertificatePin: pin})
+	}
+	return out, nil
+}
+
+// toPin converts a record to its entity.
+func (rec EPPCertificatePinRecord) toPin() (*entities.EPPCertificatePin, error) {
+	var restrict []entities.ClIDType
+	if err := json.Unmarshal([]byte(rec.Logins), &restrict); err != nil {
+		return nil, fmt.Errorf("decode logins of EPP certificate pin %s: %w", rec.ID, err)
+	}
+	return &entities.EPPCertificatePin{
+		EPPCredentialLifecycle: rec.toLifecycle(rec.ID),
+		SPKISHA256:             rec.SPKISHA256, Subject: rec.Subject, Issuer: rec.Issuer, Serial: rec.Serial,
+		NotBefore: rec.NotBefore.UTC(), NotAfter: rec.NotAfter.UTC(), Logins: restrict, ExpiryNotice: rec.ExpiryNotice,
+	}, nil
+}
+
 // ListCompromisedSince returns the IDs of credentials of every kind retired
 // as compromised at or after since.
 func (r *EPPCredentialRepository) ListCompromisedSince(ctx context.Context, since time.Time) ([]uuid.UUID, error) {
@@ -314,15 +349,11 @@ func loadEPPAccess(db *gorm.DB, clid string) (*entities.EPPRegistrarAccess, erro
 		return nil, fmt.Errorf("load EPP certificate pins of %s: %w", clid, err)
 	}
 	for _, rec := range pins {
-		var restrict []entities.ClIDType
-		if err := json.Unmarshal([]byte(rec.Logins), &restrict); err != nil {
-			return nil, fmt.Errorf("decode logins of EPP certificate pin %s: %w", rec.ID, err)
+		pin, err := rec.toPin()
+		if err != nil {
+			return nil, err
 		}
-		access.CertificatePins = append(access.CertificatePins, &entities.EPPCertificatePin{
-			EPPCredentialLifecycle: rec.toLifecycle(rec.ID),
-			SPKISHA256:             rec.SPKISHA256, Subject: rec.Subject, Issuer: rec.Issuer, Serial: rec.Serial,
-			NotBefore: rec.NotBefore.UTC(), NotAfter: rec.NotAfter.UTC(), Logins: restrict, ExpiryNotice: rec.ExpiryNotice,
-		})
+		access.CertificatePins = append(access.CertificatePins, pin)
 	}
 
 	var networks []EPPAllowedNetworkRecord

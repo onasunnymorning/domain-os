@@ -533,6 +533,13 @@ type EPPCertificateExpiringData struct {
 	Days     int       `json:"days"`
 }
 
+// EPPRegistrarCertificatePin is a certificate pin with the registrar it
+// belongs to, for lists that span registrars.
+type EPPRegistrarCertificatePin struct {
+	ClID ClIDType `json:"clid"`
+	*EPPCertificatePin
+}
+
 // NoteExpiringPins marks each usable pin whose certificate expires within
 // one of EPPCertificateExpiryNotices of now, and has not had that notice,
 // and returns an epp.certificate.expiring event for each. A pin past its

@@ -240,6 +240,23 @@ func (s *EPPCredentialSuite) TestExpiringPins() {
 	due, err := repo.ListRegistrarsWithExpiringPins(ctx, s.now)
 	s.Require().NoError(err)
 	s.Contains(due, "epp-exp-rar")
+
+	soon, err := repo.ListUsablePinsExpiringBefore(ctx, s.now, s.now.Add(30*24*time.Hour))
+	s.Require().NoError(err)
+	s.Require().NotEmpty(soon)
+	var mine []entities.EPPRegistrarCertificatePin
+	for _, p := range soon {
+		if p.ClID == "epp-exp-rar" {
+			mine = append(mine, p)
+		}
+	}
+	s.Require().Len(mine, 1, "listed with its registrar")
+	s.Equal(entities.EPPCredentialActive, mine[0].State(s.now))
+	later, err := repo.ListUsablePinsExpiringBefore(ctx, s.now, s.now.Add(time.Hour))
+	s.Require().NoError(err)
+	for _, p := range later {
+		s.NotEqual(entities.ClIDType("epp-exp-rar"), p.ClID, "not within an hour")
+	}
 	var events []entities.DomainEvent
 	_, err = repo.UpdateAccess(ctx, "epp-exp-rar", func(a *entities.EPPRegistrarAccess) ([]entities.DomainEvent, error) {
 		events = a.NoteExpiringPins(s.now, "test")

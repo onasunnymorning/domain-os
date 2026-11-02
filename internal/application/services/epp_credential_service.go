@@ -44,6 +44,13 @@ func (s *EPPCredentialService) GetAccess(ctx context.Context, clid string) (*ent
 	return s.repo.GetAccess(ctx, clid)
 }
 
+// ListExpiringCertificatePins returns every registrar's usable pins whose
+// certificate expires within the duration of now, expired ones included.
+func (s *EPPCredentialService) ListExpiringCertificatePins(ctx context.Context, within time.Duration) ([]entities.EPPRegistrarCertificatePin, error) {
+	now := s.now()
+	return s.repo.ListUsablePinsExpiringBefore(ctx, now, now.Add(within))
+}
+
 // CreateLogin adds a login. A login ID may be the registrar's own ClID, but
 // never another registrar's: responses name the sponsoring registrar by ClID,
 // and a login called after someone else would be read as them.

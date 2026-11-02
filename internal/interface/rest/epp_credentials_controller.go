@@ -36,8 +36,16 @@ func NewEPPCredentialsController(e *gin.Engine, svc interfaces.EPPCredentialServ
 		g.POST("/allowed-networks", ctrl.AddAllowedNetwork)
 		g.POST("/allowed-networks/:id/retire", ctrl.retire(entities.EPPCredentialAllowedNetwork))
 	}
+	e.GET("/epp/certificate-pins", handler, ctrl.requirePermission, ctrl.ListExpiringPins)
 	return ctrl
 }
+
+// defaultExpiringWithin is the window ListExpiringPins uses when the query
+// gives none: the first expiry notice (entities.EPPCertificateExpiryNotices).
+var defaultExpiringWithin = time.Duration(entities.EPPCertificateExpiryNotices[0]) * 24 * time.Hour
+
+// maxExpiringWithin bounds the window so a listing cannot be every pin.
+const maxExpiringWithin = 366 * 24 * time.Hour
 
 func (ctrl *EPPCredentialsController) requirePermission(ctx *gin.Context) {
 	if !requireAuthScope(ctx, ScopeEPPCredentialsAdmin) {
@@ -119,6 +127,44 @@ func (ctrl *EPPCredentialsController) GetAccess(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, ctrl.accessView(a))
+}
+
+type eppRegistrarPinView struct {
+	entities.EPPRegistrarCertificatePin
+	eppCredentialView
+}
+
+// ListExpiringPins godoc
+// @Summary List certificate pins expiring soon, across registrars
+// @Description Every registrar's usable pins whose certificate expires within expiring_within (a Go duration, default 720h, at most 366 days), expired ones included, soonest first
+// @Tags EPP credentials
+// @Produce json
+// @Param expiring_within query string false "Go duration, e.g. 720h"
+// @Success 200
+// @Failure 400
+// @Failure 403
+// @Router /epp/certificate-pins [get]
+func (ctrl *EPPCredentialsController) ListExpiringPins(ctx *gin.Context) {
+	within := defaultExpiringWithin
+	if q := ctx.Query("expiring_within"); q != "" {
+		d, err := time.ParseDuration(q)
+		if err != nil || d <= 0 || d > maxExpiringWithin {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "expiring_within must be a duration between 1s and 366 days, such as 720h"})
+			return
+		}
+		within = d
+	}
+	pins, err := ctrl.svc.ListExpiringCertificatePins(ctx.Request.Context(), within)
+	if err != nil {
+		eppCredentialError(ctx, err)
+		return
+	}
+	now := ctrl.now()
+	out := make([]eppRegistrarPinView, 0, len(pins))
+	for _, p := range pins {
+		out = append(out, eppRegistrarPinView{p, eppCredentialView{p.State(now)}})
+	}
+	ctx.JSON(http.StatusOK, out)
 }
 
 // CreateLogin godoc
