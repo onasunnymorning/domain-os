@@ -44,7 +44,9 @@ export function PolicyEditorPage({ name = "", creating = false }: { name?: strin
       toast.success(creating ? `Policy ${v.name} created.` : `Policy ${v.name} saved. Nodes pick it up within about 30 seconds.`);
       router.push(creating ? `/epp/policies/${encodeURIComponent(v.name)}` : "/epp?tab=policies");
     } catch (err) {
-      if (isVersionConflict(err)) {
+      // A 412 on an edit means someone saved first. On a create it means the
+      // name is taken (or built in): the API's message says so, in the toast.
+      if (!creating && isVersionConflict(err)) {
         setConflict(true);
         return;
       }

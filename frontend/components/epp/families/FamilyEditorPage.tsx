@@ -53,7 +53,9 @@ export function FamilyEditorPage({ name = "", creating = false }: { name?: strin
       toast.success(creating ? `Family ${v.name} created.` : `Family ${v.name} saved.`);
       router.push("/epp?tab=families");
     } catch (err) {
-      if (isVersionConflict(err)) {
+      // A 412 on an edit means someone saved first. On a create it means the
+      // name is taken (or built in): the API's message says so, in the toast.
+      if (!creating && isVersionConflict(err)) {
         setConflict(true);
         return;
       }
