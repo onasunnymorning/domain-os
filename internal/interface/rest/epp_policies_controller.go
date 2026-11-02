@@ -2,7 +2,9 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -100,11 +102,16 @@ func (ctrl *EPPPoliciesController) GetPolicy(ctx *gin.Context) {
 // @Router /epp/policies/{name} [put]
 func (ctrl *EPPPoliciesController) SavePolicy(ctx *gin.Context) {
 	var cmd commands.SaveEPPPolicyCommand
-	if err := ctx.ShouldBindJSON(&cmd); err != nil {
+	var err error
+	if err = ctx.ShouldBindJSON(&cmd); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	cmd.CreateOnly = createOnly(ctx)
+	if cmd.ExpectedUpdatedAt, err = expectedVersion(ctx); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	p, err := ctrl.svc.SavePolicy(ctx.Request.Context(), ctx.Param("name"), cmd)
 	if err != nil {
 		eppPolicyError(ctx, err)
@@ -256,11 +263,16 @@ func (ctrl *EPPPoliciesController) GetFamily(ctx *gin.Context) {
 // @Router /epp/families/{name} [put]
 func (ctrl *EPPPoliciesController) SaveFamily(ctx *gin.Context) {
 	var cmd commands.SaveRegistrarFamilyCommand
-	if err := ctx.ShouldBindJSON(&cmd); err != nil {
+	var err error
+	if err = ctx.ShouldBindJSON(&cmd); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	cmd.CreateOnly = createOnly(ctx)
+	if cmd.ExpectedUpdatedAt, err = expectedVersion(ctx); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	f, err := ctrl.svc.SaveFamily(ctx.Request.Context(), ctx.Param("name"), cmd)
 	if err != nil {
 		eppPolicyError(ctx, err)
@@ -290,6 +302,21 @@ func createOnly(ctx *gin.Context) bool {
 	return ctx.GetHeader("If-None-Match") == "*"
 }
 
+// expectedVersion reads If-Match as the updated_at the client loaded (RFC
+// 3339, optionally quoted as an entity tag), so a save made from a version
+// since replaced is refused (412) rather than silently winning.
+func expectedVersion(ctx *gin.Context) (*time.Time, error) {
+	v := strings.Trim(strings.TrimSpace(ctx.GetHeader("If-Match")), `"`)
+	if v == "" {
+		return nil, nil
+	}
+	t, err := time.Parse(time.RFC3339Nano, v)
+	if err != nil {
+		return nil, fmt.Errorf("If-Match must be the updated_at that was read, in RFC 3339: %w", err)
+	}
+	return &t, nil
+}
+
 func eppPolicyError(ctx *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entities.ErrEPPPolicyNotFound), errors.Is(err, entities.ErrRegistrarFamilyNotFound),
@@ -299,6 +326,8 @@ func eppPolicyError(ctx *gin.Context, err error) {
 		errors.Is(err, entities.ErrRegistrarInFamily), errors.Is(err, entities.ErrEPPPolicyExists),
 		errors.Is(err, entities.ErrRegistrarFamilyExists):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, entities.ErrEPPPolicyChanged), errors.Is(err, entities.ErrRegistrarFamilyChanged):
+		ctx.JSON(http.StatusPreconditionFailed, gin.H{"error": err.Error()})
 	case errors.Is(err, entities.ErrInvalidEPPPolicy), errors.Is(err, entities.ErrInvalidRegistrarFamily),
 		errors.Is(err, entities.ErrInvalidCreateOutcomeRange):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

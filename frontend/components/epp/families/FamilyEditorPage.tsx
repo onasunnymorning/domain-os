@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { FamilyForm, type FamilyFormValues } from "./FamilyForm";
-import { useDeleteRegistrarFamily, useRegistrarFamily, useSaveRegistrarFamily, eppErrorMessage } from "@/lib/hooks/useEPP";
+import { useDeleteRegistrarFamily, useRegistrarFamily, useSaveRegistrarFamily, eppErrorMessage, isVersionConflict } from "@/lib/hooks/useEPP";
+import { useFreshRead } from "@/components/epp/useFreshRead";
+import { VersionConflictNotice } from "@/components/epp/VersionConflictNotice";
 
 /**
  * Which member a 409 "already in another family" message is about. The API
@@ -31,16 +33,28 @@ export function FamilyEditorPage({ name = "", creating = false }: { name?: strin
   const del = useDeleteRegistrarFamily();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [memberError, setMemberError] = useState<{ clid: string; message: string } | null>(null);
-  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
-  if (!creating && family.data && !family.isFetching && fetchedAt === null) setFetchedAt(family.dataUpdatedAt);
+  const { fetchedAt, initialError } = useFreshRead(family);
+  const [loaded, setLoaded] = useState<{ at: number; updatedAt: string } | null>(null);
+  if (fetchedAt !== null && family.data && loaded?.at !== fetchedAt) setLoaded({ at: fetchedAt, updatedAt: family.data.updated_at });
+  const [conflict, setConflict] = useState(false);
 
   const onSave = async (v: FamilyFormValues) => {
     setMemberError(null);
+    setConflict(false);
     try {
-      await save.mutateAsync({ name: v.name, body: { description: v.description, policy: v.policy, members: v.members }, createOnly: creating });
+      await save.mutateAsync({
+        name: v.name,
+        body: { description: v.description, policy: v.policy, members: v.members },
+        createOnly: creating,
+        ifUnchangedSince: creating ? undefined : loaded?.updatedAt,
+      });
       toast.success(creating ? `Family ${v.name} created.` : `Family ${v.name} saved.`);
       router.push("/epp?tab=families");
     } catch (err) {
+      if (isVersionConflict(err)) {
+        setConflict(true);
+        return;
+      }
       const msg = eppErrorMessage(err, "Could not save the family");
       const clid = memberNamedIn(msg, v.members);
       if (clid) setMemberError({ clid, message: msg });
@@ -77,13 +91,15 @@ export function FamilyEditorPage({ name = "", creating = false }: { name?: strin
 
         {creating ? (
           <FamilyForm mode="create" initial={{ name: "", description: "", policy: "", members: [] }} saving={save.isPending} memberError={memberError} onSave={onSave} />
-        ) : fetchedAt === null && !family.error ? (
-          <Skeleton className="h-64 w-full" />
-        ) : family.error || !family.data ? (
+        ) : initialError ? (
           <div className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-            {eppErrorMessage(family.error, "Could not load the family.")}
+            {eppErrorMessage(initialError, "Could not load the family.")}
           </div>
+        ) : fetchedAt === null || !family.data ? (
+          <Skeleton className="h-64 w-full" />
         ) : (
+          <>
+          {conflict && <VersionConflictNotice what="family" onReload={() => window.location.reload()} />}
           <FamilyForm
             key={fetchedAt}
             mode="edit"
@@ -93,6 +109,7 @@ export function FamilyEditorPage({ name = "", creating = false }: { name?: strin
             onSave={onSave}
             onDelete={() => setConfirmDelete(true)}
           />
+          </>
         )}
 
         <DeleteConfirmDialog

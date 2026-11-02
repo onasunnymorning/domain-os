@@ -12,7 +12,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { PolicyForm } from "./PolicyForm";
 import { builtInLimits, DEFAULT_POLICY_LIMITS, isBuiltInPolicy } from "@/lib/constants/eppPolicyDefaults";
-import { useDeleteEPPPolicy, useEPPPolicy, useSaveEPPPolicy, eppErrorMessage } from "@/lib/hooks/useEPP";
+import { useDeleteEPPPolicy, useEPPPolicy, useSaveEPPPolicy, eppErrorMessage, isVersionConflict } from "@/lib/hooks/useEPP";
+import { useFreshRead } from "@/components/epp/useFreshRead";
+import { VersionConflictNotice } from "@/components/epp/VersionConflictNotice";
 import type { EPPPolicyLimits } from "@/lib/types/epp";
 
 /** Creating (its own route) or editing the policy `name`. */
@@ -24,17 +26,28 @@ export function PolicyEditorPage({ name = "", creating = false }: { name?: strin
   const del = useDeleteEPPPolicy();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const builtIn = !creating && isBuiltInPolicy(name);
-  // The form mounts once the first fetch has completed, never from a cached copy;
-  // a later background refetch does not remount it over unsaved edits.
-  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
-  if (!creating && policy.data && !policy.isFetching && fetchedAt === null) setFetchedAt(policy.dataUpdatedAt);
+  const { fetchedAt, initialError } = useFreshRead(policy);
+  // The version the form was built on; a save over a newer one is refused (412).
+  const [loaded, setLoaded] = useState<{ at: number; updatedAt: string } | null>(null);
+  if (fetchedAt !== null && policy.data && loaded?.at !== fetchedAt) setLoaded({ at: fetchedAt, updatedAt: policy.data.updated_at });
+  const [conflict, setConflict] = useState(false);
 
   const onSave = async (v: { name: string; description: string; limits: EPPPolicyLimits }) => {
+    setConflict(false);
     try {
-      await save.mutateAsync({ name: v.name, body: { description: v.description, limits: v.limits }, createOnly: creating });
+      await save.mutateAsync({
+        name: v.name,
+        body: { description: v.description, limits: v.limits },
+        createOnly: creating,
+        ifUnchangedSince: creating ? undefined : loaded?.updatedAt,
+      });
       toast.success(creating ? `Policy ${v.name} created.` : `Policy ${v.name} saved. Nodes pick it up within about 30 seconds.`);
       router.push(creating ? `/epp/policies/${encodeURIComponent(v.name)}` : "/epp?tab=policies");
     } catch (err) {
+      if (isVersionConflict(err)) {
+        setConflict(true);
+        return;
+      }
       toast.error(eppErrorMessage(err, "Could not save the policy"));
     }
   };
@@ -76,13 +89,15 @@ export function PolicyEditorPage({ name = "", creating = false }: { name?: strin
             saving={save.isPending}
             onSave={onSave}
           />
-        ) : fetchedAt === null && !policy.error ? (
-          <Skeleton className="h-64 w-full" />
-        ) : policy.error || !policy.data ? (
+        ) : initialError ? (
           <div className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-            {eppErrorMessage(policy.error, "Could not load the policy.")}
+            {eppErrorMessage(initialError, "Could not load the policy.")}
           </div>
+        ) : fetchedAt === null || !policy.data ? (
+          <Skeleton className="h-64 w-full" />
         ) : (
+          <>
+          {conflict && <VersionConflictNotice what="policy" onReload={() => window.location.reload()} />}
           <PolicyForm
             key={fetchedAt}
             mode="edit"
@@ -93,6 +108,7 @@ export function PolicyEditorPage({ name = "", creating = false }: { name?: strin
             onSave={onSave}
             onDelete={() => setConfirmDelete(true)}
           />
+          </>
         )}
 
         <DeleteConfirmDialog

@@ -111,6 +111,9 @@ func (s *EPPPolicyService) SavePolicy(ctx context.Context, name string, cmd comm
 		if cmd.CreateOnly && before != nil {
 			return nil, fmt.Errorf("%w: %s", entities.ErrEPPPolicyExists, name)
 		}
+		if cmd.ExpectedUpdatedAt != nil && (before == nil || !before.UpdatedAt.Equal(*cmd.ExpectedUpdatedAt)) {
+			return nil, fmt.Errorf("%w: %s", entities.ErrEPPPolicyChanged, name)
+		}
 		return []entities.DomainEvent{s.event(ctx, entities.EventEPPPolicySaved, name, fmt.Sprintf("EPP policy %s saved", name), p, before, p)}, nil
 	})
 	if err != nil {
@@ -206,6 +209,9 @@ func (s *EPPPolicyService) SaveFamily(ctx context.Context, name string, cmd comm
 	err = s.repo.SaveFamily(ctx, f, func(before *entities.RegistrarFamily) ([]entities.DomainEvent, error) {
 		if cmd.CreateOnly && before != nil {
 			return nil, fmt.Errorf("%w: %s", entities.ErrRegistrarFamilyExists, name)
+		}
+		if cmd.ExpectedUpdatedAt != nil && (before == nil || !before.UpdatedAt.Equal(*cmd.ExpectedUpdatedAt)) {
+			return nil, fmt.Errorf("%w: %s", entities.ErrRegistrarFamilyChanged, name)
 		}
 		return []entities.DomainEvent{s.event(ctx, entities.EventRegistrarFamilySaved, name, fmt.Sprintf("Registrar family %s saved", name), f, before, f)}, nil
 	})

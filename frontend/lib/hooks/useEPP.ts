@@ -34,6 +34,7 @@ import {
   saveRegistrarFamily,
   updateEPPLogin,
   type RetireEPPCredentialArgs,
+  type SaveOptions,
 } from "@/lib/api/epp";
 import type {
   AddEPPAllowedNetworkRequest,
@@ -60,6 +61,11 @@ export const eppKeys = {
   expiringPins: (within: string) => ["epp", "expiring-pins", within] as const,
   createOutcomes: (clid: string) => ["epp", "create-outcomes", clid] as const,
 };
+
+/** True for a 412: the thing was saved by someone else since it was read. */
+export function isVersionConflict(err: unknown): boolean {
+  return (err as { response?: { status?: number } } | undefined)?.response?.status === 412;
+}
 
 /** The text the API put in its error body, or a fallback. */
 export function eppErrorMessage(err: unknown, fallback: string): string {
@@ -213,7 +219,7 @@ export function useEPPPolicy(name: string, enabled = true, opts?: { fresh?: bool
 export function useSaveEPPPolicy() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ name, body, createOnly }: { name: string; body: SaveEPPPolicyRequest; createOnly?: boolean }) => saveEPPPolicy(name, body, { createOnly }),
+    mutationFn: ({ name, body, ...opts }: { name: string; body: SaveEPPPolicyRequest } & SaveOptions) => saveEPPPolicy(name, body, opts),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: eppKeys.policies() });
       qc.invalidateQueries({ queryKey: ["epp", "policy"] });
@@ -269,7 +275,7 @@ export function useRegistrarFamily(name: string, enabled = true, opts?: { fresh?
 export function useSaveRegistrarFamily() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ name, body, createOnly }: { name: string; body: SaveRegistrarFamilyRequest; createOnly?: boolean }) => saveRegistrarFamily(name, body, { createOnly }),
+    mutationFn: ({ name, body, ...opts }: { name: string; body: SaveRegistrarFamilyRequest } & SaveOptions) => saveRegistrarFamily(name, body, opts),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: eppKeys.families() });
       qc.invalidateQueries({ queryKey: ["epp", "policy"] });
