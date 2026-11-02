@@ -17,7 +17,8 @@ import {
   FileSearch,
   KeyRound,
   FlaskConical,
-  Zap
+  Zap,
+  Plug
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AlpacaLogo } from '@/components/icons/AlpacaLogo';
@@ -29,6 +30,7 @@ const navigation = [
   { name: 'TLDs', href: '/tlds', icon: Globe },
   { name: 'Registrars', href: '/registrars', icon: Users },
   { name: 'Domains', href: '/domains', icon: Server },
+  { name: 'EPP', href: '/epp', icon: Plug },
   { name: 'Blocking', href: '/nndns', icon: ServerOff },
   { name: 'Workflows', href: '/workflows', icon: Zap },
   { name: 'Escrow Runs', href: '/escrow/validations', icon: FileSearch },

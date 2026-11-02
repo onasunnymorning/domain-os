@@ -120,6 +120,86 @@ func TestEPPPoliciesAPI(t *testing.T) {
 	assert.NotEmpty(t, repo.Events)
 }
 
+// PUT with If-None-Match: * is create-only: it never replaces what is there.
+func TestEPPPoliciesCreateOnly(t *testing.T) {
+	r, _ := eppPoliciesRouter(t, ScopeEPPPolicyAdmin)
+	limits := `{"description":"first","limits":{"sessions_per_registrar":20,"sessions_per_login":5,"sessions_per_family":60,"check_names":25,` +
+		`"rates":{"check":{"per_second":250,"burst":1000},"info":{"per_second":20,"burst":100},"transform":{"per_second":10,"burst":50},"poll":{"per_second":5,"burst":20}},` +
+		`"family_rates":{"check":{"per_second":750,"burst":3000},"info":{"per_second":60,"burst":300},"transform":{"per_second":30,"burst":150},"poll":{"per_second":15,"burst":60}},` +
+		`"creates_per_day":100,"failed_creates":{"failures":100,"ratio_percent":90},"family_failed_creates":{"failures":300,"ratio_percent":90}}}`
+	createOnly := func(method, path, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("If-None-Match", "*")
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	require.Equal(t, http.StatusOK, createOnly(http.MethodPut, "/epp/policies/gold", limits).Code, "a new name is created")
+	w := createOnly(http.MethodPut, "/epp/policies/gold", strings.Replace(limits, "first", "second", 1))
+	assert.Equal(t, http.StatusPreconditionFailed, w.Code, "an existing name fails the precondition (RFC 9110)")
+	assert.Contains(t, w.Body.String(), "already exists")
+	w = createOnly(http.MethodPut, "/epp/policies/default", limits)
+	assert.Equal(t, http.StatusPreconditionFailed, w.Code, "a built-in is never replaced by a create")
+	w = do(r, http.MethodGet, "/epp/policies/gold", "")
+	assert.Contains(t, w.Body.String(), `"description":"first"`, "the refused save changed nothing")
+	assert.Equal(t, http.StatusOK, do(r, http.MethodPut, "/epp/policies/gold", strings.Replace(limits, "first", "second", 1)).Code, "a plain PUT still replaces")
+
+	require.Equal(t, http.StatusOK, createOnly(http.MethodPut, "/epp/families/acme", `{"members":["rar-a"]}`).Code)
+	w = createOnly(http.MethodPut, "/epp/families/acme", `{"members":[]}`)
+	assert.Equal(t, http.StatusPreconditionFailed, w.Code, "an existing family keeps its members")
+	w = do(r, http.MethodGet, "/epp/families/acme", "")
+	assert.Contains(t, w.Body.String(), `"rar-a"`)
+}
+
+// PUT with If-Match: "<updated_at>" is refused once the stored version differs.
+func TestEPPPoliciesIfMatch(t *testing.T) {
+	r, _ := eppPoliciesRouter(t, ScopeEPPPolicyAdmin)
+	limits := `{"description":"v1","limits":{"sessions_per_registrar":20,"sessions_per_login":5,"sessions_per_family":60,"check_names":25,` +
+		`"rates":{"check":{"per_second":250,"burst":1000},"info":{"per_second":20,"burst":100},"transform":{"per_second":10,"burst":50},"poll":{"per_second":5,"burst":20}},` +
+		`"family_rates":{"check":{"per_second":750,"burst":3000},"info":{"per_second":60,"burst":300},"transform":{"per_second":30,"burst":150},"poll":{"per_second":15,"burst":60}},` +
+		`"creates_per_day":100,"failed_creates":{"failures":100,"ratio_percent":90},"family_failed_creates":{"failures":300,"ratio_percent":90}}}`
+	withMatch := func(path, body, etag string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("If-Match", etag)
+		r.ServeHTTP(w, req)
+		return w
+	}
+	w := do(r, http.MethodPut, "/epp/policies/gold", limits)
+	require.Equal(t, http.StatusOK, w.Code)
+	var p entities.EPPPolicy
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &p))
+	v1 := p.UpdatedAt.Format(time.RFC3339Nano)
+
+	require.Equal(t, http.StatusOK, withMatch("/epp/policies/gold", strings.Replace(limits, "v1", "v2", 1), `"`+v1+`"`).Code, "the version read is the one stored")
+	w = withMatch("/epp/policies/gold", strings.Replace(limits, "v1", "v3", 1), v1)
+	assert.Equal(t, http.StatusPreconditionFailed, w.Code, "saved since: refused")
+	assert.Contains(t, w.Body.String(), "changed since it was read")
+	w = do(r, http.MethodGet, "/epp/policies/gold", "")
+	assert.Contains(t, w.Body.String(), `"description":"v2"`, "the refused save changed nothing")
+	assert.Equal(t, http.StatusBadRequest, withMatch("/epp/policies/gold", limits, "yesterday").Code)
+
+	// A built-in not stored yet reads with a zero updated_at; its first
+	// conditional save passes with that, and the next one is refused.
+	w = do(r, http.MethodGet, "/epp/policies/probation", "")
+	require.Equal(t, http.StatusOK, w.Code)
+	var pb entities.EPPPolicy
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &pb))
+	require.True(t, pb.UpdatedAt.IsZero(), "unstored built-in")
+	zero := pb.UpdatedAt.Format(time.RFC3339Nano)
+	require.Equal(t, http.StatusOK, withMatch("/epp/policies/probation", limits, `"`+zero+`"`).Code, "the first edit of an unstored built-in")
+	assert.Equal(t, http.StatusPreconditionFailed, withMatch("/epp/policies/probation", limits, `"`+zero+`"`).Code, "a concurrent first edit")
+	assert.Equal(t, http.StatusPreconditionFailed, withMatch("/epp/policies/nothere", limits, `"`+zero+`"`).Code, "a custom policy that does not exist")
+
+	require.Equal(t, http.StatusOK, do(r, http.MethodPut, "/epp/families/acme", `{"members":["rar-a"]}`).Code)
+	assert.Equal(t, http.StatusPreconditionFailed, withMatch("/epp/families/acme", `{"members":[]}`, `"2000-01-01T00:00:00Z"`).Code)
+	w = do(r, http.MethodGet, "/epp/families/acme", "")
+	assert.Contains(t, w.Body.String(), `"rar-a"`, "members kept")
+}
+
 func TestEPPCreateOutcomesAPI(t *testing.T) {
 	r, _ := eppPoliciesRouter(t, ScopeEPPPolicyAdmin)
 	w := do(r, http.MethodGet, "/registrars/rar-a/epp/create-outcomes?from=2026-01-01&to=2026-01-31", "")

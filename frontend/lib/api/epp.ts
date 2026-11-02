@@ -138,8 +138,22 @@ export async function getEPPPolicy(name: string): Promise<EPPPolicy> {
   return data;
 }
 
-export async function saveEPPPolicy(name: string, body: SaveEPPPolicyRequest): Promise<EPPPolicy> {
-  const { data } = await apiClient.put(`/epp/policies/${enc(name)}`, body);
+/** Conditional headers: createOnly refuses an existing name (409); ifUnchangedSince (the updated_at read) refuses a save over a newer version (412). */
+function conditional(opts?: { createOnly?: boolean; ifUnchangedSince?: string }) {
+  const headers: Record<string, string> = {};
+  if (opts?.createOnly) headers["If-None-Match"] = "*";
+  if (opts?.ifUnchangedSince) headers["If-Match"] = `"${opts.ifUnchangedSince}"`;
+  return Object.keys(headers).length ? { headers } : undefined;
+}
+
+export interface SaveOptions {
+  createOnly?: boolean;
+  /** The updated_at that was read; the save is refused (412) if it has changed. */
+  ifUnchangedSince?: string;
+}
+
+export async function saveEPPPolicy(name: string, body: SaveEPPPolicyRequest, opts?: SaveOptions): Promise<EPPPolicy> {
+  const { data } = await apiClient.put(`/epp/policies/${enc(name)}`, body, conditional(opts));
   return data;
 }
 
@@ -173,8 +187,8 @@ export async function getRegistrarFamily(name: string): Promise<RegistrarFamily>
   return data;
 }
 
-export async function saveRegistrarFamily(name: string, body: SaveRegistrarFamilyRequest): Promise<RegistrarFamily> {
-  const { data } = await apiClient.put(`/epp/families/${enc(name)}`, body);
+export async function saveRegistrarFamily(name: string, body: SaveRegistrarFamilyRequest, opts?: SaveOptions): Promise<RegistrarFamily> {
+  const { data } = await apiClient.put(`/epp/families/${enc(name)}`, body, conditional(opts));
   return data;
 }
 

@@ -58,6 +58,21 @@ var (
 )
 
 // inLambda returns true if the code is running in AWS Lambda
+// adminCORSConfig is the CORS policy for a browser UI on another origin.
+// AllowHeaders must name every request header the UI sends, or the browser
+// refuses the preflight: If-None-Match (create-only saves) and If-Match
+// (version-checked saves) are what the EPP policy and family editors use.
+func adminCORSConfig(allowedOrigins string) cors.Config {
+	return cors.Config{
+		AllowOrigins:     strings.Split(allowedOrigins, ","),
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Tenant-ID", "If-None-Match", "If-Match"},
+		ExposeHeaders:    []string{"Content-Length", "Content-Disposition", rest.SyntheticSeedHeader},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}
+}
+
 func inLambda() bool {
 	if lambdaTaskRoot := os.Getenv("LAMBDA_TASK_ROOT"); lambdaTaskRoot != "" {
 		return true
@@ -352,15 +367,7 @@ func main() {
 	}
 	// ExposeHeaders: Content-Disposition and the seed let a cross-origin UI
 	// name and reproduce a synthetic deposit download (POST /escrow/synthetic).
-	corsConfig := cors.Config{
-		AllowOrigins:     strings.Split(allowedOrigins, ","),
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Tenant-ID"},
-		ExposeHeaders:    []string{"Content-Length", "Content-Disposition", rest.SyntheticSeedHeader},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}
-	r.Use(cors.New(corsConfig))
+	r.Use(cors.New(adminCORSConfig(allowedOrigins)))
 
 	// Attach context propagation middleware
 	r.Use(rest.ContextMiddleware())

@@ -81,7 +81,7 @@ export async function getRegistrars(
  * GET /registrars/:clid
  */
 export async function getRegistrarByClID(clid: string): Promise<Registrar> {
-  const { data } = await apiClient.get(`/registrars/${clid}`);
+  const { data } = await apiClient.get(`/registrars/${encodeURIComponent(clid)}`);
   return data;
 }
 
@@ -123,7 +123,7 @@ export async function updateRegistrar(
   // Ensure ClID in body matches the path parameter for backends that require it
   const incoming = (registrar as any) || {};
   const body = { ...incoming, ClID: clid };
-  const { data } = await apiClient.put(`/registrars/${clid}`, body);
+  const { data } = await apiClient.put(`/registrars/${encodeURIComponent(clid)}`, body);
   return data;
 }
 
@@ -135,7 +135,7 @@ export async function updateRegistrarStatus(
   clid: string,
   status: string
 ): Promise<Registrar> {
-  const { data } = await apiClient.put(`/registrars/${clid}/status/${status}`);
+  const { data } = await apiClient.put(`/registrars/${encodeURIComponent(clid)}/status/${encodeURIComponent(status)}`);
   return data;
 }
 
@@ -144,7 +144,7 @@ export async function updateRegistrarStatus(
  * DELETE /registrars/:clid
  */
 export async function deleteRegistrar(clid: string): Promise<void> {
-  await apiClient.delete(`/registrars/${clid}`);
+  await apiClient.delete(`/registrars/${encodeURIComponent(clid)}`);
 }
 
 /**

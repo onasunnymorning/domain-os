@@ -2,7 +2,9 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -89,7 +91,7 @@ func (ctrl *EPPPoliciesController) GetPolicy(ctx *gin.Context) {
 
 // SavePolicy godoc
 // @Summary Create or replace an EPP policy
-// @Description Every limit must be given: at least 1, except creates_per_day (0 is no cap), and each check burst at least check_names. The built-in policies can be changed this way too.
+// @Description Every limit must be given: at least 1, except creates_per_day (0 is no cap), and each check burst at least check_names. The built-in policies can be changed this way too. With the header If-None-Match: * the save is create-only and an existing policy is 412, checked in the same transaction
 // @Tags EPP
 // @Accept json
 // @Produce json
@@ -100,7 +102,13 @@ func (ctrl *EPPPoliciesController) GetPolicy(ctx *gin.Context) {
 // @Router /epp/policies/{name} [put]
 func (ctrl *EPPPoliciesController) SavePolicy(ctx *gin.Context) {
 	var cmd commands.SaveEPPPolicyCommand
-	if err := ctx.ShouldBindJSON(&cmd); err != nil {
+	var err error
+	if err = ctx.ShouldBindJSON(&cmd); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	cmd.CreateOnly = createOnly(ctx)
+	if cmd.ExpectedUpdatedAt, err = expectedVersion(ctx); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -242,7 +250,7 @@ func (ctrl *EPPPoliciesController) GetFamily(ctx *gin.Context) {
 
 // SaveFamily godoc
 // @Summary Create or replace a registrar family
-// @Description Its members are replaced. A registrar is in at most one family.
+// @Description Its members are replaced. A registrar is in at most one family. With the header If-None-Match: * the save is create-only and an existing family is 412, checked in the same transaction
 // @Tags EPP
 // @Accept json
 // @Produce json
@@ -255,7 +263,13 @@ func (ctrl *EPPPoliciesController) GetFamily(ctx *gin.Context) {
 // @Router /epp/families/{name} [put]
 func (ctrl *EPPPoliciesController) SaveFamily(ctx *gin.Context) {
 	var cmd commands.SaveRegistrarFamilyCommand
-	if err := ctx.ShouldBindJSON(&cmd); err != nil {
+	var err error
+	if err = ctx.ShouldBindJSON(&cmd); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	cmd.CreateOnly = createOnly(ctx)
+	if cmd.ExpectedUpdatedAt, err = expectedVersion(ctx); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -282,6 +296,27 @@ func (ctrl *EPPPoliciesController) DeleteFamily(ctx *gin.Context) {
 	ctx.Status(http.StatusNoContent)
 }
 
+// createOnly is the RFC 9110 way to say "do not replace": PUT with
+// If-None-Match: * succeeds only if nothing is there yet.
+func createOnly(ctx *gin.Context) bool {
+	return ctx.GetHeader("If-None-Match") == "*"
+}
+
+// expectedVersion reads If-Match as the updated_at the client loaded (RFC
+// 3339, optionally quoted as an entity tag), so a save made from a version
+// since replaced is refused (412) rather than silently winning.
+func expectedVersion(ctx *gin.Context) (*time.Time, error) {
+	v := strings.Trim(strings.TrimSpace(ctx.GetHeader("If-Match")), `"`)
+	if v == "" {
+		return nil, nil
+	}
+	t, err := time.Parse(time.RFC3339Nano, v)
+	if err != nil {
+		return nil, fmt.Errorf("If-Match must be the updated_at that was read, in RFC 3339: %w", err)
+	}
+	return &t, nil
+}
+
 func eppPolicyError(ctx *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entities.ErrEPPPolicyNotFound), errors.Is(err, entities.ErrRegistrarFamilyNotFound),
@@ -290,6 +325,12 @@ func eppPolicyError(ctx *gin.Context, err error) {
 	case errors.Is(err, entities.ErrEPPPolicyBuiltIn), errors.Is(err, entities.ErrEPPPolicyInUse),
 		errors.Is(err, entities.ErrRegistrarInFamily):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	// A failed If-None-Match or If-Match precondition is 412 (RFC 9110 §13.1),
+	// so standard conditional-write clients recognise it; 409 is kept for
+	// conflicts of state (in use, in another family).
+	case errors.Is(err, entities.ErrEPPPolicyExists), errors.Is(err, entities.ErrRegistrarFamilyExists),
+		errors.Is(err, entities.ErrEPPPolicyChanged), errors.Is(err, entities.ErrRegistrarFamilyChanged):
+		ctx.JSON(http.StatusPreconditionFailed, gin.H{"error": err.Error()})
 	case errors.Is(err, entities.ErrInvalidEPPPolicy), errors.Is(err, entities.ErrInvalidRegistrarFamily),
 		errors.Is(err, entities.ErrInvalidCreateOutcomeRange):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

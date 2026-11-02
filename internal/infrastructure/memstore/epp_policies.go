@@ -52,13 +52,17 @@ func (r *EPPPolicies) GetPolicy(_ context.Context, name string) (*entities.EPPPo
 	return &c, nil
 }
 
-func (r *EPPPolicies) SavePolicy(_ context.Context, p *entities.EPPPolicy, events func(*entities.EPPPolicy) []entities.DomainEvent) error {
+func (r *EPPPolicies) SavePolicy(_ context.Context, p *entities.EPPPolicy, events func(*entities.EPPPolicy) ([]entities.DomainEvent, error)) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	before := r.policies[p.Name]
+	evs, err := events(before)
+	if err != nil {
+		return err // nothing saved, as in the transaction
+	}
 	c := *p
 	r.policies[p.Name] = &c
-	r.Events = append(r.Events, events(before)...)
+	r.Events = append(r.Events, evs...)
 	return nil
 }
 
@@ -130,7 +134,7 @@ func (r *EPPPolicies) GetFamily(_ context.Context, name string) (*entities.Regis
 	return &c, nil
 }
 
-func (r *EPPPolicies) SaveFamily(_ context.Context, f *entities.RegistrarFamily, events func(*entities.RegistrarFamily) []entities.DomainEvent) error {
+func (r *EPPPolicies) SaveFamily(_ context.Context, f *entities.RegistrarFamily, events func(*entities.RegistrarFamily) ([]entities.DomainEvent, error)) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, other := range r.families {
@@ -144,9 +148,13 @@ func (r *EPPPolicies) SaveFamily(_ context.Context, f *entities.RegistrarFamily,
 		}
 	}
 	before := r.families[f.Name]
+	evs, err := events(before)
+	if err != nil {
+		return err // nothing saved, as in the transaction
+	}
 	c := *f
 	r.families[f.Name] = &c
-	r.Events = append(r.Events, events(before)...)
+	r.Events = append(r.Events, evs...)
 	return nil
 }
 

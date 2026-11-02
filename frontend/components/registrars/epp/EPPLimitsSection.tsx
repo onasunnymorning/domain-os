@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -81,12 +82,19 @@ export function EPPLimitsSection({
           <>
             <div className="space-y-1">
               <div className="text-sm">
-                On the <span className="font-semibold">{current.name}</span> policy
+                On the{" "}
+                <Link href={`/epp/policies/${encodeURIComponent(current.name)}`} className="font-semibold text-primary hover:underline">
+                  {current.name}
+                </Link>{" "}
+                policy
                 {current.description && <span className="text-muted-foreground"> · {current.description}</span>}
               </div>
               {policy?.family && (
                 <div className="text-sm text-muted-foreground">
-                  Member of family <span className="font-semibold text-foreground">{policy.family.name}</span>
+                  Member of family{" "}
+                  <Link href={`/epp/families/${encodeURIComponent(policy.family.name)}`} className="font-semibold text-primary hover:underline">
+                    {policy.family.name}
+                  </Link>
                   {policy.family_policy && <> (family policy {policy.family_policy.name})</>}: its sessions and
                   commands are also counted together with the other members.
                 </div>
