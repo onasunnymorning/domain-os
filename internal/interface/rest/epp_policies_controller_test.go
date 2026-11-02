@@ -182,6 +182,18 @@ func TestEPPPoliciesIfMatch(t *testing.T) {
 	assert.Contains(t, w.Body.String(), `"description":"v2"`, "the refused save changed nothing")
 	assert.Equal(t, http.StatusBadRequest, withMatch("/epp/policies/gold", limits, "yesterday").Code)
 
+	// A built-in not stored yet reads with a zero updated_at; its first
+	// conditional save passes with that, and the next one is refused.
+	w = do(r, http.MethodGet, "/epp/policies/probation", "")
+	require.Equal(t, http.StatusOK, w.Code)
+	var pb entities.EPPPolicy
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &pb))
+	require.True(t, pb.UpdatedAt.IsZero(), "unstored built-in")
+	zero := pb.UpdatedAt.Format(time.RFC3339Nano)
+	require.Equal(t, http.StatusOK, withMatch("/epp/policies/probation", limits, `"`+zero+`"`).Code, "the first edit of an unstored built-in")
+	assert.Equal(t, http.StatusPreconditionFailed, withMatch("/epp/policies/probation", limits, `"`+zero+`"`).Code, "a concurrent first edit")
+	assert.Equal(t, http.StatusPreconditionFailed, withMatch("/epp/policies/nothere", limits, `"`+zero+`"`).Code, "a custom policy that does not exist")
+
 	require.Equal(t, http.StatusOK, do(r, http.MethodPut, "/epp/families/acme", `{"members":["rar-a"]}`).Code)
 	assert.Equal(t, http.StatusPreconditionFailed, withMatch("/epp/families/acme", `{"members":[]}`, `"2000-01-01T00:00:00Z"`).Code)
 	w = do(r, http.MethodGet, "/epp/families/acme", "")

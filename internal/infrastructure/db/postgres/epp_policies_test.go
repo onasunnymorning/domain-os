@@ -87,6 +87,17 @@ func TestEPPPolicyRepository(t *testing.T) {
 		require.NotNil(t, sawPolicy)
 		assert.Equal(t, 25, sawPolicy.Limits.CheckNames, "the version replaced, read in the change's transaction")
 
+		// PostgreSQL keeps microseconds: a nanosecond UpdatedAt reads back
+		// truncated, which is why the service stamps saves at that precision.
+		fine := *gold
+		fine.UpdatedAt = time.Date(2026, 11, 2, 12, 0, 0, 123456789, time.UTC)
+		require.NoError(t, repo.SavePolicy(ctx, &fine, saveNoEvents()))
+		got, err = repo.GetPolicy(ctx, "gold-test")
+		require.NoError(t, err)
+		assert.True(t, got.UpdatedAt.Equal(fine.UpdatedAt.Truncate(time.Microsecond)), "read back at microsecond precision: %s", got.UpdatedAt)
+		assert.False(t, got.UpdatedAt.Equal(fine.UpdatedAt), "not at nanosecond precision")
+		require.NoError(t, repo.SavePolicy(ctx, &replaced, saveNoEvents()))
+
 		// A callback that refuses (a create-only save of an existing name) saves nothing.
 		third := *gold
 		third.Limits.CheckNames = 99
