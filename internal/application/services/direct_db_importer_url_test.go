@@ -1,45 +1,38 @@
 package services
 
 import (
+	"net/url"
 	"testing"
 
 	"github.com/go-pg/pg/v10"
 	"github.com/stretchr/testify/require"
 )
 
-// RDS- and Secrets Manager-generated passwords routinely contain URL-reserved
-// characters. Interpolating them raw into a postgres:// URL makes pg.ParseURL
-// misread the URL (e.g. "database name not provided"), so the fallback path
-// must percent-escape credentials.
-func TestFallbackPGURL_EscapesReservedCharacters(t *testing.T) {
+// The connection string reaches the importer from config.Database.DSN, which
+// percent-escapes credentials; RDS- and Secrets Manager-generated passwords
+// routinely contain URL-reserved characters. go-pg must read them back
+// intact, and must not choke on the parameters managed providers add to
+// DATABASE_URL (Neon's channel_binding), which sanitizePGURLForGoPG strips.
+func TestImportPoolURL_KeepsEscapedCredentialsAndDropsUnsupportedParams(t *testing.T) {
 	const nastyPass = `p?a/s#s@w:o&rd%25` // #nosec G101 -- not a credential: a fixture of URL-reserved characters, which is the whole subject of this test
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword("escrow_user", nastyPass),
+		Host:     "db.example.internal:5433",
+		Path:     "/domain_os",
+		RawQuery: "sslmode=require&channel_binding=require",
+	}
 
-	t.Setenv("DB_USER", "escrow_user")
-	t.Setenv("DB_PASS", nastyPass)
-	t.Setenv("DB_HOST", "db.example.internal")
-	t.Setenv("DB_PORT", "5433")
-	t.Setenv("DB_NAME", "domain_os")
-	t.Setenv("DB_SSLMODE", "require")
-
-	opt, err := pg.ParseURL(fallbackPGURL())
+	opt, err := pg.ParseURL(sanitizePGURLForGoPG(u.String()))
 	require.NoError(t, err)
 	require.Equal(t, "escrow_user", opt.User)
 	require.Equal(t, nastyPass, opt.Password)
 	require.Equal(t, "db.example.internal:5433", opt.Addr)
 	require.Equal(t, "domain_os", opt.Database)
 	require.NotNil(t, opt.TLSConfig, "sslmode=require should enable TLS")
-}
 
-func TestFallbackPGURL_Defaults(t *testing.T) {
-	for _, v := range []string{"DB_USER", "DB_PASS", "DB_HOST", "DB_PORT", "DB_NAME", "DB_SSLMODE"} {
-		t.Setenv(v, "")
-	}
-
-	opt, err := pg.ParseURL(fallbackPGURL())
+	plain := "postgres://postgres:postgres@localhost:5432/domain_os?sslmode=disable" // #nosec G101 -- not a credential: the local stack's default fixture
+	opt, err = pg.ParseURL(sanitizePGURLForGoPG(plain))
 	require.NoError(t, err)
-	require.Equal(t, "postgres", opt.User)
-	require.Equal(t, "postgres", opt.Password)
-	require.Equal(t, "localhost:5432", opt.Addr)
-	require.Equal(t, "domain_os", opt.Database)
 	require.Nil(t, opt.TLSConfig, "sslmode=disable should not enable TLS")
 }

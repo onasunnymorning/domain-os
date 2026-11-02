@@ -9,7 +9,6 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"io"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -77,24 +76,7 @@ type EscrowValidationActivities struct {
 // the limits — but not on an absent decryption keyring, which only signed
 // deposits use. A worker without one still validates plaintext deposits, and
 // refuses signed ones with a recorded DECRYPT_KEY_UNAVAILABLE.
-func NewEscrowValidationActivities() (*EscrowValidationActivities, error) {
-	var db *gorm.DB
-	var err error
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		db, err = postgres.NewConnectionFromURL(dbURL, false)
-	} else {
-		db, err = postgres.NewConnection(postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: os.Getenv("DB_SSLMODE"),
-		})
-	}
-	if err != nil {
-		return nil, fmt.Errorf("escrow validation activities: database: %w", err)
-	}
+func NewEscrowValidationActivities(db *gorm.DB) (*EscrowValidationActivities, error) {
 	escrowStore, err := storage.NewS3ClientFromEnv()
 	if err != nil {
 		return nil, fmt.Errorf("escrow validation activities: escrow bucket: %w", err)

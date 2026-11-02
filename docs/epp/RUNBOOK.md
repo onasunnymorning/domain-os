@@ -76,7 +76,7 @@ For a registrar's own misconfigured client: once it is fixed, lift the lockouts 
 
 ### Commands are slow
 
-`EPPCheckLatencyHigh`: p99 `<domain:check>` over 250ms for 10 minutes. A check runs `EPP_CHECK_PARALLELISM` lookups at once against the database, so this is the database or the node's pool: look at the database's load and slow queries, and at whether the node's connections are all in use (creates and checks share `EPP_DB_MAX_OPEN_CONNS`).
+`EPPCheckLatencyHigh`: p99 `<domain:check>` over 250ms for 10 minutes. A check is two lookups against the database however many names it carries, so this is the database or the node's pool: look at the database's load and slow queries, and at whether the node's connections are all in use (creates and checks share `EPP_DB_MAX_OPEN_CONNS`).
 
 ---
 

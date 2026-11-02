@@ -143,48 +143,25 @@ linters:
       - linters: [forbidigo]
         path: _test\.go$
 
-      # INV-17 backlog, allowlisted as of 2026-10-03: 28 files, 143 call sites.
+      # INV-17 backlog, allowlisted as of 2026-10-03: 28 files, 143 call sites;
+      # 15 files, 56 call sites as of 2026-10-27, after config.LoadDatabase
+      # replaced the per-activity DSN builders, the adapter's env reads and
+      # the direct importer's.
       # The rule guards every other file, so the backlog cannot grow outside
       # these. Migrate a file when you are already changing it: load the values
       # into a typed struct in internal/config at startup, inject it through the
       # constructor, then delete the file's line here. Most of the activities
       # rebuild the DB DSN from DB_* themselves; one shared loader replaces them.
       - linters: [forbidigo]
-        path: internal/application/activities/escrow_keys\.go                   # 7
-      - linters: [forbidigo]
-        path: internal/application/activities/escrow_sanitize\.go               # 7
-      - linters: [forbidigo]
         path: internal/application/activities/escrow_sanitize_config\.go        # 5
       - linters: [forbidigo]
-        path: internal/application/activities/escrow_validation\.go             # 7
-      - linters: [forbidigo]
         path: internal/application/activities/escrow_validation_config\.go      # 8
-      - linters: [forbidigo]
-        path: internal/application/activities/eventRelayActivities\.go          # 7
-      - linters: [forbidigo]
-        path: internal/application/activities/fxActivities\.go                  # 7
-      - linters: [forbidigo]
-        path: internal/application/activities/lifecycleActivities\.go           # 7
-      - linters: [forbidigo]
-        path: internal/application/activities/planTLDCleanup\.go                # 7
-      - linters: [forbidigo]
-        path: internal/application/activities/serialDriftActivities\.go         # 7
-      - linters: [forbidigo]
-        path: internal/application/activities/snapshotActivities\.go            # 7
-      - linters: [forbidigo]
-        path: internal/application/activities/spec5_sweep\.go                   # 7
-      - linters: [forbidigo]
-        path: internal/application/activities/tombstoneBackfillActivities\.go   # 7
       - linters: [forbidigo]
         path: internal/application/activities/variables\.go                     # 10
       - linters: [forbidigo]
         path: internal/application/activities/verify_ingestion\.go              # 3
       - linters: [forbidigo]
-        path: internal/application/services/direct_db_importer\.go              # 2
-      - linters: [forbidigo]
         path: internal/infrastructure/auth/token_manager\.go                    # 2
-      - linters: [forbidigo]
-        path: internal/infrastructure/db/postgres/connection\.go                # 7
       - linters: [forbidigo]
         path: internal/infrastructure/db/postgres/schema_version\.go            # 1
       - linters: [forbidigo]

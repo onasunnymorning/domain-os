@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,39 +24,40 @@ type checkDomains struct {
 	repositories.DomainRepository
 	registered map[string]bool
 	err        error
-	inFlight   atomic.Int32
-	maxSeen    atomic.Int32
+	lookups    int // ExistingNames calls, however many names each
+	asked      int // names looked up in all
 }
 
-func (r *checkDomains) GetDomainByName(_ context.Context, name string, _ bool) (*entities.Domain, error) {
-	n := r.inFlight.Add(1)
-	defer r.inFlight.Add(-1)
-	for {
-		m := r.maxSeen.Load()
-		if n <= m || r.maxSeen.CompareAndSwap(m, n) {
-			break
-		}
-	}
-	time.Sleep(2 * time.Millisecond) // long enough for lookups to overlap
+func (r *checkDomains) ExistingNames(_ context.Context, names []string) ([]string, error) {
+	r.lookups++
+	r.asked += len(names)
 	if r.err != nil {
 		return nil, r.err
 	}
-	if r.registered[name] {
-		return &entities.Domain{}, nil
+	var found []string
+	for _, n := range names {
+		if r.registered[n] {
+			found = append(found, n)
+		}
 	}
-	return nil, entities.ErrDomainNotFound
+	return found, nil
 }
 
 type checkNNDNs struct {
 	repositories.NNDNRepository
 	reserved map[string]bool
+	lookups  int
 }
 
-func (r *checkNNDNs) GetNNDN(_ context.Context, name string) (*entities.NNDN, error) {
-	if r.reserved[name] {
-		return &entities.NNDN{}, nil
+func (r *checkNNDNs) ExistingNames(_ context.Context, names []string) ([]string, error) {
+	r.lookups++
+	var found []string
+	for _, n := range names {
+		if r.reserved[n] {
+			found = append(found, n)
+		}
 	}
-	return nil, entities.ErrNNDNNotFound
+	return found, nil
 }
 
 type checkTLDs struct {
@@ -120,11 +120,10 @@ func newCheckService(t *testing.T) (*EPPDomainService, *checkDomains, *checkPhas
 		"future": {gaPhase(t, "future", time.Now().Add(24*time.Hour), 1)},
 	}}
 	svc := NewEPPDomainService(EPPDomainServiceDeps{
-		Domains:          domains,
-		NNDNs:            &checkNNDNs{reserved: map[string]bool{"held.test": true}},
-		TLDs:             &checkTLDs{known: map[string]bool{"test": true, "future": true, "closed": true}},
-		Phases:           phases,
-		CheckParallelism: 4,
+		Domains: domains,
+		NNDNs:   &checkNNDNs{reserved: map[string]bool{"held.test": true}},
+		TLDs:    &checkTLDs{known: map[string]bool{"test": true, "future": true, "closed": true}},
+		Phases:  phases,
 	})
 	return svc, domains, phases
 }
@@ -161,16 +160,27 @@ func TestEPPDomainCheck(t *testing.T) {
 	assert.Equal(t, 1, phases.listed["test"], "each TLD's phases are read once per check, however many names")
 }
 
-func TestEPPDomainCheckBoundsParallelism(t *testing.T) {
+func TestEPPDomainCheckIsTwoLookupsPerCommand(t *testing.T) {
 	svc, domains, _ := newCheckService(t)
+	nndns := svc.nndns.(*checkNNDNs)
 	names := make([]string, 50)
 	for i := range names {
 		names[i] = "name" + string(rune('a'+i%26)) + string(rune('a'+i/26)) + ".test"
 	}
+	names = append(names, "taken.test", "taken.test", "ab.test", "x.nowhere")
 	_, err := svc.Check(context.Background(), names)
 	require.NoError(t, err)
-	assert.LessOrEqual(t, domains.maxSeen.Load(), int32(4), "no more lookups at once than the configured parallelism")
-	assert.Greater(t, domains.maxSeen.Load(), int32(1), "lookups do run in parallel")
+	assert.Equal(t, 1, domains.lookups, "one domains lookup however many names")
+	assert.Equal(t, 1, nndns.lookups, "one reserved-names lookup however many names")
+	assert.Equal(t, 51, domains.asked, "each name once, and only the names the TLD and its policy did not already answer")
+}
+
+func TestEPPDomainCheckWithNothingToLookUp(t *testing.T) {
+	svc, domains, _ := newCheckService(t)
+	res, err := svc.Check(context.Background(), []string{"x.nowhere", "not a name"})
+	require.NoError(t, err)
+	require.Len(t, res, 2)
+	assert.Equal(t, 0, domains.lookups, "no lookup for a command the TLDs answer in full")
 }
 
 func TestEPPDomainCheckFailsWhole(t *testing.T) {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
@@ -48,9 +47,7 @@ type EPPDomainService struct {
 	registrars repositories.RegistrarRepository
 	transfers  repositories.DomainTransferRepository
 	register   EPPDomainRegistrar
-	// parallelism bounds the lookups one <check> runs at once.
-	parallelism int
-	now         func() time.Time
+	now        func() time.Time
 }
 
 // EPPDomainRegistrar writes the domain transforms: DomainService, which
@@ -92,19 +89,14 @@ type EPPDomainServiceDeps struct {
 	// Transfers reads the domains' transfers; Register writes them.
 	Transfers repositories.DomainTransferRepository
 	Register  EPPDomainRegistrar
-	// CheckParallelism bounds the concurrent lookups of one <check>.
-	CheckParallelism int
 }
 
 // NewEPPDomainService returns the service.
 func NewEPPDomainService(d EPPDomainServiceDeps) *EPPDomainService {
-	if d.CheckParallelism < 1 {
-		d.CheckParallelism = 1
-	}
 	return &EPPDomainService{
 		domains: d.Domains, nndns: d.NNDNs, tlds: d.TLDs, phases: d.Phases,
 		contacts: d.Contacts, hosts: d.Hosts, registrars: d.Registrars, transfers: d.Transfers, register: d.Register,
-		parallelism: d.CheckParallelism, now: time.Now,
+		now: time.Now,
 	}
 }
 
@@ -114,6 +106,11 @@ func NewEPPDomainService(d EPPDomainServiceDeps) *EPPDomainService {
 // not open, it is registered, it is reserved (on the NNDN list), or the
 // phase's policy does not allow its label. Duplicates are answered each
 // time. An error means a lookup failed; no partial answer is returned.
+//
+// A command costs two lookups however many names it carries, one against
+// the domains and one against the reserved names, each over the names'
+// unique index: <check> is the most frequent EPP command by far, and a
+// drop-catching client sends it with many names at once.
 //
 // Check is not scoped to a registrar: availability is the same for all
 // (ADR 0006 scopes reads and writes of sponsored objects, not this).
@@ -139,14 +136,9 @@ func (s *EPPDomainService) Check(ctx context.Context, names []string) ([]*querie
 		tlds[name] = t
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	var (
-		wg       sync.WaitGroup
-		mu       sync.Mutex
-		firstErr error
-		slots    = make(chan struct{}, s.parallelism)
-	)
+	// The names the TLD and its policy do not already answer, each once.
+	var lookup []string
+	seen := map[string]bool{}
 	for i, dn := range parsed {
 		if dn == nil {
 			continue
@@ -162,27 +154,27 @@ func (s *EPPDomainService) Check(ctx context.Context, names []string) ([]*querie
 			continue
 		}
 		results[i].PhaseName = t.phase.Name.String()
-		wg.Add(1)
-		slots <- struct{}{}
-		go func(r *queries.DomainCheckResult, name string) {
-			defer func() { <-slots; wg.Done() }()
-			reason, err := s.registeredOrReserved(ctx, name)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				if firstErr == nil {
-					firstErr = err
-					cancel()
-				}
-				return
-			}
-			r.Reason = reason
-			r.Available = reason == ""
-		}(results[i], dn.String())
+		if n := dn.String(); !seen[n] {
+			seen[n] = true
+			lookup = append(lookup, n)
+		}
 	}
-	wg.Wait()
-	if firstErr != nil {
-		return nil, firstErr
+	registered, reserved, err := s.registeredOrReserved(ctx, lookup)
+	if err != nil {
+		return nil, err
+	}
+	for i, dn := range parsed {
+		if dn == nil || results[i].Reason != "" {
+			continue
+		}
+		switch n := dn.String(); {
+		case registered[n]:
+			results[i].Reason = CheckReasonInUse
+		case reserved[n]:
+			results[i].Reason = CheckReasonReserved
+		default:
+			results[i].Available = true
+		}
 	}
 	return results, nil
 }
@@ -231,18 +223,29 @@ func (s *EPPDomainService) tldForCheck(ctx context.Context, name string) (*tldFo
 	return &tldForCheck{phase: phase}, nil
 }
 
-// registeredOrReserved returns the reason name is unavailable, or "" if it
-// is neither registered nor reserved.
-func (s *EPPDomainService) registeredOrReserved(ctx context.Context, name string) (string, error) {
-	if _, err := s.domains.GetDomainByName(ctx, name, false); err == nil {
-		return CheckReasonInUse, nil
-	} else if !errors.Is(err, entities.ErrDomainNotFound) {
-		return "", fmt.Errorf("look up domain %s: %w", name, err)
+// registeredOrReserved looks names up at once, and returns which of them
+// are registered and which are reserved. No lookup is made for no names.
+func (s *EPPDomainService) registeredOrReserved(ctx context.Context, names []string) (registered, reserved map[string]bool, err error) {
+	if len(names) == 0 {
+		return nil, nil, nil
 	}
-	if _, err := s.nndns.GetNNDN(ctx, name); err == nil {
-		return CheckReasonReserved, nil
-	} else if !errors.Is(err, entities.ErrNNDNNotFound) {
-		return "", fmt.Errorf("look up NNDN %s: %w", name, err)
+	found, err := s.domains.ExistingNames(ctx, names)
+	if err != nil {
+		return nil, nil, fmt.Errorf("look up %d domains: %w", len(names), err)
 	}
-	return "", nil
+	registered = asSet(found)
+	found, err = s.nndns.ExistingNames(ctx, names)
+	if err != nil {
+		return nil, nil, fmt.Errorf("look up %d reserved names: %w", len(names), err)
+	}
+	return registered, asSet(found), nil
+}
+
+// asSet is names as a set.
+func asSet(names []string) map[string]bool {
+	set := make(map[string]bool, len(names))
+	for _, n := range names {
+		set[n] = true
+	}
+	return set
 }

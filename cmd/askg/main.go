@@ -69,16 +69,12 @@ func run() int {
 	defer stop()
 
 	// Set up database connection (same env vars as other servers)
-	gormDB, err := postgres.NewConnection(
-		postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: os.Getenv("DB_SSLMODE"),
-		},
-	)
+	dbCfg, err := config.LoadDatabase()
+	if err != nil {
+		slog.Error("Database configuration is invalid", "error", err)
+		return 1
+	}
+	gormDB, err := postgres.NewConnection(postgres.Config(dbCfg))
 	if err != nil {
 		slog.Error("Failed to connect to database", "error", err)
 		return 1

@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 
 	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
@@ -24,34 +23,14 @@ type EventRelayActivities struct {
 	s3 *storage.S3Client
 }
 
-// NewEventRelayActivities creates a new EventRelayActivities with initialized DB
-// and S3 dependencies. Follows the same DB init pattern as LifecycleActivities
-// and the S3 init pattern from SnapshotActivities.
-func NewEventRelayActivities() (*EventRelayActivities, error) {
+// NewEventRelayActivities creates a new EventRelayActivities on the worker's
+// shared database pool and the event logs bucket.
+func NewEventRelayActivities(db *gorm.DB) (*EventRelayActivities, error) {
 	// Initialize S3 client, pointed at the event logs bucket (not escrow —
 	// event archives have a different retention/access profile).
 	s3c, err := storage.NewEventLogsS3Client()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize S3 for event relay activities: %w", err)
-	}
-
-	// Initialize gorm DB
-	var db *gorm.DB
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		db, err = postgres.NewConnectionFromURL(dbURL, false)
-	} else {
-		dbCfg := postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: os.Getenv("DB_SSLMODE"),
-		}
-		db, err = postgres.NewConnection(dbCfg)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize DB for event relay activities: %w", err)
 	}
 
 	return &EventRelayActivities{
@@ -120,7 +99,7 @@ func (a *EventRelayActivities) RelayEventBatch(ctx context.Context, batchSize in
 func (a *EventRelayActivities) FetchUnpublishedEvents(ctx context.Context, batchSize int) ([]entities.DomainEvent, error) {
 	var records []postgres.DomainEventRecord
 	result := a.db.WithContext(ctx).
-		Where("published = ?", false).
+		Where("published = false"). // as idx_domain_events_unpublished is defined, so the planner matches it
 		Order("occurred_at ASC").
 		Limit(batchSize).
 		Find(&records)
@@ -207,7 +186,7 @@ func (a *EventRelayActivities) CountUnpublishedEvents(ctx context.Context) (int6
 	var count int64
 	result := a.db.WithContext(ctx).
 		Model(&postgres.DomainEventRecord{}).
-		Where("published = ?", false).
+		Where("published = false").
 		Count(&count)
 	if result.Error != nil {
 		return 0, fmt.Errorf("CountUnpublishedEvents: %w", result.Error)

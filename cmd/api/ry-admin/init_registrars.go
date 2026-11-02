@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
-	"os"
 
 	"github.com/onasunnymorning/domain-os/cmd/api/ry-admin/config"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/application/workflows"
+	sharedconfig "github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
 	"go.temporal.io/sdk/client"
@@ -16,18 +16,13 @@ import (
 func runInitRegistrars(cfg *config.AdminApiConfig, logger *zap.Logger) {
 	logger.Info("Starting init-registrars check")
 
-	// Set up the GORM DB connection
-	gormDB, err := postgres.NewConnection(
-		postgres.Config{
-			User:        os.Getenv("DB_USER"),
-			Pass:        os.Getenv("DB_PASS"),
-			Host:        os.Getenv("DB_HOST"),
-			Port:        os.Getenv("DB_PORT"),
-			DBName:      os.Getenv("DB_NAME"),
-			SSLmode:     os.Getenv("DB_SSLMODE"),
-			AutoMigrate: false, // Don't migrate here, assume app has run or will run
-		},
-	)
+	// Set up the GORM DB connection. No migration here: the app has run or
+	// will run it.
+	dbCfg, err := sharedconfig.LoadDatabase()
+	if err != nil {
+		logger.Fatal("Database configuration is invalid", zap.Error(err))
+	}
+	gormDB, err := postgres.NewConnection(postgres.Config(dbCfg))
 	if err != nil {
 		logger.Fatal("Failed to connect to the database", zap.Error(err))
 	}

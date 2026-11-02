@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 
 	"go.temporal.io/sdk/activity"
 	"gorm.io/gorm"
 
-	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -22,30 +21,9 @@ type TombstoneBackfillActivities struct {
 	tombstoneRepo *postgres.GormTombstoneRepository
 }
 
-// NewTombstoneBackfillActivities creates a new TombstoneBackfillActivities with
-// initialized DB and tombstone repository. Follows the same DB init pattern as
-// EventRelayActivities and LifecycleActivities.
-func NewTombstoneBackfillActivities() (*TombstoneBackfillActivities, error) {
-	// Initialize gorm DB
-	var db *gorm.DB
-	var err error
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		db, err = postgres.NewConnectionFromURL(dbURL, false)
-	} else {
-		dbCfg := postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: os.Getenv("DB_SSLMODE"),
-		}
-		db, err = postgres.NewConnection(dbCfg)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize DB for tombstone backfill activities: %w", err)
-	}
-
+// NewTombstoneBackfillActivities creates a new TombstoneBackfillActivities on
+// the worker's shared database pool.
+func NewTombstoneBackfillActivities(db *gorm.DB) (*TombstoneBackfillActivities, error) {
 	tombstoneRepo := postgres.NewGormTombstoneRepository(db)
 
 	return &TombstoneBackfillActivities{

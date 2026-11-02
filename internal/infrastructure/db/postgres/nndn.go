@@ -93,6 +93,17 @@ func (r *GormNNDNRepository) GetNNDN(ctx context.Context, name string) (*entitie
 	return gormNNDN.toNNDN(), nil
 }
 
+// ExistingNames returns the names among names that are on the list, from
+// the primary key alone: no row is read.
+func (r *GormNNDNRepository) ExistingNames(ctx context.Context, names []string) ([]string, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	var found []string
+	err := dbFrom(ctx, r.db).Model(&NNDN{}).Where("name IN ?", names).Pluck("name", &found).Error
+	return found, err
+}
+
 // UpdateNNDN updates an NNDN in the database.
 //
 // An UPDATE rather than a Save, for the reasons in DomainRepository.UpdateDomain:

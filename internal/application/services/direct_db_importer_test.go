@@ -22,11 +22,7 @@ func TestDirectDBImporter_ImportNNDNs_NoTable(t *testing.T) {
 	defer db.Close()
 
 	// Initialize importer (doesn't hit PG until an insert occurs)
-	importer, err := services.NewDirectDBImporter("TEST")
-	// If PG connect fails because it's not a real environment, skip the test
-	if err != nil || importer == nil {
-		t.Skip("Postgres environment not available, skipping DirectDBImporter test")
-	}
+	importer := testImporter(t)
 
 	// Test graceful handle or error
 	// Since we removed graceful handle, it should ERROR!
@@ -50,10 +46,7 @@ func TestDirectDBImporter_ImportNNDNs_EmptyTable(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initialize importer
-	importer, err := services.NewDirectDBImporter("TEST")
-	if err != nil || importer == nil {
-		t.Skip("Postgres environment not available, skipping DirectDBImporter test")
-	}
+	importer := testImporter(t)
 
 	// This should run without errors since it has 0 items and no conflicts
 	total, inserted, updated, err := importer.ImportNNDNs(context.Background(), db, "radio", services.ImportCursor{}, func(services.ImportCursor) {})
@@ -72,10 +65,7 @@ func TestDirectDBImporter_ImportHosts_NoTable(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	importer, err := services.NewDirectDBImporter("TEST")
-	if err != nil || importer == nil {
-		t.Skip("Postgres environment not available, skipping DirectDBImporter test")
-	}
+	importer := testImporter(t)
 
 	_, _, _, err = importer.ImportHosts(context.Background(), db, nil, services.ImportCursor{}, func(services.ImportCursor) {})
 	require.Error(t, err)
@@ -96,10 +86,7 @@ func TestDirectDBImporter_ImportHosts_EmptyTable(t *testing.T) {
 	_, err = db.Exec("CREATE TABLE host_addresses (host_name TEXT, ip_address TEXT);")
 	require.NoError(t, err)
 
-	importer, err := services.NewDirectDBImporter("TEST")
-	if err != nil || importer == nil {
-		t.Skip("Postgres environment not available, skipping DirectDBImporter test")
-	}
+	importer := testImporter(t)
 
 	total, inserted, updated, err := importer.ImportHosts(context.Background(), db, nil, services.ImportCursor{}, func(services.ImportCursor) {})
 	require.NoError(t, err)

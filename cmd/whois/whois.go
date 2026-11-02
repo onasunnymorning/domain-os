@@ -137,14 +137,9 @@ func getWHOISResponse(ctx context.Context, query string, svc *services.WhoisServ
 }
 
 func setupDB() (*gorm.DB, error) {
-	return postgres.NewConnection(
-		postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: os.Getenv("DB_SSLMODE"),
-		},
-	)
+	dbCfg, err := config.LoadDatabase()
+	if err != nil {
+		return nil, err
+	}
+	return postgres.NewConnection(postgres.Config(dbCfg))
 }

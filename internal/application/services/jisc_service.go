@@ -327,7 +327,7 @@ func (s *JiscService) createEscrowSchema() error {
 
 // ImportToDirectDB generates an escrow DB from JSON then imports it directly
 // to Postgres, minting the objects' ROIDs with repository.
-func (s *JiscService) ImportToDirectDB(jsonPath string, repository entities.RepositoryID) error {
+func (s *JiscService) ImportToDirectDB(jsonPath string, repository entities.RepositoryID, pool *ImportPool) error {
 	// 1. Generate SQLite from JSON
 	start := time.Now()
 	parsedDomains, err := s.generateEscrowDB(jsonPath)
@@ -346,11 +346,10 @@ func (s *JiscService) ImportToDirectDB(jsonPath string, repository entities.Repo
 	defer sqliteDB.Close()
 
 	// 2. Initialize Direct Importer
-	importer, err := NewDirectDBImporter(repository)
+	importer, err := NewDirectDBImporterWith(repository, pool)
 	if err != nil {
 		return fmt.Errorf("failed to init direct importer: %w", err)
 	}
-	defer importer.PG.Close()
 
 	ctx := context.Background()
 

@@ -20,9 +20,7 @@ import (
 func TestDirectDBImporter_ImportNNDNs_ReasonBackfill(t *testing.T) {
 	gdb := authInfoTestDB(t)
 
-	importer, err := services.NewDirectDBImporter("TEST")
-	require.NoError(t, err)
-	defer importer.PG.Close()
+	importer := testImporter(t)
 
 	const tld = "nndnreason"
 	const ry = "nndnreasonry"

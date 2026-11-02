@@ -52,7 +52,7 @@ func TestJiscImportToDirectDB_QAFailureStopsBeforeAnyWrite(t *testing.T) {
 	clID := seedFixtures(t, db, "ac.uk", 91003)
 	jsonPath := writeJiscJSON(t, gateRecords("qa-one.ac.uk", "qa-two.ac.uk", "qa-three.ac.uk", "qa-one.ac.uk")...)
 
-	err := services.NewJiscService().ImportToDirectDB(jsonPath, "TEST")
+	err := services.NewJiscService().ImportToDirectDB(jsonPath, "TEST", testImportPool(t))
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "entity_count_mismatch")
@@ -77,7 +77,7 @@ func TestJiscImportToDirectDB_UnknownRegistrarStopsBeforeAnyWrite(t *testing.T) 
 	records[1].Registrar = jisc.JiscRegistrar{JoID: 556, Name: "A Registrar Postgres Has Never Heard Of"}
 	jsonPath := writeJiscJSON(t, records...)
 
-	err := services.NewJiscService().ImportToDirectDB(jsonPath, "TEST")
+	err := services.NewJiscService().ImportToDirectDB(jsonPath, "TEST", testImportPool(t))
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unmapped_identity")
@@ -93,7 +93,7 @@ func TestJiscImportToDirectDB_PassingQAImportsContactAuthInfosAndNoDomainCodes(t
 	clID := seedFixtures(t, db, "ac.uk", 91003)
 	jsonPath := writeJiscJSON(t, gateRecords("qa-one.ac.uk", "qa-two.ac.uk", "qa-three.ac.uk")...)
 
-	require.NoError(t, services.NewJiscService().ImportToDirectDB(jsonPath, "TEST"))
+	require.NoError(t, services.NewJiscService().ImportToDirectDB(jsonPath, "TEST", testImportPool(t)))
 
 	report := readQAReport(t, jsonPath)
 	require.True(t, report.Passed, "failed checks: %+v", report.Failed())

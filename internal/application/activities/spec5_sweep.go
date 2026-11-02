@@ -6,9 +6,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
-	"os"
 
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"go.temporal.io/sdk/activity"
 	"gorm.io/gorm"
@@ -49,28 +47,10 @@ type Spec5SweepActivities struct {
 }
 
 // NewSpec5SweepActivities initializes dependencies from environment variables.
-func NewSpec5SweepActivities() (*Spec5SweepActivities, error) {
+func NewSpec5SweepActivities(db *gorm.DB) (*Spec5SweepActivities, error) {
 	s3c, err := storage.NewReportsS3Client()
 	if err != nil {
 		return nil, fmt.Errorf("NewSpec5SweepActivities: failed to initialize S3 client: %w. Check that MinIO is running and MinIO credentials are set", err)
-	}
-
-	var db *gorm.DB
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		db, err = postgres.NewConnectionFromURL(dbURL, false)
-	} else {
-		dbCfg := postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: os.Getenv("DB_SSLMODE"),
-		}
-		db, err = postgres.NewConnection(dbCfg)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("NewSpec5SweepActivities: failed to connect to database: %w. Check that Postgres is running and DB connection variables are configured", err)
 	}
 
 	return &Spec5SweepActivities{

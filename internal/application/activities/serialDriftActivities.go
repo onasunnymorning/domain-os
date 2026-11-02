@@ -4,14 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/application/serialdrift"
 	dnsresolver "github.com/onasunnymorning/domain-os/internal/infrastructure/dns"
 
-	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/activity"
 	"gorm.io/gorm"
@@ -28,30 +26,9 @@ type SerialDriftActivities struct {
 	resolver *dnsresolver.Resolver
 }
 
-// NewSerialDriftActivities creates a new SerialDriftActivities with initialized
-// DB and DNS resolver dependencies. Follows the same DB init pattern as
-// EventRelayActivities.
-func NewSerialDriftActivities() (*SerialDriftActivities, error) {
-	// Initialize gorm DB
-	var db *gorm.DB
-	var err error
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		db, err = postgres.NewConnectionFromURL(dbURL, false)
-	} else {
-		dbCfg := postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: os.Getenv("DB_SSLMODE"),
-		}
-		db, err = postgres.NewConnection(dbCfg)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize DB for serial drift activities: %w", err)
-	}
-
+// NewSerialDriftActivities creates a new SerialDriftActivities on the worker's
+// shared database pool, with a DNS resolver.
+func NewSerialDriftActivities(db *gorm.DB) (*SerialDriftActivities, error) {
 	resolver := dnsresolver.NewResolver(5 * time.Second)
 
 	return &SerialDriftActivities{

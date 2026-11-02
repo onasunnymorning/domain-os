@@ -114,6 +114,17 @@ func (dr *DomainRepository) GetDomainsByNames(ctx context.Context, names []strin
 	return result, nil
 }
 
+// ExistingNames returns the names among names that are registered, from the
+// unique index on name alone: no row is read.
+func (dr *DomainRepository) ExistingNames(ctx context.Context, names []string) ([]string, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	var found []string
+	err := dbFrom(ctx, dr.db).Model(&Domain{}).Where("name IN ?", names).Pluck("name", &found).Error
+	return found, err
+}
+
 // UpdateDomain updates a domain in the database.
 //
 // It is an UPDATE, not a Save. Save() writes the row by primary key and inserts
@@ -291,7 +302,7 @@ func (dr *DomainRepository) UpdateDomainIfUnchanged(ctx context.Context, d *enti
 		}
 		if d.Status.PendingDelete {
 			var sub int64
-			if err := tx.Model(&Host{}).Where("cl_id = ? AND name LIKE ?", dbDomain.ClID, "%."+dbDomain.Name).Count(&sub).Error; err != nil {
+			if err := tx.Table("hosts h").Where("h.cl_id = ? AND "+hostUnderDomainSQL, dbDomain.ClID, dbDomain.Name).Count(&sub).Error; err != nil {
 				return err
 			}
 			if sub > 0 {
@@ -665,14 +676,15 @@ func (dr *DomainRepository) CountPurgeableDomains(ctx context.Context, before ti
 // it stays pendingDelete meanwhile (RFC 3915 §4), and its pending restore
 // period can outlast its purge date. A lapsed restore is reverted first
 // (Domain.RevertRestore), then purged.
-const purgeableFilter = "purge_date <= ? AND purge_date > '0001-01-01' AND COALESCE(pending_delete, false) = true AND COALESCE(pending_restore, false) = false"
+const purgeableFilter = "purge_date <= ? AND purge_date > '0001-01-01' AND pending_delete = true AND COALESCE(pending_restore, false) = false"
 
 // ListLapsedRestores returns the domains whose restore lapsed by dueBy
-// (repositories.DomainRepository), served by the pending_restore_end index.
+// (repositories.DomainRepository), served by idx_domains_pending_restore_pending_end:
+// the predicate is written as the index's, so the planner can match it.
 func (dr *DomainRepository) ListLapsedRestores(ctx context.Context, dueBy, afterEnd time.Time, afterRoID int64, limit int) ([]*entities.Domain, error) {
 	var rows []*Domain
 	err := dbFrom(ctx, dr.db).Select("ro_id", "name", "pending_restore_end").
-		Where("COALESCE(pending_restore, false) = true AND pending_restore_end <= ?", dueBy).
+		Where("pending_restore = true AND pending_restore_end <= ?", dueBy).
 		Where("(pending_restore_end, ro_id) > (?, ?)", afterEnd, afterRoID).
 		Order("pending_restore_end ASC, ro_id ASC").Limit(limit).Find(&rows).Error
 	if err != nil {

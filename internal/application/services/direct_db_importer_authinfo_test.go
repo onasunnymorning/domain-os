@@ -167,9 +167,7 @@ func TestDirectDBImporter_ImportContacts_StoresAGeneratedAuthInfoPerContact(t *t
 	}
 	require.NoError(t, tx.Commit())
 
-	importer, err := services.NewDirectDBImporter("TEST")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = importer.PG.Close() })
+	importer := testImporter(t)
 	noop := func(services.ImportCursor) {}
 
 	total, _, _, skipped, err := importer.ImportContacts(context.Background(), staged, nil, services.ImportCursor{}, noop)
@@ -204,9 +202,7 @@ func TestDirectDBImporter_ImportDomains_StoresNoAuthInfo(t *testing.T) {
 	}
 	require.NoError(t, tx.Commit())
 
-	importer, err := services.NewDirectDBImporter("TEST")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = importer.PG.Close() })
+	importer := testImporter(t)
 	noop := func(services.ImportCursor) {}
 
 	total, _, _, err := importer.ImportDomains(context.Background(), staged, tld, nil, services.ImportCursor{}, noop)

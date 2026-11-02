@@ -3,7 +3,6 @@ package activities
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/api/frankfurter"
 	postgres "github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
@@ -35,28 +34,9 @@ type FXActivities struct {
 	rates     FXRatesSource
 }
 
-// NewFXActivities creates FXActivities wired to the database (same init
-// pattern as LifecycleActivities) and the public Frankfurter API.
-func NewFXActivities() (*FXActivities, error) {
-	var gormDB *gorm.DB
-	var err error
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		gormDB, err = postgres.NewConnectionFromURL(dbURL, false)
-	} else {
-		dbCfg := postgres.Config{
-			User:    os.Getenv("DB_USER"),
-			Pass:    os.Getenv("DB_PASS"),
-			Host:    os.Getenv("DB_HOST"),
-			Port:    os.Getenv("DB_PORT"),
-			DBName:  os.Getenv("DB_NAME"),
-			SSLmode: os.Getenv("DB_SSLMODE"),
-		}
-		gormDB, err = postgres.NewConnection(dbCfg)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize DB for FX activities: %w", err)
-	}
-
+// NewFXActivities creates FXActivities wired to the worker's shared database
+// pool and the public Frankfurter API.
+func NewFXActivities(gormDB *gorm.DB) (*FXActivities, error) {
 	return &FXActivities{
 		fxRepo:    postgres.NewFXRepository(gormDB),
 		phaseRepo: postgres.NewGormPhaseRepository(gormDB),

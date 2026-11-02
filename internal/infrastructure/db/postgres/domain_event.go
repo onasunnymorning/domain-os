@@ -22,7 +22,7 @@ type DomainEventRecord struct {
 	AfterState    []byte    `gorm:"type:jsonb"`
 	Actor         string    `gorm:"type:text"`
 	RoID          string    `gorm:"type:text"`
-	Published     bool      `gorm:"default:false;index"` // outbox relay flag
+	Published     bool      `gorm:"default:false"` // outbox relay flag; indexed where false, see AutoMigrate
 	CreatedAt     time.Time
 }
 

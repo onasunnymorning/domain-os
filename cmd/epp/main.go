@@ -24,9 +24,9 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/config"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/lockout"
-	"github.com/onasunnymorning/domain-os/internal/infrastructure/ratelimit"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/epp/sessionstore"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/passwordhash"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/ratelimit"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/interface/epp"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -72,18 +72,14 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		logger.Warn("EPP source allowlists are not enforced (EPP_REQUIRE_ALLOWLIST=false); local development only")
 	}
 
+	// Logins, the credential refresh, checks and the audit log share a
+	// bounded pool, so a node cannot crowd out the API and workers.
 	db, err := postgres.NewConnection(postgres.Config{
 		User: cfg.DB.User, Pass: cfg.DB.Pass, Host: cfg.DB.Host, Port: cfg.DB.Port,
-		DBName: cfg.DB.Name, SSLmode: cfg.DB.SSLMode,
+		DBName: cfg.DB.Name, SSLmode: cfg.DB.SSLMode, MaxOpenConns: cfg.DB.MaxOpenConns,
 	})
 	if err != nil {
 		return fmt.Errorf("connect to the database at %s:%s: %w", cfg.DB.Host, cfg.DB.Port, err)
-	}
-	if sqlDB, err := db.DB(); err == nil {
-		// Logins, the credential refresh, checks and the audit log share
-		// a bounded pool, so a node cannot crowd out the API and workers.
-		sqlDB.SetMaxOpenConns(cfg.DB.MaxOpenConns)
-		sqlDB.SetMaxIdleConns(max(2, cfg.DB.MaxOpenConns/4))
 	}
 	schemaLog := func(format string, args ...any) { logger.Info(fmt.Sprintf(format, args...)) }
 	if err := postgres.EnforceSchemaGuard(db, buildinfo.Version, postgres.SchemaGuardModeFromEnv(), schemaLog); err != nil {
@@ -115,10 +111,14 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		logger.Info("Connected to Redis", "addr", cfg.Redis.Addr())
 	}
 
+	if err := fixSnowflakeNode(); err != nil {
+		return err
+	}
 	ids, err := snowflakeidgenerator.NewIDGenerator()
 	if err != nil {
 		return fmt.Errorf("id generator: %w", err)
 	}
+	logger.Info("Snowflake node", "node", ids.ListNode(), "from", snowflakeNodeSource())
 
 	credentials := postgres.NewEPPCredentialRepository(db)
 	uses := services.NewEPPCredentialUseRecorder(credentials)
@@ -177,7 +177,7 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 	domains := services.NewEPPDomainService(services.EPPDomainServiceDeps{
 		Domains: domainRepo, NNDNs: nndnRepo, TLDs: tldRepo, Phases: phaseRepo,
 		Contacts: postgres.NewContactRepository(db, repositoryID), Hosts: hostRepo, Registrars: registrarRepo,
-		Transfers: transfers, Register: registry, CheckParallelism: cfg.Commands.CheckParallelism,
+		Transfers: transfers, Register: registry,
 	})
 	hosts := services.NewEPPHostService(services.EPPHostServiceDeps{
 		Hosts: hostRepo, Domains: domainRepo, TLDs: tldRepo, Roids: roids, Events: events,
@@ -332,4 +332,24 @@ func pruneAudit(ctx context.Context, audit *services.EPPAuditService, retention 
 			return
 		}
 	}
+}
+
+// fixSnowflakeNode puts the process on SNOWFLAKE_NODE_ID when it is set.
+func fixSnowflakeNode() error {
+	id, set, err := config.LoadSnowflakeNodeID()
+	if err != nil {
+		return err
+	}
+	if !set {
+		return nil
+	}
+	return snowflakeidgenerator.SetNodeID(id)
+}
+
+// snowflakeNodeSource says where the process's node came from, for the log.
+func snowflakeNodeSource() string {
+	if _, set, _ := config.LoadSnowflakeNodeID(); set {
+		return "SNOWFLAKE_NODE_ID"
+	}
+	return "derived from the host; set SNOWFLAKE_NODE_ID per replica"
 }

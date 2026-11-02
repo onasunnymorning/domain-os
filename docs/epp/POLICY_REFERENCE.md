@@ -94,7 +94,6 @@ A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always an
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `EPP_CHECK_PARALLELISM` | `8` | Availability lookups one `<check>` runs at once. Must be below `EPP_DB_MAX_OPEN_CONNS`, so one check cannot take every connection |
 | `EPP_MAX_CREATES_IN_FLIGHT` | `10` | `<domain:create>`s one node runs at once, let in fairly when they queue ([§ Create queue](#create-queue)). Must be below `EPP_DB_MAX_OPEN_CONNS`, so creates cannot take every connection |
 | `EPP_CREATE_QUEUE_WAIT` | `5s` | The longest a `<domain:create>` waits for a slot before it is refused with 2400 |
 
@@ -145,7 +144,7 @@ The greeting offers the domain, contact and host object services. It offers thre
 | `In use` | Registered |
 | `Reserved` | On the reserved and blocked names list (ADR 0011) |
 
-Availability is the same for every registrar. Names are looked up `EPP_CHECK_PARALLELISM` at a time, and each TLD's phases are read once per command. A registry that cannot answer is 2400 for the whole command; there are no partial answers. `epp_check_names` is the histogram of names per check.
+Availability is the same for every registrar. A command costs two lookups however many names it carries, one against the domains and one against the reserved names, and each TLD's phases are read once per command. A registry that cannot answer is 2400 for the whole command; there are no partial answers. `epp_check_names` is the histogram of names per check.
 
 **`<domain:info>`.** Answered in full only to the sponsoring registrar (ADR 0006). Another registrar gets 2201 without the domain's transfer code, and is not told who the sponsor is; with the code, see *Transfer codes* below. Authorization information other than a password (`<domain:ext>`) is 2102, from any registrar. The `<infData>` carries the name, ROID, statuses, registrant and contacts, nameservers and subordinate hosts as the `hosts` attribute selects (`all`, the default; `del`; `sub`; `none`), the sponsor and creator, and the dates, `<domain:trDate>` once the domain has been transferred. When a transfer code is set it carries an empty `<domain:authInfo><domain:pw/></domain:authInfo>`, never the code; when none is set, no `<domain:authInfo>`. A session that logged in with RGP also gets `<rgp:infData>` with the domain's grace period statuses (`addPeriod`, `renewPeriod`, `autoRenewPeriod`, `transferPeriod`; or, once deleted, `redemptionPeriod`, `pendingRestore` or `pendingDelete`), when it is in one.
 

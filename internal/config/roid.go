@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -27,4 +28,29 @@ func LoadRepositoryID() (entities.RepositoryID, error) {
 		return "", fmt.Errorf("ROID_REPOSITORY_ID: %w", err)
 	}
 	return id, nil
+}
+
+// MaxSnowflakeNodeID is the largest snowflake node ID: the node field is ten
+// bits wide.
+const MaxSnowflakeNodeID = 1023
+
+// LoadSnowflakeNodeID reads SNOWFLAKE_NODE_ID: the process's snowflake node,
+// 0 to MaxSnowflakeNodeID, which every ROID it mints carries. Two processes
+// on the same node can mint the same ROID in the same millisecond, so each
+// process that mints into the database — the admin API and its seed, the
+// EPP server, the worker and the JISC importer, every replica of each — is
+// given a node of its own. The range is shared by all of them, so the
+// registry entry assigns each service a block and each replica its offset
+// in it. Unset is not an error: the generator then derives a node from the
+// host, which is fine for one process and a gamble for a fleet.
+func LoadSnowflakeNodeID() (id int64, set bool, err error) {
+	v := strings.TrimSpace(os.Getenv("SNOWFLAKE_NODE_ID"))
+	if v == "" {
+		return 0, false, nil
+	}
+	id, err = strconv.ParseInt(v, 10, 64)
+	if err != nil || id < 0 || id > MaxSnowflakeNodeID {
+		return 0, false, fmt.Errorf("SNOWFLAKE_NODE_ID=%q is not an integer from 0 to %d", v, MaxSnowflakeNodeID)
+	}
+	return id, true, nil
 }
