@@ -91,7 +91,7 @@ func (ctrl *EPPPoliciesController) GetPolicy(ctx *gin.Context) {
 
 // SavePolicy godoc
 // @Summary Create or replace an EPP policy
-// @Description Every limit must be given: at least 1, except creates_per_day (0 is no cap), and each check burst at least check_names. The built-in policies can be changed this way too. With the header If-None-Match: * the save is create-only and an existing policy is 409, checked in the same transaction
+// @Description Every limit must be given: at least 1, except creates_per_day (0 is no cap), and each check burst at least check_names. The built-in policies can be changed this way too. With the header If-None-Match: * the save is create-only and an existing policy is 412, checked in the same transaction
 // @Tags EPP
 // @Accept json
 // @Produce json
@@ -250,7 +250,7 @@ func (ctrl *EPPPoliciesController) GetFamily(ctx *gin.Context) {
 
 // SaveFamily godoc
 // @Summary Create or replace a registrar family
-// @Description Its members are replaced. A registrar is in at most one family. With the header If-None-Match: * the save is create-only and an existing family is 409, checked in the same transaction
+// @Description Its members are replaced. A registrar is in at most one family. With the header If-None-Match: * the save is create-only and an existing family is 412, checked in the same transaction
 // @Tags EPP
 // @Accept json
 // @Produce json
@@ -323,10 +323,13 @@ func eppPolicyError(ctx *gin.Context, err error) {
 		errors.Is(err, entities.ErrRegistrarNotFound):
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, entities.ErrEPPPolicyBuiltIn), errors.Is(err, entities.ErrEPPPolicyInUse),
-		errors.Is(err, entities.ErrRegistrarInFamily), errors.Is(err, entities.ErrEPPPolicyExists),
-		errors.Is(err, entities.ErrRegistrarFamilyExists):
+		errors.Is(err, entities.ErrRegistrarInFamily):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-	case errors.Is(err, entities.ErrEPPPolicyChanged), errors.Is(err, entities.ErrRegistrarFamilyChanged):
+	// A failed If-None-Match or If-Match precondition is 412 (RFC 9110 §13.1),
+	// so standard conditional-write clients recognise it; 409 is kept for
+	// conflicts of state (in use, in another family).
+	case errors.Is(err, entities.ErrEPPPolicyExists), errors.Is(err, entities.ErrRegistrarFamilyExists),
+		errors.Is(err, entities.ErrEPPPolicyChanged), errors.Is(err, entities.ErrRegistrarFamilyChanged):
 		ctx.JSON(http.StatusPreconditionFailed, gin.H{"error": err.Error()})
 	case errors.Is(err, entities.ErrInvalidEPPPolicy), errors.Is(err, entities.ErrInvalidRegistrarFamily),
 		errors.Is(err, entities.ErrInvalidCreateOutcomeRange):

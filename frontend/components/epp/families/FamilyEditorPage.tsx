@@ -16,11 +16,13 @@ import { VersionConflictNotice } from "@/components/epp/VersionConflictNotice";
 
 /**
  * Which member a 409 "already in another family" message is about. The API
- * says "…: <clid> is in <family>"; the client ID is read whole and compared
- * exactly, so rar-001 is never taken for rar-0011.
+ * says "…: <clid> is in <family>". A client ID is any 3 to 16 ASCII
+ * characters, spaces included, so everything between the colon and the final
+ * " is in <family>" (a family name has no spaces) is the ID, compared exactly:
+ * rar-001 is never taken for rar-0011.
  */
 export function memberNamedIn(message: string, members: string[]): string | undefined {
-  const m = /:\s*(\S+) is in \S+\s*$/.exec(message);
+  const m = /:\s*(.+?) is in \S+\s*$/.exec(message);
   if (!m) return undefined;
   return members.find((c) => c === m[1]);
 }

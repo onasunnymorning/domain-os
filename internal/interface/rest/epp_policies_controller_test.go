@@ -138,17 +138,17 @@ func TestEPPPoliciesCreateOnly(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, createOnly(http.MethodPut, "/epp/policies/gold", limits).Code, "a new name is created")
 	w := createOnly(http.MethodPut, "/epp/policies/gold", strings.Replace(limits, "first", "second", 1))
-	assert.Equal(t, http.StatusConflict, w.Code, "an existing name is refused")
+	assert.Equal(t, http.StatusPreconditionFailed, w.Code, "an existing name fails the precondition (RFC 9110)")
 	assert.Contains(t, w.Body.String(), "already exists")
 	w = createOnly(http.MethodPut, "/epp/policies/default", limits)
-	assert.Equal(t, http.StatusConflict, w.Code, "a built-in is never replaced by a create")
+	assert.Equal(t, http.StatusPreconditionFailed, w.Code, "a built-in is never replaced by a create")
 	w = do(r, http.MethodGet, "/epp/policies/gold", "")
 	assert.Contains(t, w.Body.String(), `"description":"first"`, "the refused save changed nothing")
 	assert.Equal(t, http.StatusOK, do(r, http.MethodPut, "/epp/policies/gold", strings.Replace(limits, "first", "second", 1)).Code, "a plain PUT still replaces")
 
 	require.Equal(t, http.StatusOK, createOnly(http.MethodPut, "/epp/families/acme", `{"members":["rar-a"]}`).Code)
 	w = createOnly(http.MethodPut, "/epp/families/acme", `{"members":[]}`)
-	assert.Equal(t, http.StatusConflict, w.Code, "an existing family keeps its members")
+	assert.Equal(t, http.StatusPreconditionFailed, w.Code, "an existing family keeps its members")
 	w = do(r, http.MethodGet, "/epp/families/acme", "")
 	assert.Contains(t, w.Body.String(), `"rar-a"`)
 }
