@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useRegistrar } from "@/lib/hooks/useRegistrars";
 import { useRegistrarAccreditations, useAccreditRegistrar, useDeaccreditRegistrar } from "@/lib/hooks/useAccreditations";
@@ -21,10 +21,21 @@ import { RegistrarDomainCountWidget } from "@/components/registrars/RegistrarDom
 import { RegistrarLifecycleWidget } from "@/components/registrars/RegistrarLifecycleWidget";
 import { RegistrarTLDCountWidget } from "@/components/registrars/RegistrarTLDCountWidget";
 import posthog from "posthog-js";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RegistrarEPPTab } from "@/components/registrars/epp/RegistrarEPPTab";
 
 export default function RegistrarDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams?.get("tab") === "epp" ? "epp" : "overview");
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.set("tab", value);
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  };
   const clid = typeof params?.clid === "string" ? params.clid : Array.isArray(params?.clid) ? params?.clid[0] : "";
   const { data, isLoading, error } = useRegistrar(clid, !!clid);
   const { data: accData, isLoading: accLoading } = useRegistrarAccreditations(clid, { pagesize: 100 });
@@ -62,6 +73,13 @@ export default function RegistrarDetailPage() {
           </div>
         </div>
 
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="epp">EPP</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-6">
         {data && (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
             <div className="md:col-span-2">
@@ -110,7 +128,6 @@ export default function RegistrarDetailPage() {
             )}
           </CardContent>
         </Card>
-      </div>
       {/* Accreditations */}
       <Card id="accreditations" className="mt-8">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -204,6 +221,13 @@ export default function RegistrarDetailPage() {
           )}
         </CardContent>
       </Card>
+          </TabsContent>
+
+          <TabsContent value="epp">
+            <RegistrarEPPTab clid={clid} />
+          </TabsContent>
+        </Tabs>
+      </div>
 
       {/* Add accreditation dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
