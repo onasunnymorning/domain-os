@@ -34,6 +34,18 @@ describe('AddPasswordDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it('cannot be dismissed while the request is in flight', async () => {
+    let resolve!: (v: unknown) => void;
+    mutateAsync.mockReturnValue(new Promise((r) => { resolve = r; }));
+    vi.mocked(hooks.useAddEPPPassword).mockReturnValue({ mutateAsync, isPending: true } as any);
+    const onOpenChange = vi.fn();
+    render(<AddPasswordDialog clid="rar-001" login="rar-001" onOpenChange={onOpenChange} />);
+    await userEvent.keyboard('{Escape}');
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /close/i })).not.toBeInTheDocument();
+    resolve({ id: 'p1', state: 'active', created_at: '2026-11-02T00:00:00Z' });
+  });
+
   it('sends a chosen password and closes without showing it', async () => {
     mutateAsync.mockResolvedValue({ id: 'p1', state: 'active', created_at: '2026-11-02T00:00:00Z' });
     const onOpenChange = vi.fn();

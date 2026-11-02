@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { EPPSectionHeader } from "@/components/epp/EPPSectionHeader";
 import { useAssignRegistrarEPPPolicy, useEPPPolicies, eppErrorMessage } from "@/lib/hooks/useEPP";
+import { eppQueryErrorText } from "./queryState";
 import type { EPPPolicy, EPPRegistrarPolicy } from "@/lib/types/epp";
 
 function Limit({ label, value, hint }: { label: string; value: string; hint: string }) {
@@ -25,10 +26,12 @@ export function EPPLimitsSection({
   clid,
   policy,
   isLoading,
+  error,
 }: {
   clid: string;
   policy?: EPPRegistrarPolicy;
   isLoading: boolean;
+  error?: unknown;
 }) {
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<string>("");
@@ -68,7 +71,11 @@ export function EPPLimitsSection({
         }
       />
       <CardContent className="space-y-6">
-        {isLoading || !current || !limits ? (
+        {error ? (
+          <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+            {eppQueryErrorText("the policy", error)}
+          </div>
+        ) : isLoading || !current || !limits ? (
           <Skeleton className="h-24 w-full" />
         ) : (
           <>

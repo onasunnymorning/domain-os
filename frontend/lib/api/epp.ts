@@ -16,7 +16,7 @@ import type {
   EPPCertificatePin,
   EPPCreateOutcomes,
   EPPCredentialKind,
-  EPPExpiringCertificatePin,
+  EPPExpiringPinsResponse,
   EPPLogin,
   EPPLoginLockout,
   EPPLoginSuspension,
@@ -91,10 +91,13 @@ export async function retireEPPCredential({ clid, kind, id, login, body = {} }: 
   return data;
 }
 
-/** Usable pins across every registrar whose certificate expires within the window (Go duration, e.g. "720h"). */
-export async function getEPPExpiringCertificatePins(expiringWithin = '720h'): Promise<EPPExpiringCertificatePin[]> {
-  const { data } = await apiClient.get('/epp/certificate-pins', { params: { expiring_within: expiringWithin } });
-  return data ?? [];
+/** A page of usable pins across every registrar whose certificate expires within the window (Go duration, e.g. "720h"). */
+export async function getEPPExpiringCertificatePins(
+  expiringWithin = '720h',
+  page?: { pagesize?: number; cursor?: string },
+): Promise<EPPExpiringPinsResponse> {
+  const { data } = await apiClient.get('/epp/certificate-pins', { params: { expiring_within: expiringWithin, ...page } });
+  return data;
 }
 
 // =============================================================================

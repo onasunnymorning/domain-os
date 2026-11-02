@@ -388,7 +388,7 @@ A registrar's EPP logins, passwords, certificate pins and allowed networks are m
 | Pin a client certificate's key. `logins` optionally restricts the pin | `POST /registrars/{clid}/epp/certificate-pins` `{"certificate_pem": "...", "logins": [...]}` |
 | Allow a source network | `POST /registrars/{clid}/epp/allowed-networks` `{"network": "192.0.2.0/24", "note": "..."}` |
 | Retire a password, pin or network | `POST .../passwords/{id}/retire`, `.../certificate-pins/{id}/retire`, `.../allowed-networks/{id}/retire` `{"kind": "normal" or "compromise", "at": "RFC 3339"}` |
-| List, across every registrar, the usable pins whose certificate expires within a window (expired ones included), soonest first, each with its `clid` and state | `GET /epp/certificate-pins?expiring_within=720h` (a Go duration; default 720h, at most 366 days) |
+| List, across every registrar, the usable pins whose certificate expires within a window (expired ones included), soonest first, each with its `clid` and state. Cursor-paginated like every list (`pagesize`, `cursor`; the response's `Meta.PageCursor` is the next page's cursor, empty on the last) | `GET /epp/certificate-pins?expiring_within=720h&pagesize=25&cursor=` (a Go duration; default 720h, at most 366 days) |
 
 Every change is written in one transaction with an outbox event (`epp.login.created`, `epp.password.added`, `epp.certificate_pin.retired`, and so on; subject: the registrar's ClID). Events never carry a password or a hash. Delivering them to the registrar's technical contact needs an outbox consumer that does not exist yet.
 

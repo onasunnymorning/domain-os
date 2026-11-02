@@ -145,9 +145,21 @@ export interface EPPSessionListParams {
   cursor?: string;
 }
 
+/** The shared list shape (internal/interface/rest/response): PageCursor is the next page's cursor, empty on the last. */
+export interface EPPListMeta {
+  PageSize: number;
+  PageCursor: string;
+  NextLink?: string;
+}
+
 export interface EPPSessionListResponse {
-  Meta: { PageSize: number; PageCursor: string; NextCursor?: string };
+  Meta: EPPListMeta;
   Data: EPPSession[];
+}
+
+export interface EPPExpiringPinsResponse {
+  Meta: EPPListMeta;
+  Data: EPPExpiringCertificatePin[];
 }
 
 export interface EPPLoginLockout {

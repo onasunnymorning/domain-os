@@ -240,24 +240,42 @@ func (r *EPPCredentialRepository) ListRegistrarsWithExpiringPins(ctx context.Con
 
 // ListUsablePinsExpiringBefore implements
 // repositories.EPPCredentialRepository.
-func (r *EPPCredentialRepository) ListUsablePinsExpiringBefore(ctx context.Context, now, deadline time.Time) ([]entities.EPPRegistrarCertificatePin, error) {
-	var recs []EPPCertificatePinRecord
-	err := r.db.WithContext(ctx).
+func (r *EPPCredentialRepository) ListUsablePinsExpiringBefore(ctx context.Context, now, deadline time.Time, pageSize int, cursor string) ([]entities.EPPRegistrarCertificatePin, string, error) {
+	if pageSize <= 0 {
+		pageSize = 25
+	}
+	q := r.db.WithContext(ctx).
 		Where("retire_at IS NULL OR retire_at > ?", now).
-		Where("not_after < ?", deadline).
-		Order("not_after, cl_id, id").Find(&recs).Error
-	if err != nil {
-		return nil, fmt.Errorf("list expiring EPP certificate pins: %w", err)
+		Where("not_after < ?", deadline)
+	if cursor != "" {
+		after, id, err := entities.DecodeEPPPinCursor(cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		q = q.Where("not_after > ? OR (not_after = ? AND id > ?)", after, after, id)
+	}
+	var recs []EPPCertificatePinRecord
+	if err := q.Order("not_after, id").Limit(pageSize + 1).Find(&recs).Error; err != nil {
+		return nil, "", fmt.Errorf("list expiring EPP certificate pins: %w", err)
+	}
+	// One row past the page says whether there is a next page.
+	hasMore := len(recs) > pageSize
+	if hasMore {
+		recs = recs[:pageSize]
 	}
 	out := make([]entities.EPPRegistrarCertificatePin, 0, len(recs))
 	for _, rec := range recs {
 		pin, err := rec.toPin()
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		out = append(out, entities.EPPRegistrarCertificatePin{ClID: entities.ClIDType(rec.ClID), EPPCertificatePin: pin})
 	}
-	return out, nil
+	next := ""
+	if hasMore {
+		next = out[len(out)-1].Cursor()
+	}
+	return out, next, nil
 }
 
 // toPin converts a record to its entity.

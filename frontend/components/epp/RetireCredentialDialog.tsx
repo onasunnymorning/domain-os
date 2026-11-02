@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -55,6 +55,14 @@ export function RetireCredentialDialog({
     setEarlier(false);
     setAt("");
   };
+  // Every credential starts from the safe default, whatever the last one chose.
+  useEffect(() => {
+    reset();
+  }, [target?.id]);
+  const close = () => {
+    onOpenChange(false);
+    reset();
+  };
 
   const submit = async () => {
     if (!target) return;
@@ -71,8 +79,7 @@ export function RetireCredentialDialog({
             ? `The ${noun} stops working at the time you chose.`
             : `The ${noun} keeps working for 7 days, then stops.`,
       );
-      onOpenChange(false);
-      reset();
+      close();
     } catch (err) {
       toast.error(eppErrorMessage(err, `Could not retire the ${noun}`));
     }
@@ -82,8 +89,7 @@ export function RetireCredentialDialog({
     <Dialog
       open={open}
       onOpenChange={(v) => {
-        onOpenChange(v);
-        if (!v) reset();
+        if (!v) close();
       }}
     >
       <DialogContent className="max-w-lg">
@@ -159,7 +165,7 @@ export function RetireCredentialDialog({
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={retire.isPending}>
+          <Button variant="outline" onClick={close} disabled={retire.isPending}>
             Cancel
           </Button>
           <Button

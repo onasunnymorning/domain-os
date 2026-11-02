@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -538,6 +539,30 @@ type EPPCertificateExpiringData struct {
 type EPPRegistrarCertificatePin struct {
 	ClID ClIDType `json:"clid"`
 	*EPPCertificatePin
+}
+
+// ErrInvalidEPPPinCursor is a page cursor that is not one this list made.
+var ErrInvalidEPPPinCursor = errors.New("invalid EPP certificate pin cursor")
+
+// Cursor is the pin's position in a list ordered by (NotAfter, ID): the
+// keyset cursor a page of such a list ends with (INV-11).
+func (p EPPRegistrarCertificatePin) Cursor() string {
+	return p.NotAfter.UTC().Format(time.RFC3339Nano) + "|" + p.ID.String()
+}
+
+// DecodeEPPPinCursor reads a cursor Cursor made.
+func DecodeEPPPinCursor(cursor string) (notAfter time.Time, id uuid.UUID, err error) {
+	sep := strings.IndexByte(cursor, '|')
+	if sep < 0 {
+		return time.Time{}, uuid.Nil, ErrInvalidEPPPinCursor
+	}
+	if notAfter, err = time.Parse(time.RFC3339Nano, cursor[:sep]); err != nil {
+		return time.Time{}, uuid.Nil, ErrInvalidEPPPinCursor
+	}
+	if id, err = uuid.Parse(cursor[sep+1:]); err != nil {
+		return time.Time{}, uuid.Nil, ErrInvalidEPPPinCursor
+	}
+	return notAfter, id, nil
 }
 
 // NoteExpiringPins marks each usable pin whose certificate expires within

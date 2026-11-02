@@ -14,8 +14,10 @@ const PASSWORD = /^(?! )(?!.* {2})[\x20-\x7e]{6,16}(?<! )$/;
 
 /**
  * Adds a password to a login. The generated password is shown once; the
- * dialog cannot be dismissed by clicking outside or pressing Escape while it is
- * on screen, only by the "I have copied it" button.
+ * dialog cannot be dismissed by clicking outside or pressing Escape while the
+ * request is in flight or the password is on screen, only by the "I have
+ * copied it" button. Otherwise a password could be generated into a hidden
+ * dialog and shown later under another login's heading.
  */
 export function AddPasswordDialog({
   clid,
@@ -32,6 +34,7 @@ export function AddPasswordDialog({
   const [shown, setShown] = useState<string | null>(null);
 
   const open = login !== null;
+  const locked = shown !== null || add.isPending;
   const reset = () => {
     setOwn(false);
     setPassword("");
@@ -58,16 +61,16 @@ export function AddPasswordDialog({
     <Dialog
       open={open}
       onOpenChange={(v) => {
-        if (!v && shown) return; // must press "I have copied it"
+        if (!v && locked) return; // must wait, then press "I have copied it"
         onOpenChange(v);
         if (!v) reset();
       }}
     >
       <DialogContent
         className="max-w-md"
-        onInteractOutside={(e) => shown && e.preventDefault()}
-        onEscapeKeyDown={(e) => shown && e.preventDefault()}
-        showCloseButton={!shown}
+        onInteractOutside={(e) => locked && e.preventDefault()}
+        onEscapeKeyDown={(e) => locked && e.preventDefault()}
+        showCloseButton={!locked}
       >
         {shown ? (
           <>

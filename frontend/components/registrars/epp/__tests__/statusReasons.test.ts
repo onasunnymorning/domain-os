@@ -53,14 +53,29 @@ describe('statusReasons', () => {
     expect(statusReasons(a, [], [], now).map((x) => x.key)).toEqual(['no-network', 'no-cert']);
   });
 
-  it('warns 30 days before a certificate expires, and when all have expired', () => {
+  it('warns 30 days before a certificate expires, and when none is valid today', () => {
     const soon = access();
     soon.certificate_pins[0].not_after = iso(days(12));
     expect(statusReasons(soon, [], [], now)[0].text).toMatch(/expires in 12 days/);
 
     const gone = access();
     gone.certificate_pins[0].not_after = iso(days(-1));
-    expect(statusReasons(gone, [], [], now).map((x) => x.key)).toEqual(['all-certs-expired']);
+    expect(statusReasons(gone, [], [], now).map((x) => x.key)).toEqual(['no-cert-for:rar-001']);
+
+    const early = access();
+    early.certificate_pins[0].not_before = iso(days(2));
+    expect(statusReasons(early, [], [], now).map((x) => x.key)).toEqual(['no-cert-for:rar-001']);
+  });
+
+  it('counts a restricted certificate only for the logins it names', () => {
+    const a = access();
+    a.certificate_pins[0].logins = ['other-login'];
+    const r = statusReasons(a, [], [], now);
+    expect(r.map((x) => x.key)).toEqual(['no-cert-for:rar-001']);
+    expect(r[0].text).toMatch(/restricted to other logins/);
+
+    a.certificate_pins[0].logins = ['rar-001'];
+    expect(statusReasons(a, [], [], now)).toEqual([]);
   });
 
   it('lists lockouts and suspensions', () => {

@@ -241,18 +241,30 @@ func (s *EPPCredentialSuite) TestExpiringPins() {
 	s.Require().NoError(err)
 	s.Contains(due, "epp-exp-rar")
 
-	soon, err := repo.ListUsablePinsExpiringBefore(ctx, s.now, s.now.Add(30*24*time.Hour))
-	s.Require().NoError(err)
-	s.Require().NotEmpty(soon)
+	// Walk every page one pin at a time: the cursor must reach this pin
+	// exactly once and the last page must carry no cursor (INV-11).
 	var mine []entities.EPPRegistrarCertificatePin
-	for _, p := range soon {
-		if p.ClID == "epp-exp-rar" {
-			mine = append(mine, p)
+	cursor, pages := "", 0
+	for {
+		page, next, err := repo.ListUsablePinsExpiringBefore(ctx, s.now, s.now.Add(30*24*time.Hour), 1, cursor)
+		s.Require().NoError(err)
+		s.Require().LessOrEqual(len(page), 1)
+		for _, p := range page {
+			if p.ClID == "epp-exp-rar" {
+				mine = append(mine, p)
+			}
 		}
+		pages++
+		if next == "" || pages > 1000 {
+			break
+		}
+		cursor = next
 	}
-	s.Require().Len(mine, 1, "listed with its registrar")
+	s.Require().Len(mine, 1, "listed with its registrar, once")
 	s.Equal(entities.EPPCredentialActive, mine[0].State(s.now))
-	later, err := repo.ListUsablePinsExpiringBefore(ctx, s.now, s.now.Add(time.Hour))
+	_, _, err = repo.ListUsablePinsExpiringBefore(ctx, s.now, s.now, 10, "not-a-cursor")
+	s.Require().ErrorIs(err, entities.ErrInvalidEPPPinCursor)
+	later, _, err := repo.ListUsablePinsExpiringBefore(ctx, s.now, s.now.Add(time.Hour), 1000, "")
 	s.Require().NoError(err)
 	for _, p := range later {
 		s.NotEqual(entities.ClIDType("epp-exp-rar"), p.ClID, "not within an hour")

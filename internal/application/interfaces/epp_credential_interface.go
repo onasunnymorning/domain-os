@@ -9,6 +9,7 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 )
 
 // EPPCredentialService manages registrars' EPP logins, passwords, certificate
@@ -23,10 +24,11 @@ type EPPCredentialService interface {
 	AddCertificatePin(ctx context.Context, clid string, cmd commands.AddEPPCertificatePinCommand) (*entities.EPPCertificatePin, error)
 	AddAllowedNetwork(ctx context.Context, clid string, cmd commands.AddEPPAllowedNetworkCommand) (*entities.EPPAllowedNetwork, error)
 	RetireCredential(ctx context.Context, clid string, ref entities.EPPCredentialRef, cmd commands.RetireEPPCredentialCommand) error
-	// ListExpiringCertificatePins returns every registrar's usable pins
-	// whose certificate expires within the duration, expired ones included,
-	// soonest first.
-	ListExpiringCertificatePins(ctx context.Context, within time.Duration) ([]entities.EPPRegistrarCertificatePin, error)
+	// ListExpiringCertificatePins returns a page of every registrar's usable
+	// pins whose certificate expires within the duration, expired ones
+	// included, soonest first, with the cursor of the next page or "" on the
+	// last (INV-11).
+	ListExpiringCertificatePins(ctx context.Context, within time.Duration, q queries.ListItemsQuery) ([]entities.EPPRegistrarCertificatePin, string, error)
 }
 
 // EPPLoginLockout counts failed logins per key and locks a key out after too

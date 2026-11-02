@@ -51,7 +51,10 @@ export function EditLoginDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Edit {login?.login_id}</DialogTitle>
-          <DialogDescription>Changes apply to the next login and the next command.</DialogDescription>
+          <DialogDescription>
+            Changes apply to new logins. Sessions already open keep the role they logged in with until they end;
+            to restrict one at once, end its session.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">

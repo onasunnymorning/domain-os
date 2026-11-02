@@ -44,9 +44,13 @@ type EPPCredentialRepository interface {
 	// had (entities.EPPCertificateExpiryNotices). The caller gives them
 	// through UpdateAccess (EPPRegistrarAccess.NoteExpiringPins).
 	ListRegistrarsWithExpiringPins(ctx context.Context, now time.Time) ([]string, error)
-	// ListUsablePinsExpiringBefore returns every registrar's pins that are
-	// usable at now and whose certificate's NotAfter is before deadline,
-	// expired ones included, soonest first. It is what an operator checks
-	// to see which registrars need a new certificate pinned.
-	ListUsablePinsExpiringBefore(ctx context.Context, now, deadline time.Time) ([]entities.EPPRegistrarCertificatePin, error)
+	// ListUsablePinsExpiringBefore returns a page of every registrar's pins
+	// that are usable at now and whose certificate's NotAfter is before
+	// deadline, expired ones included, ordered by (NotAfter, ID). cursor is
+	// the last pin of the previous page (EPPRegistrarCertificatePin.Cursor),
+	// or empty for the first page; the cursor returned is empty on the last
+	// page (INV-11). A cursor this list did not make is
+	// entities.ErrInvalidEPPPinCursor. It is what an operator checks to see
+	// which registrars need a new certificate pinned.
+	ListUsablePinsExpiringBefore(ctx context.Context, now, deadline time.Time, pageSize int, cursor string) ([]entities.EPPRegistrarCertificatePin, string, error)
 }

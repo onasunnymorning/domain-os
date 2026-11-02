@@ -156,27 +156,50 @@ func (s *EPPCredentials) ListCompromisedSince(_ context.Context, since time.Time
 
 // ListUsablePinsExpiringBefore implements
 // repositories.EPPCredentialRepository.
-func (s *EPPCredentials) ListUsablePinsExpiringBefore(_ context.Context, now, deadline time.Time) ([]entities.EPPRegistrarCertificatePin, error) {
+func (s *EPPCredentials) ListUsablePinsExpiringBefore(_ context.Context, now, deadline time.Time, pageSize int, cursor string) ([]entities.EPPRegistrarCertificatePin, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.err != nil {
-		return nil, s.err
+		return nil, "", s.err
 	}
-	var out []entities.EPPRegistrarCertificatePin
+	if pageSize <= 0 {
+		pageSize = 25
+	}
+	var after time.Time
+	var afterID uuid.UUID
+	if cursor != "" {
+		var err error
+		if after, afterID, err = entities.DecodeEPPPinCursor(cursor); err != nil {
+			return nil, "", err
+		}
+	}
+	var all []entities.EPPRegistrarCertificatePin
 	for clid, a := range s.access {
 		for _, p := range a.Clone().CertificatePins {
 			if p.Usable(now) && p.NotAfter.Before(deadline) {
-				out = append(out, entities.EPPRegistrarCertificatePin{ClID: entities.ClIDType(clid), EPPCertificatePin: p})
+				all = append(all, entities.EPPRegistrarCertificatePin{ClID: entities.ClIDType(clid), EPPCertificatePin: p})
 			}
 		}
 	}
-	slices.SortFunc(out, func(a, b entities.EPPRegistrarCertificatePin) int {
+	slices.SortFunc(all, func(a, b entities.EPPRegistrarCertificatePin) int {
 		if c := a.NotAfter.Compare(b.NotAfter); c != 0 {
 			return c
 		}
-		return strings.Compare(string(a.ClID), string(b.ClID))
+		return strings.Compare(a.ID.String(), b.ID.String())
 	})
-	return out, nil
+	out := make([]entities.EPPRegistrarCertificatePin, 0, pageSize)
+	next := ""
+	for _, p := range all {
+		if cursor != "" && (p.NotAfter.Before(after) || (p.NotAfter.Equal(after) && p.ID.String() <= afterID.String())) {
+			continue
+		}
+		if len(out) == pageSize {
+			next = out[len(out)-1].Cursor()
+			break
+		}
+		out = append(out, p)
+	}
+	return out, next, nil
 }
 
 // ListRegistrarsWithExpiringPins implements

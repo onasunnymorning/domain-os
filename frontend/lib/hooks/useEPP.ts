@@ -144,10 +144,10 @@ export function useRetireEPPCredential(clid: string) {
   });
 }
 
-export function useEPPExpiringCertificatePins(within = "720h", enabled = true) {
+export function useEPPExpiringCertificatePins(within = "720h", page?: { pagesize?: number; cursor?: string }, enabled = true) {
   return useQuery({
-    queryKey: eppKeys.expiringPins(within),
-    queryFn: () => getEPPExpiringCertificatePins(within),
+    queryKey: [...eppKeys.expiringPins(within), page ?? {}],
+    queryFn: () => getEPPExpiringCertificatePins(within, page),
     enabled,
   });
 }

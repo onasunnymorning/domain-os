@@ -38,18 +38,19 @@ export function RegistrarEPPTab({ clid }: { clid: string }) {
     );
   }
 
-  const sessionCount = sessions.data
-    ? sessions.data.Data.length + (sessions.data.Meta?.NextCursor ? 1 : 0)
-    : undefined;
+  // The list is cursor-paginated: a non-empty PageCursor means a further page,
+  // so the first page's length is a lower bound, not a total.
+  const sessionCount = sessions.data ? sessions.data.Data.length : undefined;
+  const moreSessions = !!sessions.data?.Meta?.PageCursor;
 
   return (
     <div className="space-y-6">
       <EPPStatusStrip
-        clid={clid}
         access={access.data}
-        lockouts={lockouts.data}
-        suspensions={suspensions.data}
+        lockouts={{ data: lockouts.data, error: lockouts.error, isLoading: lockouts.isLoading }}
+        suspensions={{ data: suspensions.data, error: suspensions.error, isLoading: suspensions.isLoading }}
         sessionCount={sessionCount}
+        moreSessions={moreSessions}
         isLoading={access.isLoading}
       />
 
@@ -78,7 +79,7 @@ export function RegistrarEPPTab({ clid }: { clid: string }) {
         </>
       )}
 
-      <EPPLimitsSection clid={clid} policy={policy.data} isLoading={policy.isLoading} />
+      <EPPLimitsSection clid={clid} policy={policy.data} isLoading={policy.isLoading} error={policy.error} />
 
       <RetireCredentialDialog clid={clid} target={retireTarget} onOpenChange={(v) => !v && setRetireTarget(null)} />
     </div>

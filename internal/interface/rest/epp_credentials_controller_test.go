@@ -14,6 +14,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/appcontext"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,13 +22,16 @@ type fakeEPPCredentialService struct {
 	access   *entities.EPPRegistrarAccess
 	retired  []entities.EPPCredentialRef
 	expiring []entities.EPPRegistrarCertificatePin
+	next     string
 	within   time.Duration
+	query    queries.ListItemsQuery
 	err      error
 }
 
-func (f *fakeEPPCredentialService) ListExpiringCertificatePins(_ context.Context, within time.Duration) ([]entities.EPPRegistrarCertificatePin, error) {
+func (f *fakeEPPCredentialService) ListExpiringCertificatePins(_ context.Context, within time.Duration, q queries.ListItemsQuery) ([]entities.EPPRegistrarCertificatePin, string, error) {
 	f.within = within
-	return f.expiring, f.err
+	f.query = q
+	return f.expiring, f.next, f.err
 }
 
 func (f *fakeEPPCredentialService) GetAccess(context.Context, string) (*entities.EPPRegistrarAccess, error) {
@@ -136,36 +140,55 @@ func TestEPPCredentialsListExpiringPins(t *testing.T) {
 		EPPCredentialLifecycle: entities.EPPCredentialLifecycle{ID: uuid.New(), CreatedAt: now},
 		SPKISHA256:             "abc", Subject: "CN=client", NotBefore: now.Add(-time.Hour), NotAfter: now.Add(48 * time.Hour),
 	}
-	svc := &fakeEPPCredentialService{expiring: []entities.EPPRegistrarCertificatePin{{ClID: "rar-001", EPPCertificatePin: pin}}}
+	one := entities.EPPRegistrarCertificatePin{ClID: "rar-001", EPPCertificatePin: pin}
+	svc := &fakeEPPCredentialService{expiring: []entities.EPPRegistrarCertificatePin{one}, next: one.Cursor()}
 	r := eppCredentialRouter(svc, ScopeEPPCredentialsAdmin)
 
 	w := serveEPPCredential(r, http.MethodGet, "/epp/certificate-pins", "")
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, defaultExpiringWithin, svc.within, "defaults to the first expiry notice")
-	var got []struct {
-		ClID    string `json:"clid"`
-		Subject string `json:"subject"`
-		State   string `json:"state"`
+	require.Equal(t, DEFAULT_PAGE_SIZE, svc.query.PageSize)
+	var got struct {
+		Meta struct {
+			PageSize   int
+			PageCursor string
+			NextLink   string
+		}
+		Data []struct {
+			ClID    string `json:"clid"`
+			Subject string `json:"subject"`
+			State   string `json:"state"`
+		}
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-	require.Len(t, got, 1)
-	require.Equal(t, "rar-001", got[0].ClID)
-	require.Equal(t, "CN=client", got[0].Subject)
-	require.Equal(t, "active", got[0].State)
+	require.Len(t, got.Data, 1)
+	require.Equal(t, "rar-001", got.Data[0].ClID)
+	require.Equal(t, "CN=client", got.Data[0].Subject)
+	require.Equal(t, "active", got.Data[0].State)
+	require.NotEmpty(t, got.Meta.PageCursor, "a next page is announced by its cursor (INV-11)")
+	require.Contains(t, got.Meta.NextLink, "expiring_within=720h0m0s", "the next link keeps the window")
 
-	w = serveEPPCredential(r, http.MethodGet, "/epp/certificate-pins?expiring_within=168h", "")
+	w = serveEPPCredential(r, http.MethodGet, "/epp/certificate-pins?expiring_within=168h&pagesize=2&cursor="+got.Meta.PageCursor, "")
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, 168*time.Hour, svc.within)
+	require.Equal(t, 2, svc.query.PageSize)
+	require.Equal(t, one.Cursor(), svc.query.PageCursor, "the cursor is decoded for the service")
+
+	svc.err = entities.ErrInvalidEPPPinCursor
+	w = serveEPPCredential(r, http.MethodGet, "/epp/certificate-pins", "")
+	require.Equal(t, http.StatusBadRequest, w.Code, "a cursor the list did not make")
+	svc.err = nil
 
 	for _, bad := range []string{"soon", "-1h", "0s", "9000h"} {
 		w = serveEPPCredential(r, http.MethodGet, "/epp/certificate-pins?expiring_within="+bad, "")
 		require.Equal(t, http.StatusBadRequest, w.Code, bad)
 	}
 
-	svc.expiring = nil
+	svc.expiring, svc.next = nil, ""
 	w = serveEPPCredential(r, http.MethodGet, "/epp/certificate-pins", "")
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, "[]", strings.TrimSpace(w.Body.String()), "an empty list is [], not null")
+	require.Contains(t, w.Body.String(), `"Data":[]`, "an empty page is [], not null")
+	require.Contains(t, w.Body.String(), `"PageCursor":""`, "the last page has no cursor")
 
 	w = serveEPPCredential(eppCredentialRouter(svc, ScopeEscrowKeysAdmin), http.MethodGet, "/epp/certificate-pins", "")
 	require.Equal(t, http.StatusForbidden, w.Code)
