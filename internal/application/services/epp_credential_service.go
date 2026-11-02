@@ -11,6 +11,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/appcontext"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
 
@@ -42,6 +43,13 @@ func NewEPPCredentialService(repo repositories.EPPCredentialRepository, registra
 // networks. Password hashes are never serialised.
 func (s *EPPCredentialService) GetAccess(ctx context.Context, clid string) (*entities.EPPRegistrarAccess, error) {
 	return s.repo.GetAccess(ctx, clid)
+}
+
+// ListExpiringCertificatePins returns every registrar's usable pins whose
+// certificate expires within the duration of now, expired ones included.
+func (s *EPPCredentialService) ListExpiringCertificatePins(ctx context.Context, within time.Duration, q queries.ListItemsQuery) ([]entities.EPPRegistrarCertificatePin, string, error) {
+	now := s.now()
+	return s.repo.ListUsablePinsExpiringBefore(ctx, now, now.Add(within), q.PageSize, q.PageCursor)
 }
 
 // CreateLogin adds a login. A login ID may be the registrar's own ClID, but
