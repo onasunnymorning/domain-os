@@ -17,7 +17,7 @@ export function FamiliesTab() {
         description="A family groups affiliated registrars, often one company's accreditations, so their sessions and commands are also counted together. A registrar is in at most one family. The family's policy sets the shared limits; each member keeps its own policy for its own."
         action={
           <Button size="sm" asChild>
-            <Link href="/epp/families/new">New family</Link>
+            <Link href="/epp/new-family">New family</Link>
           </Button>
         }
       />

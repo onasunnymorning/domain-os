@@ -39,6 +39,25 @@ describe('PolicyForm', () => {
     expect(onSave.mock.calls[1][0].limits.creates_per_day).toBe(250);
   });
 
+  it('saves 0 when the cap is switched off after its field was cleared', async () => {
+    const onSave = renderForm({ initial: { name: 'gold', limits: { ...DEFAULT_POLICY_LIMITS, creates_per_day: 50 } } });
+    fireEvent.change(screen.getByLabelText('Creates per day'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('switch', { name: /limit successful domain creates/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].limits.creates_per_day).toBe(0);
+  });
+
+  it('opens the family rates when they fail validation', async () => {
+    // Family check burst starts at 3000 (3x): names per check above it, and a registrar burst to match, leaves only the hidden family burst failing.
+    const onSave = renderForm({ initial: { name: 'gold', limits: { ...DEFAULT_POLICY_LIMITS, check_names: 5000 } } });
+    fireEvent.change(screen.getByLabelText('Check burst'), { target: { value: '5000' } });
+    expect(screen.queryByText(/^Family rates$/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(screen.getByText(/family check burst must be at least/i)).toBeInTheDocument());
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it('resets a built-in policy to its starting values', async () => {
     const onSave = renderForm({
       initial: { name: 'probation', description: '', limits: { ...PROBATION_POLICY_LIMITS, check_names: 7, creates_per_day: 0 } },

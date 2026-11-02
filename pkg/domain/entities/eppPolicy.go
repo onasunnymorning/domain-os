@@ -62,6 +62,15 @@ var (
 	ErrInvalidRegistrarFamily  = errors.New("invalid registrar family")
 	ErrRegistrarFamilyNotFound = errors.New("registrar family not found")
 	ErrRegistrarInFamily       = errors.New("the registrar is in another family")
+	// ErrEPPPolicyExists is a create-only save of a policy that exists.
+	ErrEPPPolicyExists = errors.New("EPP policy already exists")
+	// ErrRegistrarFamilyExists is a create-only save of a family that exists.
+	ErrRegistrarFamilyExists = errors.New("registrar family already exists")
+	// ErrEPPPolicyChanged is a conditional save whose expected version is
+	// not the one stored: someone saved in between.
+	ErrEPPPolicyChanged = errors.New("EPP policy changed since it was read")
+	// ErrRegistrarFamilyChanged is as ErrEPPPolicyChanged, for a family.
+	ErrRegistrarFamilyChanged = errors.New("registrar family changed since it was read")
 )
 
 // policyNamePattern is a policy's or family's name: lower-case letters,

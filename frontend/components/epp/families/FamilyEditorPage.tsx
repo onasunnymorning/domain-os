@@ -10,29 +10,55 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DeleteConfirmDialog } from "@/components/shared/DeleteConfirmDialog";
 import { FamilyForm, type FamilyFormValues } from "./FamilyForm";
-import { useDeleteRegistrarFamily, useRegistrarFamily, useSaveRegistrarFamily, eppErrorMessage } from "@/lib/hooks/useEPP";
+import { useDeleteRegistrarFamily, useRegistrarFamily, useSaveRegistrarFamily, eppErrorMessage, isVersionConflict } from "@/lib/hooks/useEPP";
+import { useFreshRead } from "@/components/epp/useFreshRead";
+import { VersionConflictNotice } from "@/components/epp/VersionConflictNotice";
 
-/** Finds which member a 409 "already in family" message is about. */
+/**
+ * Which member a 409 "already in another family" message is about. The API
+ * says "…: <clid> is in <family>". A client ID is any 3 to 16 ASCII
+ * characters, spaces included, so everything between the colon and the final
+ * " is in <family>" (a family name has no spaces) is the ID, compared exactly:
+ * rar-001 is never taken for rar-0011.
+ */
 export function memberNamedIn(message: string, members: string[]): string | undefined {
-  return members.find((m) => message.includes(m));
+  const m = /:\s*(.+?) is in \S+\s*$/.exec(message);
+  if (!m) return undefined;
+  return members.find((c) => c === m[1]);
 }
 
-export function FamilyEditorPage({ name }: { name: string }) {
+/** Creating (its own route) or editing the family `name`. */
+export function FamilyEditorPage({ name = "", creating = false }: { name?: string; creating?: boolean }) {
   const router = useRouter();
-  const creating = name === "new";
-  const family = useRegistrarFamily(name, !creating);
+  const family = useRegistrarFamily(name, !creating, { fresh: true });
   const save = useSaveRegistrarFamily();
   const del = useDeleteRegistrarFamily();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [memberError, setMemberError] = useState<{ clid: string; message: string } | null>(null);
+  const { fetchedAt, initialError } = useFreshRead(family);
+  const [loaded, setLoaded] = useState<{ at: number; updatedAt: string } | null>(null);
+  if (fetchedAt !== null && family.data && loaded?.at !== fetchedAt) setLoaded({ at: fetchedAt, updatedAt: family.data.updated_at });
+  const [conflict, setConflict] = useState(false);
 
   const onSave = async (v: FamilyFormValues) => {
     setMemberError(null);
+    setConflict(false);
     try {
-      await save.mutateAsync({ name: v.name, body: { description: v.description, policy: v.policy, members: v.members } });
+      await save.mutateAsync({
+        name: v.name,
+        body: { description: v.description, policy: v.policy, members: v.members },
+        createOnly: creating,
+        ifUnchangedSince: creating ? undefined : loaded?.updatedAt,
+      });
       toast.success(creating ? `Family ${v.name} created.` : `Family ${v.name} saved.`);
       router.push("/epp?tab=families");
     } catch (err) {
+      // A 412 on an edit means someone saved first. On a create it means the
+      // name is taken (or built in): the API's message says so, in the toast.
+      if (!creating && isVersionConflict(err)) {
+        setConflict(true);
+        return;
+      }
       const msg = eppErrorMessage(err, "Could not save the family");
       const clid = memberNamedIn(msg, v.members);
       if (clid) setMemberError({ clid, message: msg });
@@ -69,14 +95,17 @@ export function FamilyEditorPage({ name }: { name: string }) {
 
         {creating ? (
           <FamilyForm mode="create" initial={{ name: "", description: "", policy: "", members: [] }} saving={save.isPending} memberError={memberError} onSave={onSave} />
-        ) : family.isLoading ? (
-          <Skeleton className="h-64 w-full" />
-        ) : family.error || !family.data ? (
+        ) : initialError ? (
           <div className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-            {eppErrorMessage(family.error, "Could not load the family.")}
+            {eppErrorMessage(initialError, "Could not load the family.")}
           </div>
+        ) : fetchedAt === null || !family.data ? (
+          <Skeleton className="h-64 w-full" />
         ) : (
+          <>
+          {conflict && <VersionConflictNotice what="family" onReload={() => window.location.reload()} />}
           <FamilyForm
+            key={fetchedAt}
             mode="edit"
             initial={{ name: family.data.name, description: family.data.description ?? "", policy: family.data.policy ?? "", members: family.data.members ?? [] }}
             saving={save.isPending}
@@ -84,6 +113,7 @@ export function FamilyEditorPage({ name }: { name: string }) {
             onSave={onSave}
             onDelete={() => setConfirmDelete(true)}
           />
+          </>
         )}
 
         <DeleteConfirmDialog

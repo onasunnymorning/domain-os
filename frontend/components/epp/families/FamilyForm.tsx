@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useDebounce } from "@/lib/hooks/useDebounce";
-import { useRegistrars } from "@/lib/hooks/useRegistrars";
+import { useRegistrar, useRegistrars } from "@/lib/hooks/useRegistrars";
 import { useEPPPolicies } from "@/lib/hooks/useEPP";
 import { POLICY_NAME_PATTERN } from "@/lib/constants/eppPolicyDefaults";
 import type { RegistrarListItem } from "@/lib/types/registrar";
@@ -40,8 +40,19 @@ export function FamilyForm({
   const [search, setSearch] = useState("");
   const debounced = useDebounce(search, 300);
   const policies = useEPPPolicies();
-  const candidates = useRegistrars(debounced ? { clid_like: debounced, pagesize: 10 } : undefined);
+  const term = debounced.trim();
+  // A substring search of the first 25, plus an exact lookup so a complete ID
+  // is always offered even when many IDs contain it.
+  const candidates = useRegistrars(term ? { clid_like: term, pagesize: 25 } : undefined);
+  const exact = useRegistrar(term, !!term);
   const nameValid = POLICY_NAME_PATTERN.test(v.name);
+  const found = (() => {
+    const list = candidates.data?.Data ?? [];
+    if (exact.data && !list.some((r) => r.ClID === exact.data!.ClID)) {
+      return [{ ClID: exact.data.ClID, Name: exact.data.Name } as RegistrarListItem, ...list];
+    }
+    return list;
+  })();
 
   const add = (clid: string) => {
     if (!v.members.includes(clid)) setV((s) => ({ ...s, members: [...s.members, clid] }));
@@ -143,15 +154,22 @@ export function FamilyForm({
               placeholder="Search by client ID…"
               className="max-w-sm font-mono"
             />
-            {debounced && (
+            {term && (
               <div className="max-w-sm rounded-md border">
                 {candidates.isLoading ? (
                   <div className="p-3 text-sm text-muted-foreground">Searching…</div>
-                ) : (candidates.data?.Data ?? []).length === 0 ? (
+                ) : candidates.error ? (
+                  <div className="flex items-center justify-between gap-2 p-3 text-sm text-red-700 dark:text-red-400">
+                    <span>Could not search registrars: {(candidates.error as { response?: { data?: { error?: string } } })?.response?.data?.error || "the request failed"}</span>
+                    <Button type="button" size="sm" variant="outline" onClick={() => candidates.refetch()}>
+                      Retry
+                    </Button>
+                  </div>
+                ) : found.length === 0 ? (
                   <div className="p-3 text-sm text-muted-foreground">No registrar matches.</div>
                 ) : (
                   <ul>
-                    {(candidates.data?.Data ?? []).map((r: RegistrarListItem) => (
+                    {found.map((r: RegistrarListItem) => (
                       <li key={r.ClID}>
                         <button
                           type="button"

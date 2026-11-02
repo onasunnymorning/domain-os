@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -146,4 +147,14 @@ func TestEPPPolicyServiceAssignmentsAndFamilies(t *testing.T) {
 		assert.Nil(t, rp.Family)
 		assert.ErrorIs(t, svc.DeleteFamily(ctx, "acme"), entities.ErrRegistrarFamilyNotFound)
 	})
+}
+
+// A save stamps UpdatedAt at the precision PostgreSQL keeps, so the value a
+// client is given is the value it reads back and can send in If-Match.
+func TestEPPPolicySaveTimeIsMicrosecond(t *testing.T) {
+	in := time.Date(2026, 11, 2, 12, 0, 0, 123456789, time.FixedZone("x", 3600))
+	got := saveTime(in)
+	require.Equal(t, time.UTC, got.Location())
+	require.Equal(t, 123456000, got.Nanosecond())
+	require.True(t, got.Equal(got.Truncate(time.Microsecond)))
 }

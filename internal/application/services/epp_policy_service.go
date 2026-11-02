@@ -102,14 +102,42 @@ func (s *EPPPolicyService) SavePolicy(ctx context.Context, name string, cmd comm
 	if err != nil {
 		return nil, err
 	}
-	p.UpdatedAt, p.UpdatedBy = s.now().UTC(), actorOf(ctx)
-	err = s.repo.SavePolicy(ctx, p, func(before *entities.EPPPolicy) []entities.DomainEvent {
-		return []entities.DomainEvent{s.event(ctx, entities.EventEPPPolicySaved, name, fmt.Sprintf("EPP policy %s saved", name), p, before, p)}
+	// A built-in exists whether or not it is stored yet: a create never takes its name.
+	if cmd.CreateOnly && entities.IsBuiltInEPPPolicy(name) {
+		return nil, fmt.Errorf("%w: %s is built in", entities.ErrEPPPolicyExists, name)
+	}
+	p.UpdatedAt, p.UpdatedBy = saveTime(s.now()), actorOf(ctx)
+	err = s.repo.SavePolicy(ctx, p, func(before *entities.EPPPolicy) ([]entities.DomainEvent, error) {
+		if cmd.CreateOnly && before != nil {
+			return nil, fmt.Errorf("%w: %s", entities.ErrEPPPolicyExists, name)
+		}
+		// The version a reader was given: the stored row, or, for a built-in
+		// not stored yet, what GetPolicy returns (starting limits, zero
+		// UpdatedAt). A first save of such a built-in therefore passes with
+		// the zero time, and a second one, finding a row, is refused.
+		storedAt := time.Time{}
+		if before != nil {
+			storedAt = before.UpdatedAt
+		} else if !entities.IsBuiltInEPPPolicy(name) && cmd.ExpectedUpdatedAt != nil {
+			return nil, fmt.Errorf("%w: %s", entities.ErrEPPPolicyChanged, name)
+		}
+		if cmd.ExpectedUpdatedAt != nil && !storedAt.Equal(*cmd.ExpectedUpdatedAt) {
+			return nil, fmt.Errorf("%w: %s", entities.ErrEPPPolicyChanged, name)
+		}
+		return []entities.DomainEvent{s.event(ctx, entities.EventEPPPolicySaved, name, fmt.Sprintf("EPP policy %s saved", name), p, before, p)}, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return p, nil
+}
+
+// saveTime is the UpdatedAt a save stamps: UTC at microsecond precision,
+// which is what PostgreSQL keeps. The value returned by the save is then
+// the value read back, so a client can send it in If-Match without a false
+// precondition failure from truncation.
+func saveTime(t time.Time) time.Time {
+	return t.UTC().Truncate(time.Microsecond)
 }
 
 // DeletePolicy deletes a custom policy that nothing is assigned. The
@@ -195,9 +223,15 @@ func (s *EPPPolicyService) SaveFamily(ctx context.Context, name string, cmd comm
 			return nil, fmt.Errorf("family member %s: %w", m, err)
 		}
 	}
-	f.UpdatedAt, f.UpdatedBy = s.now().UTC(), actorOf(ctx)
-	err = s.repo.SaveFamily(ctx, f, func(before *entities.RegistrarFamily) []entities.DomainEvent {
-		return []entities.DomainEvent{s.event(ctx, entities.EventRegistrarFamilySaved, name, fmt.Sprintf("Registrar family %s saved", name), f, before, f)}
+	f.UpdatedAt, f.UpdatedBy = saveTime(s.now()), actorOf(ctx)
+	err = s.repo.SaveFamily(ctx, f, func(before *entities.RegistrarFamily) ([]entities.DomainEvent, error) {
+		if cmd.CreateOnly && before != nil {
+			return nil, fmt.Errorf("%w: %s", entities.ErrRegistrarFamilyExists, name)
+		}
+		if cmd.ExpectedUpdatedAt != nil && (before == nil || !before.UpdatedAt.Equal(*cmd.ExpectedUpdatedAt)) {
+			return nil, fmt.Errorf("%w: %s", entities.ErrRegistrarFamilyChanged, name)
+		}
+		return []entities.DomainEvent{s.event(ctx, entities.EventRegistrarFamilySaved, name, fmt.Sprintf("Registrar family %s saved", name), f, before, f)}, nil
 	})
 	if err != nil {
 		return nil, err
