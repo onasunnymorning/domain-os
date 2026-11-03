@@ -162,6 +162,65 @@ var _ = Describe("PhaseController", Ordered, func() {
 		Expect(string(createdLaunchPhase.Type)).To(Equal("Launch"))
 	})
 
+	It("should create a launch phase with its launch settings", func() {
+		cmd := &commands.CreatePhaseCommand{
+			Name:   "PhsLandrush",
+			Type:   "Launch",
+			Starts: time.Now().UTC().Add(30 * 24 * time.Hour),
+			Launch: &entities.LaunchSettings{Mode: entities.LaunchModeLandrush, Model: entities.RegistrationModelApplication, AcceptSignedMarks: true},
+		}
+		resp := api.POST(fmt.Sprintf("/tlds/%s/phases", tldName), cmd)
+		Expect(resp.Code).To(Equal(http.StatusCreated), resp.Body.String())
+		var phase entities.Phase
+		Expect(DecodeJSON(resp, &phase)).To(Succeed())
+		Expect(phase.Launch.Mode).To(Equal(entities.LaunchModeLandrush))
+		Expect(phase.Launch.Model).To(Equal(entities.RegistrationModelApplication))
+
+		// Launch settings on a GA phase are refused.
+		cmd = &commands.CreatePhaseCommand{Name: "PhsGAWithLaunch", Type: "GA", Starts: time.Now().UTC().Add(400 * 24 * time.Hour),
+			Launch: &entities.LaunchSettings{Mode: entities.LaunchModeOpen, Model: entities.RegistrationModelFirstCome}}
+		resp = api.POST(fmt.Sprintf("/tlds/%s/phases", tldName), cmd)
+		Expect(resp.Code).To(Equal(http.StatusBadRequest), resp.Body.String())
+	})
+
+	It("should default a launch phase to open and first come", func() {
+		Expect(createdLaunchPhase.Launch.Mode).To(Equal(entities.LaunchModeOpen))
+		Expect(createdLaunchPhase.Launch.Model).To(Equal(entities.RegistrationModelFirstCome))
+		Expect(createdLaunchPhase.Launch.AcceptSignedMarks).To(BeTrue())
+	})
+
+	It("should set the launch settings of a launch phase", func() {
+		// The future landrush phase: the model may still change.
+		resp := api.PUTAs(fmt.Sprintf("/tlds/%s/phases/%s/launch", tldName, "PhsLandrush"), ryID,
+			&commands.SetLaunchSettingsCommand{LaunchSettings: entities.LaunchSettings{Mode: entities.LaunchModeLandrush, Model: entities.RegistrationModelFirstCome, RetainMarks: true}})
+		Expect(resp.Code).To(Equal(http.StatusOK), resp.Body.String())
+		var phase entities.Phase
+		Expect(DecodeJSON(resp, &phase)).To(Succeed())
+		Expect(phase.Launch.Model).To(Equal(entities.RegistrationModelFirstCome))
+		Expect(phase.Launch.RetainMarks).To(BeTrue())
+
+		// The launch phase that started two days ago: its mode is frozen...
+		resp = api.PUTAs(fmt.Sprintf("/tlds/%s/phases/%s/launch", tldName, launchName), ryID,
+			&commands.SetLaunchSettingsCommand{LaunchSettings: entities.LaunchSettings{Mode: entities.LaunchModeLandrush, Model: entities.RegistrationModelFirstCome}})
+		Expect(resp.Code).To(Equal(http.StatusBadRequest), resp.Body.String())
+		// ...and so is its model...
+		resp = api.PUTAs(fmt.Sprintf("/tlds/%s/phases/%s/launch", tldName, launchName), ryID,
+			&commands.SetLaunchSettingsCommand{LaunchSettings: entities.LaunchSettings{Mode: entities.LaunchModeOpen, Model: entities.RegistrationModelApplication}})
+		Expect(resp.Code).To(Equal(http.StatusBadRequest), resp.Body.String())
+		// ...but its mark settings may change.
+		resp = api.PUTAs(fmt.Sprintf("/tlds/%s/phases/%s/launch", tldName, launchName), ryID,
+			&commands.SetLaunchSettingsCommand{LaunchSettings: entities.LaunchSettings{Mode: entities.LaunchModeOpen, Model: entities.RegistrationModelFirstCome, AcceptSignedMarks: true, AcceptCodeMarks: true}})
+		Expect(resp.Code).To(Equal(http.StatusOK), resp.Body.String())
+
+		// Invalid settings and another operator's TLD.
+		resp = api.PUTAs(fmt.Sprintf("/tlds/%s/phases/%s/launch", tldName, launchName), ryID,
+			&commands.SetLaunchSettingsCommand{LaunchSettings: entities.LaunchSettings{Mode: "premium", Model: entities.RegistrationModelFirstCome}})
+		Expect(resp.Code).To(Equal(http.StatusBadRequest))
+		resp = api.PUTAs(fmt.Sprintf("/tlds/%s/phases/%s/launch", tldName, launchName), otherRyID,
+			&commands.SetLaunchSettingsCommand{LaunchSettings: entities.LaunchSettings{Mode: entities.LaunchModeOpen, Model: entities.RegistrationModelFirstCome}})
+		Expect(resp.Code).To(Equal(http.StatusNotFound))
+	})
+
 	It("should create a GA phase", func() {
 		cmd := &commands.CreatePhaseCommand{
 			Name:   gaName,
@@ -174,6 +233,12 @@ var _ = Describe("PhaseController", Ordered, func() {
 		Expect(DecodeJSON(resp, &createdGAPhase)).To(Succeed())
 		Expect(createdGAPhase.Name.String()).To(Equal(gaName))
 		Expect(string(createdGAPhase.Type)).To(Equal("GA"))
+	})
+
+	It("should refuse launch settings on a GA phase", func() {
+		resp := api.PUTAs(fmt.Sprintf("/tlds/%s/phases/%s/launch", tldName, gaName), ryID,
+			&commands.SetLaunchSettingsCommand{LaunchSettings: entities.LaunchSettings{Mode: entities.LaunchModeOpen, Model: entities.RegistrationModelFirstCome}})
+		Expect(resp.Code).To(Equal(http.StatusBadRequest), resp.Body.String())
 	})
 
 	It("should fail to create an overlapping GA phase", func() {
@@ -390,6 +455,7 @@ var _ = Describe("PhaseController", Ordered, func() {
 	AfterAll(func() {
 		// Phases (delete before TLD)
 		api.DELETEAs(fmt.Sprintf("/tlds/%s/phases/%s", tldName, launchName), ryID)
+		api.DELETEAs(fmt.Sprintf("/tlds/%s/phases/%s", tldName, "PhsLandrush"), ryID)
 		api.DELETEAs(fmt.Sprintf("/tlds/%s/phases/%s", tldName, gaName), ryID)
 
 		// Premium list

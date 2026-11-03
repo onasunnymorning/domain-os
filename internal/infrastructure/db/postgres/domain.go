@@ -21,9 +21,13 @@ type Domain struct {
 	UpRr         *string
 	TLDName      string `gorm:"not null;foreignKey"`
 	TLD          TLD
-	ExpiryDate   time.Time `gorm:"not null;index"`
-	DropCatch    bool
-	RenewedYears int
+	// RegistrationPhaseName is the launch phase the domain was registered
+	// in (ADR 0024); NULL for a GA registration and for every domain from
+	// before launch phases governed registrations.
+	RegistrationPhaseName *string   `gorm:"size:16;index"`
+	ExpiryDate            time.Time `gorm:"not null;index"`
+	DropCatch             bool
+	RenewedYears          int
 	// AuthInfo is the transfer code's salted hash (RFC 9154), NULL when
 	// none is set.
 	AuthInfo  *string
@@ -81,6 +85,9 @@ func ToDomain(dbDom *Domain, repository entities.RepositoryID) *entities.Domain 
 	}
 	d.ClID = entities.ClIDType(dbDom.ClID)
 	d.TLDName = entities.DomainName(dbDom.TLDName)
+	if dbDom.RegistrationPhaseName != nil {
+		d.RegistrationPhaseName = entities.ClIDType(*dbDom.RegistrationPhaseName)
+	}
 	d.ExpiryDate = dbDom.ExpiryDate
 	d.DropCatch = dbDom.DropCatch
 	d.RenewedYears = dbDom.RenewedYears
@@ -148,6 +155,10 @@ func ToDBDomain(d *entities.Domain) *Domain {
 	// because that intent travels with the row. Domain.Validate() and the
 	// constraint reject a mismatch; this mapper must not hide one.
 	dbDomain.TLDName = d.TLDName.String()
+	if d.RegistrationPhaseName != "" {
+		s := d.RegistrationPhaseName.String()
+		dbDomain.RegistrationPhaseName = &s
+	}
 	dbDomain.ExpiryDate = d.ExpiryDate
 	dbDomain.DropCatch = d.DropCatch
 	dbDomain.RenewedYears = d.RenewedYears

@@ -46,6 +46,9 @@ type Phase struct {
 	// as loaded with the phase, nil when it was not: read it with Lifecycle.
 	LifecyclePolicyName string           `json:"lifecyclePolicyName"`
 	LifecyclePolicy     *LifecyclePolicy `json:"lifecyclePolicy,omitempty"`
+	// Launch is what kind of launch phase this is and how it registers
+	// (ADR 0024); the zero value on a GA phase.
+	Launch LaunchSettings `json:"launch"`
 }
 
 // Lifecycle is the phase's lifecycle policy: the one loaded with it, or the
@@ -87,7 +90,37 @@ func NewPhase(name, phaseType string, start time.Time) (*Phase, error) {
 		// The standard lifecycle, until the operator names another.
 		LifecyclePolicyName: LifecyclePolicyStandard,
 	}
+	if new_phase.Type == PhaseTypeLaunch {
+		new_phase.Launch = NewLaunchSettings()
+	}
 	return new_phase, nil
+}
+
+// SetLaunchSettings replaces the phase's launch settings as of now. Only a
+// launch phase has them (ErrLaunchSettingsOnGA), and not once it has ended
+// (ErrUpdateHistoricPhase). The mode is fixed once the phase has started
+// (ErrLaunchModeFrozen); the registration model once it has started or has
+// applications (ErrLaunchModelFrozen), since applications already taken
+// cannot become registrations or the reverse. The mark settings may change
+// until the phase ends, as prices and fees may.
+func (p *Phase) SetLaunchSettings(s LaunchSettings, now time.Time, hasApplications bool) error {
+	if p.Type != PhaseTypeLaunch {
+		return ErrLaunchSettingsOnGA
+	}
+	if err := s.Validate(); err != nil {
+		return err
+	}
+	if p.HasEndedAt(now) {
+		return ErrUpdateHistoricPhase
+	}
+	if p.HasStartedAt(now) && s.Mode != p.Launch.Mode {
+		return ErrLaunchModeFrozen
+	}
+	if (p.HasStartedAt(now) || hasApplications) && s.Model != p.Launch.Model {
+		return ErrLaunchModelFrozen
+	}
+	p.Launch = s
+	return nil
 }
 
 // Add a fee to the phase
@@ -114,7 +147,7 @@ func (p *Phase) checkFeeExists(pr Fee) error {
 // DeleteFee deletes a fee from the phase. We always store currency Codes in uppercase, but this function will also accept lowercase currency codes.
 func (p *Phase) DeleteFee(name, currency string) error {
 	// If the phase has ended, we should not update it, there is also no need to remove any fees as they are historical
-	if p.Ends != nil && p.Ends.Before(time.Now().UTC()) {
+	if p.HasEndedAt(time.Now().UTC()) {
 		return ErrUpdateHistoricPhase
 	}
 	for i := 0; i < len(p.Fees); i++ {
@@ -150,7 +183,7 @@ func (p *Phase) checkPriceExists(pr Price) error {
 // DeletePrice deletes a price from the phase. We always store currency Codes in uppercase, but this function will also accept lowercase currency codes.
 func (p *Phase) DeletePrice(currency string) error {
 	// If the phase has ended, we should not update it, there is also no need to remove any prices as they are historical
-	if p.Ends != nil && p.Ends.Before(time.Now().UTC()) {
+	if p.HasEndedAt(time.Now().UTC()) {
 		return ErrUpdateHistoricPhase
 	}
 	for i := 0; i < len(p.Prices); i++ {
@@ -189,9 +222,27 @@ func (p *Phase) SetEnd(endDate time.Time) error {
 //
 //	Phase2 [2025-10-03 00:00:00, 2025-10-05 00:00:00) creates perfect continuity.
 func (p *Phase) IsCurrentlyActive() bool {
-	now := time.Now().UTC()
-	// Active if: now >= Starts AND (no end OR now < Ends)
-	return !now.Before(p.Starts) && (p.Ends == nil || now.Before(*p.Ends))
+	return p.IsActiveAt(time.Now().UTC())
+}
+
+// IsActiveAt is IsCurrentlyActive at a given instant: now in [Starts, Ends).
+// Every decision about a phase at a moment other than the present (a
+// registration recorded earlier, an allocation after a launch phase has
+// closed, a test) goes through here, so there is one rule.
+func (p *Phase) IsActiveAt(now time.Time) bool {
+	return p.HasStartedAt(now) && !p.HasEndedAt(now)
+}
+
+// HasStartedAt reports whether the phase had started at now: now >= Starts.
+func (p *Phase) HasStartedAt(now time.Time) bool {
+	return !now.Before(p.Starts)
+}
+
+// HasEndedAt reports whether the phase had ended at now: it has an end and
+// now >= Ends, the exclusive end of [Starts, Ends). A phase without an end
+// never has.
+func (p *Phase) HasEndedAt(now time.Time) bool {
+	return p.Ends != nil && !now.Before(*p.Ends)
 }
 
 // OverlapsWith checks if the phase overlaps with another phase.
@@ -311,10 +362,7 @@ func (p *Phase) GetFees(currency string) []Fee {
 
 // CanUpdate checks if the phase can be updated. A phase can be updated if it has not ended yet.
 func (p *Phase) CanUpdate() (bool, error) {
-	if p.Ends == nil {
-		return true, nil
-	}
-	if p.Ends.Before(time.Now().UTC()) {
+	if p.HasEndedAt(time.Now().UTC()) {
 		return false, ErrUpdateHistoricPhase
 	}
 	return true, nil

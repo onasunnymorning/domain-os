@@ -52,9 +52,9 @@ type TLD struct {
 	// EnableDNS is a boolean indicating if the TLD has DNS enabled
 	EnableDNS bool `json:"EnableDNS"`
 	// Phases is a slice of phases for the TLD
-	Phases    []Phase   `json:"Phases"`
+	Phases []Phase `json:"Phases"`
 	// DomainCount represents the domain count of this TLD for a specific context (like a registrar)
-	DomainCount int       `json:"DomainCount"`
+	DomainCount int `json:"DomainCount"`
 	// RegistrarCount represents the number of accredited registrars for this TLD
 	RegistrarCount int       `json:"RegistrarCount"`
 	CreatedAt      time.Time `json:"CreatedAt"`
@@ -138,34 +138,39 @@ func (t *TLD) AddPhase(p *Phase) error {
 	return nil
 }
 
-// GetCurrentGAPhase Returns the current phase, based on the current time. Will return an error if no active phase is found.
+// GetCurrentGAPhase returns the GA phase in force now (GAPhaseAt), or
+// ErrNoActivePhase.
 func (t *TLD) GetCurrentGAPhase() (*Phase, error) {
+	return t.GAPhaseAt(time.Now().UTC())
+}
+
+// GAPhaseAt returns a copy of the GA phase active at now, on the phase's
+// [Starts, Ends) rule (Phase.IsActiveAt), or ErrNoActivePhase. GA phases do
+// not overlap (AddPhase), so there is at most one.
+func (t *TLD) GAPhaseAt(now time.Time) (*Phase, error) {
 	for _, gaPhase := range t.GetGAPhases() {
-		// If the end date is nil, just look at the start date
-		if gaPhase.Ends == nil {
-			// If the start date is in the past, it is the current phase
-			if gaPhase.Starts.Before(time.Now().UTC()) {
-				return &gaPhase, nil
-			}
-			// if not, it's a future phase without enddate, we continue looking
-			continue
-		}
-		// If the end date is not nil => it needs to be in the future and the start date in the past
-		if gaPhase.Ends.After(time.Now().UTC()) && gaPhase.Starts.Before(time.Now().UTC()) {
-			// this must be the current phase
+		if gaPhase.IsActiveAt(now) {
 			return &gaPhase, nil
 		}
 	}
-	// if we haven't found anything by now, there is no current phase
 	return nil, ErrNoActivePhase
 }
 
-// GetCurrentLaunchPhases returns a slice of all current launch phases. If no active launch phase is found, an empty slice is returned.
+// GetCurrentLaunchPhases returns copies of the launch phases active now, in
+// the TLD's order; none is an empty slice. Launch phases may overlap, so
+// there can be several.
 func (t *TLD) GetCurrentLaunchPhases() []Phase {
-	var phases []Phase
-	for i := 0; i < len(t.GetLaunchPhases()); i++ {
-		if t.Phases[i].Starts.Before(time.Now().UTC()) && (t.Phases[i].Ends == nil || t.Phases[i].Ends.After(time.Now().UTC())) {
-			phases = append(phases, t.Phases[i])
+	return t.ActiveLaunchPhases("", time.Now().UTC())
+}
+
+// ActiveLaunchPhases returns copies of the launch phases active at now, in
+// the TLD's order: those of the given mode, or of every mode when mode is
+// empty. None is an empty slice.
+func (t *TLD) ActiveLaunchPhases(mode LaunchMode, now time.Time) []Phase {
+	phases := []Phase{}
+	for _, p := range t.GetLaunchPhases() {
+		if p.IsActiveAt(now) && (mode == "" || p.Launch.Mode == mode) {
+			phases = append(phases, p)
 		}
 	}
 	return phases

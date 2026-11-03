@@ -499,7 +499,7 @@ func (ctrl *DomainController) RemoveHostFromDomainByHostName(ctx *gin.Context) {
 // @Summary EPP Style Domain registration, creates a domain and starts the lifecycle based on the applicable phase policy
 // @Description This operation requires the Registrar to be accredited for the TLD.
 // @Description Any references to Contact or Host objects must exist in the system prior to calling this endpoint.
-// @Description The optional Phase parameter can be used to register a domain in a specific phase. The phase must be active at the moment of regisration.
+// @Description The optional PhaseName names a launch phase to register in; it must be an active launch phase of the TLD (a GA phase, an ended or a future phase is a 400). Without it the domain is registered in the TLD's current GA phase.
 // @Description If the Registrar is not accredited, the request will fail with a 403 status code.
 // @Description If the domain is invalid in some way, the request will fail with a 400 status code with an error message.
 // @Tags Domains
@@ -531,7 +531,11 @@ func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
 	domain, err := ctrl.domainService.RegisterDomain(ctx.Request.Context(), &req)
 	if err != nil {
 		if errors.Is(err, entities.ErrInvalidDomain) ||
-			errors.Is(err, entities.ErrContactDataPolicyViolation) {
+			errors.Is(err, entities.ErrContactDataPolicyViolation) ||
+			errors.Is(err, entities.ErrPhaseNotFound) ||
+			errors.Is(err, entities.ErrPhaseNotLaunch) ||
+			errors.Is(err, entities.ErrPhaseNotActive) ||
+			errors.Is(err, entities.ErrNoActivePhase) {
 
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -571,6 +575,8 @@ func (ctrl *DomainController) CheckDomainAvailability(ctx *gin.Context) {
 		if errors.Is(
 			err, entities.ErrTLDNotFound) ||
 			errors.Is(err, entities.ErrPhaseNotFound) ||
+			errors.Is(err, entities.ErrPhaseNotLaunch) ||
+			errors.Is(err, entities.ErrPhaseNotActive) ||
 			errors.Is(err, entities.ErrNoActivePhase) ||
 			errors.Is(err, entities.ErrLabelNotValidInPhase) {
 			ctx.JSON(400, gin.H{"error": err.Error()})

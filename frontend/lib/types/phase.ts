@@ -21,6 +21,19 @@ export interface PhasePolicy {
   billingContactDataPolicy?: ContactDataPolicyType;
 }
 
+// What kind of launch phase a phase is and how it registers (ADR 0024).
+// Sunrise and claims phases are not yet served over EPP.
+export type LaunchMode = 'open' | 'landrush' | 'custom' | 'sunrise' | 'claims';
+export type RegistrationModel = 'first-come' | 'application';
+
+export interface LaunchSettings {
+  mode?: LaunchMode;
+  model?: RegistrationModel;
+  acceptSignedMarks: boolean;
+  acceptCodeMarks: boolean;
+  retainMarks: boolean;
+}
+
 export interface Price {
   currency: string;
   registrationAmount: number;
@@ -53,6 +66,8 @@ export interface Phase {
   // The lifecycle policy the phase names, and that policy as the API resolved it.
   lifecyclePolicyName: string;
   lifecyclePolicy?: LifecyclePolicy;
+  // The launch settings; the zero value (no mode) on a GA phase.
+  launch?: LaunchSettings;
 }
 
 export interface CategorizedPhases {

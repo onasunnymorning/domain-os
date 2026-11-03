@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -788,6 +789,184 @@ func TestTLD_GetCurrentLaunchPhases(t *testing.T) {
 		if len(result) != test.expected {
 			t.Errorf("Expected number of Launch phases to be %d, but got %d for input %s", test.expected, len(result), test.name)
 		}
+		for _, p := range result {
+			if p.Type != PhaseTypeLaunch {
+				t.Errorf("GetCurrentLaunchPhases returned the %s phase %s for input %s", p.Type, p.Name, test.name)
+			}
+		}
+	}
+
+	// A GA phase listed before two launch phases: the old loop ran over the
+	// first len(launch) phases of any type, so it counted the GA phase and
+	// missed the last launch phase.
+	gaFirst := &TLD{Name: "example.com", Phases: []Phase{
+		{Name: "GA", Type: PhaseTypeGA, Starts: time.Now().AddDate(0, 0, -1)},
+		{Name: "Launch", Type: PhaseTypeLaunch, Starts: time.Now().AddDate(0, 0, -1), Ends: &endDateTime},
+		{Name: "Launch2", Type: PhaseTypeLaunch, Starts: time.Now().AddDate(0, 0, -1), Ends: &endDateTime},
+	}}
+	got := gaFirst.GetCurrentLaunchPhases()
+	if len(got) != 2 || got[0].Name != "Launch" || got[1].Name != "Launch2" {
+		t.Errorf("Expected the two launch phases, got %v", got)
+	}
+}
+
+func TestTLD_ActiveLaunchPhases(t *testing.T) {
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	past := now.AddDate(0, -1, 0)
+	future := now.AddDate(0, 1, 0)
+	launch := func(name string, mode LaunchMode, starts time.Time, ends *time.Time) Phase {
+		return Phase{Name: ClIDType(name), Type: PhaseTypeLaunch, Starts: starts, Ends: ends, Launch: LaunchSettings{Mode: mode, Model: RegistrationModelFirstCome}}
+	}
+	tld := &TLD{Name: "example", Phases: []Phase{
+		{Name: "ga", Type: PhaseTypeGA, Starts: past},
+		launch("sunrise", LaunchModeSunrise, past.AddDate(0, -1, 0), &past), // ended
+		launch("landrush", LaunchModeLandrush, past, &future),
+		launch("landrush2", LaunchModeLandrush, past, nil),
+		launch("claims", LaunchModeClaims, past, &future),
+		launch("later", LaunchModeOpen, future, nil), // not started
+	}}
+	names := func(ps []Phase) []string {
+		out := []string{}
+		for _, p := range ps {
+			out = append(out, p.Name.String())
+		}
+		return out
+	}
+	if got := names(tld.ActiveLaunchPhases("", now)); len(got) != 3 || got[0] != "landrush" || got[1] != "landrush2" || got[2] != "claims" {
+		t.Errorf("all active launch phases: got %v", got)
+	}
+	if got := names(tld.ActiveLaunchPhases(LaunchModeLandrush, now)); len(got) != 2 {
+		t.Errorf("landrush phases: got %v", got)
+	}
+	if got := tld.ActiveLaunchPhases(LaunchModeSunrise, now); len(got) != 0 {
+		t.Errorf("ended sunrise must not be active: got %v", names(got))
+	}
+	if got := tld.ActiveLaunchPhases(LaunchModeOpen, now); len(got) != 0 {
+		t.Errorf("future open phase must not be active: got %v", names(got))
+	}
+	if got := (&TLD{}).ActiveLaunchPhases("", now); got == nil || len(got) != 0 {
+		t.Errorf("no phases is an empty slice, got %v", got)
+	}
+}
+
+func TestTLD_GAPhaseAt(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(1, 0, 0)
+	tld := &TLD{Name: "example", Phases: []Phase{
+		{Name: "ga1", Type: PhaseTypeGA, Starts: start, Ends: &end},
+		{Name: "ga2", Type: PhaseTypeGA, Starts: end},
+		{Name: "landrush", Type: PhaseTypeLaunch, Starts: start},
+	}}
+	tests := []struct {
+		name string
+		now  time.Time
+		want string
+		err  error
+	}{
+		{"before any GA phase", start.Add(-time.Second), "", ErrNoActivePhase},
+		{"at the start instant the phase is in force", start, "ga1", nil},
+		{"within ga1", start.AddDate(0, 6, 0), "ga1", nil},
+		{"at the roll the next phase is in force", end, "ga2", nil},
+		{"after the roll", end.AddDate(1, 0, 0), "ga2", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tld.GAPhaseAt(tt.now)
+			if tt.err != nil {
+				if err != tt.err {
+					t.Fatalf("want %v, got %v", tt.err, err)
+				}
+				return
+			}
+			if err != nil || got.Name.String() != tt.want {
+				t.Fatalf("want %s, got %v (%v)", tt.want, got, err)
+			}
+		})
+	}
+}
+
+func TestTLD_RegistrationContextAt(t *testing.T) {
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	past := now.AddDate(0, -1, 0)
+	future := now.AddDate(0, 1, 0)
+	launch := func(name string, mode LaunchMode, starts time.Time, ends *time.Time) Phase {
+		return Phase{Name: ClIDType(name), Type: PhaseTypeLaunch, Starts: starts, Ends: ends, Launch: LaunchSettings{Mode: mode, Model: RegistrationModelFirstCome}}
+	}
+	withGA := &TLD{Name: "example", Phases: []Phase{
+		{Name: "ga", Type: PhaseTypeGA, Starts: past},
+		launch("sunrise", LaunchModeSunrise, past.AddDate(0, -1, 0), &past), // ended
+		launch("landrush", LaunchModeLandrush, past, &future),
+		launch("open-a", LaunchModeOpen, past, &future),
+		launch("open-b", LaunchModeOpen, past, nil),
+		launch("later", LaunchModeCustom, future, nil), // not started
+	}}
+	noGA := &TLD{Name: "example", Phases: []Phase{launch("landrush", LaunchModeLandrush, past, &future)}}
+	withClaims := &TLD{Name: "example", Phases: []Phase{
+		{Name: "ga", Type: PhaseTypeGA, Starts: past},
+		launch("claims", LaunchModeClaims, past, &future),
+		launch("landrush", LaunchModeLandrush, past, &future),
+	}}
+
+	tests := []struct {
+		name       string
+		tld        *TLD
+		ref        PhaseRef
+		wantPhase  string
+		wantClaims string
+		err        error
+	}{
+		{"no ref is the GA phase", withGA, PhaseRef{}, "ga", "", nil},
+		{"no ref without a GA phase", noGA, PhaseRef{}, "", "", ErrNoActivePhase},
+		{"by name", withGA, PhaseRef{Name: "landrush"}, "landrush", "", nil},
+		{"by name and matching mode", withGA, PhaseRef{Name: "landrush", Mode: LaunchModeLandrush}, "landrush", "", nil},
+		{"by name with the wrong mode", withGA, PhaseRef{Name: "landrush", Mode: LaunchModeOpen}, "", "", ErrLaunchPhaseModeMismatch},
+		{"unknown name", withGA, PhaseRef{Name: "nope"}, "", "", ErrPhaseNotFound},
+		{"GA phase by name is refused", withGA, PhaseRef{Name: "ga"}, "", "", ErrPhaseNotLaunch},
+		{"ended phase by name", withGA, PhaseRef{Name: "sunrise"}, "", "", ErrPhaseNotActive},
+		{"future phase by name", withGA, PhaseRef{Name: "later"}, "", "", ErrPhaseNotActive},
+		{"by mode when one is open", withGA, PhaseRef{Mode: LaunchModeLandrush}, "landrush", "", nil},
+		{"by mode when none is open", withGA, PhaseRef{Mode: LaunchModeSunrise}, "", "", ErrPhaseNotActive},
+		{"by mode when two are open", withGA, PhaseRef{Mode: LaunchModeOpen}, "", "", ErrLaunchPhaseAmbiguous},
+		{"ambiguity resolved by name", withGA, PhaseRef{Name: "open-b", Mode: LaunchModeOpen}, "open-b", "", nil},
+		{"claims overlay on GA", withClaims, PhaseRef{}, "ga", "claims", nil},
+		{"claims overlay on a launch phase", withClaims, PhaseRef{Mode: LaunchModeLandrush}, "landrush", "claims", nil},
+		{"the claims phase itself", withClaims, PhaseRef{Mode: LaunchModeClaims}, "claims", "claims", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rc, err := tt.tld.RegistrationContextAt(tt.ref, now)
+			if tt.err != nil {
+				if !errors.Is(err, tt.err) {
+					t.Fatalf("want %v, got %v", tt.err, err)
+				}
+				if rc.Phase != nil {
+					t.Fatalf("a refusal carries no phase, got %v", rc.Phase.Name)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
+			}
+			if rc.Phase == nil || rc.Phase.Name.String() != tt.wantPhase {
+				t.Fatalf("phase: want %s, got %v", tt.wantPhase, rc.Phase)
+			}
+			switch {
+			case tt.wantClaims == "" && rc.Claims != nil:
+				t.Fatalf("no claims phase expected, got %s", rc.Claims.Name)
+			case tt.wantClaims != "" && (rc.Claims == nil || rc.Claims.Name.String() != tt.wantClaims):
+				t.Fatalf("claims: want %s, got %v", tt.wantClaims, rc.Claims)
+			}
+		})
+	}
+
+	// The context holds copies: changing it does not change the TLD.
+	rc, err := withGA.RegistrationContextAt(PhaseRef{Name: "landrush"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc.Phase.Name = "changed"
+	if p, _ := withGA.FindPhaseByName("landrush"); p == nil {
+		t.Error("the TLD's phase was renamed through the context")
 	}
 }
 

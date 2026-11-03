@@ -2224,3 +2224,16 @@ func TestDomain_CanBeTransferredExtensive(t *testing.T) {
 		})
 	}
 }
+
+func TestRegisterDomain_RegistrationPhaseName(t *testing.T) {
+	const authInfo = "Tr4nsf3r-C0de-Xq9#Lm2!"
+	ga := &Phase{Name: "ga-2026", Type: PhaseTypeGA}
+	dom, err := RegisterDomain("1_DOM-APEX", "example.com", "client123", authInfo, "r", "a", "t", "b", ga, 1)
+	assert.NoError(t, err)
+	assert.Empty(t, dom.RegistrationPhaseName, "a GA registration names no phase")
+
+	landrush := &Phase{Name: "landrush", Type: PhaseTypeLaunch, Launch: NewLaunchSettings()}
+	dom, err = RegisterDomain("2_DOM-APEX", "example.com", "client123", authInfo, "r", "a", "t", "b", landrush, 1)
+	assert.NoError(t, err)
+	assert.Equal(t, ClIDType("landrush"), dom.RegistrationPhaseName)
+}

@@ -872,3 +872,89 @@ func TestPhase_GetTransactionPriceAsMoney(t *testing.T) {
 // Below are simple mock helpers to override or mock certain calls in test:
 var phaseGetPrice = (*Phase).GetPrice
 var priceGetMoney = (*Price).GetMoney
+
+func TestPhase_IsActiveAt(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 1, 0)
+	bounded := &Phase{Starts: start, Ends: &end}
+	open := &Phase{Starts: start}
+	tests := []struct {
+		name          string
+		phase         *Phase
+		now           time.Time
+		active, ended bool
+	}{
+		{"before start", bounded, start.Add(-time.Second), false, false},
+		{"at start is active (inclusive)", bounded, start, true, false},
+		{"within", bounded, start.AddDate(0, 0, 10), true, false},
+		{"just before end", bounded, end.Add(-time.Nanosecond), true, false},
+		{"at end has ended (exclusive)", bounded, end, false, true},
+		{"after end", bounded, end.Add(time.Hour), false, true},
+		{"open phase never ends", open, end.AddDate(10, 0, 0), true, false},
+		{"open phase before start", open, start.Add(-time.Hour), false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.active, tt.phase.IsActiveAt(tt.now), "active")
+			assert.Equal(t, tt.ended, tt.phase.HasEndedAt(tt.now), "ended")
+			assert.Equal(t, !tt.now.Before(tt.phase.Starts), tt.phase.HasStartedAt(tt.now), "started")
+		})
+	}
+}
+
+func TestNewPhase_LaunchDefaults(t *testing.T) {
+	ga, err := NewPhase("ga-2026", string(PhaseTypeGA), time.Now().UTC())
+	assert.NoError(t, err)
+	assert.True(t, ga.Launch.IsZero(), "a GA phase carries no launch settings")
+
+	launch, err := NewPhase("landrush", string(PhaseTypeLaunch), time.Now().UTC())
+	assert.NoError(t, err)
+	assert.Equal(t, NewLaunchSettings(), launch.Launch)
+}
+
+func TestPhase_SetLaunchSettings(t *testing.T) {
+	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 1, 0)
+	before, during, after := start.Add(-time.Hour), start.Add(time.Hour), end.Add(time.Hour)
+	landrushApps := LaunchSettings{Mode: LaunchModeLandrush, Model: RegistrationModelApplication, AcceptSignedMarks: true}
+	landrushFirst := LaunchSettings{Mode: LaunchModeLandrush, Model: RegistrationModelFirstCome, AcceptSignedMarks: true}
+	openApps := LaunchSettings{Mode: LaunchModeOpen, Model: RegistrationModelApplication, AcceptSignedMarks: true}
+	landrushAppsCodeMarks := landrushApps
+	landrushAppsCodeMarks.AcceptCodeMarks = true
+
+	newLaunch := func() *Phase {
+		return &Phase{Name: "landrush", Type: PhaseTypeLaunch, Starts: start, Ends: &end, Launch: landrushApps}
+	}
+	tests := []struct {
+		name            string
+		phase           *Phase
+		settings        LaunchSettings
+		now             time.Time
+		hasApplications bool
+		err             error
+	}{
+		{"GA phase refused", &Phase{Name: "ga", Type: PhaseTypeGA, Starts: start}, landrushApps, before, false, ErrLaunchSettingsOnGA},
+		{"invalid settings refused", newLaunch(), LaunchSettings{Mode: "x", Model: RegistrationModelFirstCome}, before, false, ErrInvalidLaunchMode},
+		{"ended phase refused", newLaunch(), landrushApps, after, false, ErrUpdateHistoricPhase},
+		{"future phase: anything goes", newLaunch(), openApps, before, false, nil},
+		{"future phase with applications: model frozen", newLaunch(), landrushFirst, before, true, ErrLaunchModelFrozen},
+		{"future phase with applications: mode may change", newLaunch(), openApps, before, true, nil},
+		{"started: mode frozen", newLaunch(), openApps, during, false, ErrLaunchModeFrozen},
+		{"started: model frozen", newLaunch(), landrushFirst, during, false, ErrLaunchModelFrozen},
+		{"started: mark settings may change", newLaunch(), landrushAppsCodeMarks, during, true, nil},
+		{"started: same settings are fine", newLaunch(), landrushApps, during, true, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			was := tt.phase.Launch
+			err := tt.phase.SetLaunchSettings(tt.settings, tt.now, tt.hasApplications)
+			if tt.err != nil {
+				assert.ErrorIs(t, err, tt.err)
+				assert.Equal(t, was, tt.phase.Launch, "a refused change leaves the settings")
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.settings, tt.phase.Launch)
+		})
+	}
+}

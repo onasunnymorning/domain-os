@@ -89,6 +89,9 @@ func AutoMigrate(db *gorm.DB) error {
 	if err := migrateLifecyclePolicies(db); err != nil {
 		return err
 	}
+	if err := migrateLaunchSettings(db); err != nil {
+		return err
+	}
 	if err := seedEPPPolicies(db); err != nil {
 		return err
 	}

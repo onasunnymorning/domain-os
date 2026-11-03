@@ -27,6 +27,15 @@ type Phase struct {
 	// is that policy when preloaded; never written through the phase.
 	LifecyclePolicyName string                 `gorm:"size:32;not null;default:'gtld-standard';index"`
 	LifecyclePolicy     *LifecyclePolicyRecord `gorm:"foreignKey:LifecyclePolicyName;references:Name"`
+	// The launch settings (ADR 0024): what kind of launch phase this is
+	// and how it registers. Empty and false on a GA phase. Typed columns,
+	// not JSON (ADR 0018); migrateLaunchSettings fills launch phases from
+	// before these columns existed with the defaults.
+	LaunchMode              string `gorm:"size:16;not null;default:''"`
+	LaunchModel             string `gorm:"size:16;not null;default:''"`
+	LaunchAcceptSignedMarks bool   `gorm:"not null;default:false"`
+	LaunchAcceptCodeMarks   bool   `gorm:"not null;default:false"`
+	LaunchRetainMarks       bool   `gorm:"not null;default:false"`
 }
 
 // TableName returns the table name for the Phase model
@@ -48,6 +57,13 @@ func (p *Phase) ToEntity() *entities.Phase {
 		Policy:    p.PhasePolicy,
 
 		LifecyclePolicyName: p.LifecyclePolicyName,
+		Launch: entities.LaunchSettings{
+			Mode:              entities.LaunchMode(p.LaunchMode),
+			Model:             entities.RegistrationModel(p.LaunchModel),
+			AcceptSignedMarks: p.LaunchAcceptSignedMarks,
+			AcceptCodeMarks:   p.LaunchAcceptCodeMarks,
+			RetainMarks:       p.LaunchRetainMarks,
+		},
 	}
 	if p.LifecyclePolicy != nil {
 		phase.LifecyclePolicy = p.LifecyclePolicy.toEntity()
@@ -93,6 +109,11 @@ func (p *Phase) FromEntity(phase *entities.Phase) {
 	if p.LifecyclePolicyName == "" {
 		p.LifecyclePolicyName = entities.LifecyclePolicyStandard
 	}
+	p.LaunchMode = phase.Launch.Mode.String()
+	p.LaunchModel = phase.Launch.Model.String()
+	p.LaunchAcceptSignedMarks = phase.Launch.AcceptSignedMarks
+	p.LaunchAcceptCodeMarks = phase.Launch.AcceptCodeMarks
+	p.LaunchRetainMarks = phase.Launch.RetainMarks
 
 	if phase.PremiumListName != nil {
 		p.PremiumListName = phase.PremiumListName
