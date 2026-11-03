@@ -373,4 +373,5 @@ var Globals = []*Element{
 	ContactCheck, ContactInfo, ContactCreate, ContactUpdate, ContactDelete,
 	SecDNSCreate, SecDNSUpdate,
 	RGPUpdate,
+	LaunchCheck, LaunchCreate, LaunchInfo, LaunchUpdate, LaunchDelete,
 }

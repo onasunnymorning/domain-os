@@ -21,6 +21,17 @@ var (
 	// application filing does not exist yet (roadmap 8c); a registration
 	// here would claim a name the phase means to allocate later.
 	ErrLaunchApplicationsUnavailable = errors.New("this phase collects applications, which are not yet supported; it accepts no registrations")
+	// ErrLaunchCreateTypeMismatch: a <launch:create type="application">
+	// in a first-come phase, or type="registration" in an application
+	// phase (RFC 8334 §3.3).
+	ErrLaunchCreateTypeMismatch = errors.New("the launch create type does not match the phase's registration model")
+	// ErrLaunchEvidenceUnsupported: a create carried trademark evidence
+	// (marks, codes or claims notices) and the registry cannot verify it
+	// yet (roadmap 9a-9c).
+	ErrLaunchEvidenceUnsupported = errors.New("trademark evidence (marks and claims notices) is not yet verified; give none")
+	// ErrLaunchCheckFormUnsupported: a <launch:check> of the claims or
+	// trademark form; only the availability form is served.
+	ErrLaunchCheckFormUnsupported = errors.New("only the availability check form (type=\"avail\") is served")
 )
 
 // LaunchMode is what kind of launch phase a phase is, in the terms of RFC

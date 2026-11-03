@@ -41,6 +41,18 @@ var refusals = []struct {
 	{entities.ErrEPPTLDNotServed, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPTLDNotOpen, epplib.StatusParameterPolicyError},
 	{entities.ErrLabelNotValidInPhase, epplib.StatusParameterPolicyError},
+	// Launch phases (RFC 8334, ADR 0024): the phase named, and what a
+	// registration may do in it today.
+	{entities.ErrPhaseNotFound, epplib.StatusParameterPolicyError},
+	{entities.ErrPhaseNotLaunch, epplib.StatusParameterPolicyError},
+	{entities.ErrPhaseNotActive, epplib.StatusParameterPolicyError},
+	{entities.ErrLaunchPhaseAmbiguous, epplib.StatusParameterPolicyError},
+	{entities.ErrLaunchPhaseModeMismatch, epplib.StatusParameterPolicyError},
+	{entities.ErrLaunchModeUnsupported, epplib.StatusParameterPolicyError},
+	{entities.ErrLaunchApplicationsUnavailable, epplib.StatusParameterPolicyError},
+	{entities.ErrLaunchCreateTypeMismatch, epplib.StatusParameterPolicyError},
+	{entities.ErrLaunchEvidenceUnsupported, epplib.StatusParameterPolicyError},
+	{entities.ErrLaunchCheckFormUnsupported, epplib.StatusUnimplementedOption},
 	{entities.ErrMaxHostsPerDomainExceeded, epplib.StatusParameterPolicyError},
 	{entities.ErrDuplicateHost, epplib.StatusParameterPolicyError},
 	{entities.ErrEPPMaxSigLife, epplib.StatusUnimplementedOption},
@@ -123,6 +135,17 @@ var refusals = []struct {
 	{entities.ErrEPPContactLinked, epplib.StatusObjectAssociationProhibitsOperation},
 }
 
+// knownRefusal reports whether err is a known refusal, one refuse answers with
+// its own result code rather than 2400.
+func knownRefusal(err error) bool {
+	for _, r := range refusals {
+		if errors.Is(err, r.err) {
+			return true
+		}
+	}
+	return false
+}
+
 // refuse answers cmd with the result code for err. An error that is not a
 // known refusal is answered 2400, and logged.
 func (s *Server) refuse(cmd *command, err error) {
@@ -184,6 +207,12 @@ func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 	if pw := cmd.doc.FindElement("/epp/command/info/*/authInfo/pw"); pw != nil {
 		v := schema.NormalizedStringValue(pw.Text())
 		authInfo = &v
+	}
+	// <launch:info> asks about an application (RFC 8334 §3.1.2), which
+	// does not exist yet.
+	if launchExtension(cmd.doc, "info") != nil {
+		s.refuse(cmd, entities.ErrLaunchApplicationsUnavailable)
+		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
@@ -249,6 +278,7 @@ func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 		c.AuthInfo = schema.NormalizedStringValue(pw.Text())
 	}
 	readSecDNSCreate(cmd.doc, &c)
+	readLaunchCreate(cmd.doc, &c)
 
 	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
 	defer cancel()
@@ -276,6 +306,12 @@ func (s *Server) domainUpdate(ctx context.Context, cmd *command) {
 		return
 	}
 	update := cmd.doc.FindElement("/epp/command/update/*")
+	// <launch:update> changes an application (RFC 8334 §3.4), which does
+	// not exist yet.
+	if launchExtension(cmd.doc, "update") != nil {
+		s.refuse(cmd, entities.ErrLaunchApplicationsUnavailable)
+		return
+	}
 	add, rem, chg := update.SelectElement("add"), update.SelectElement("rem"), update.SelectElement("chg")
 	secDNS := secDNSUpdate(cmd.doc)
 	restore, err := rgpRestore(cmd.doc)
@@ -519,6 +555,12 @@ func (s *Server) domainDelete(ctx context.Context, cmd *command) {
 		s.refuse(cmd, err)
 		return
 	}
+	// <launch:delete> withdraws an application (RFC 8334 §3.5), which does
+	// not exist yet.
+	if launchExtension(cmd.doc, "delete") != nil {
+		s.refuse(cmd, entities.ErrLaunchApplicationsUnavailable)
+		return
+	}
 	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
 	defer cancel()
 	if _, err := s.domains.Delete(ctx, scope, cmd.objects[0]); err != nil {
@@ -526,6 +568,56 @@ func (s *Server) domainDelete(ctx context.Context, cmd *command) {
 		return
 	}
 	cmd.respond(epplib.StatusActionPending, "", nil)
+}
+
+// launchExtension returns the <launch:TAG> extension element of the
+// command, or nil if the command has none. The schema has validated it and
+// extensionsOnce has refused a second one.
+func launchExtension(doc *etree.Document, tag string) *etree.Element {
+	ext := doc.FindElement("/epp/command/extension")
+	if ext == nil {
+		return nil
+	}
+	for _, el := range ext.ChildElements() {
+		if el.NamespaceURI() == nsLaunch && el.Tag == tag {
+			return el
+		}
+	}
+	return nil
+}
+
+// readLaunchPhase reads a <launch:phase> (RFC 8334 §2.3): its value, one of
+// the five phase tokens, and its name attribute. A nil element (the phase
+// is optional in <launch:check>) reads as no phase, the GA phase.
+func readLaunchPhase(el *etree.Element) commands.EPPLaunchPhase {
+	if el == nil {
+		return commands.EPPLaunchPhase{}
+	}
+	return commands.EPPLaunchPhase{Value: schema.TokenValue(el.Text()), Name: schema.TokenValue(el.SelectAttrValue("name", ""))}
+}
+
+// readLaunchCreate reads a <launch:create> extension (RFC 8334 §3.3) into
+// c: the phase, the type, and how much trademark evidence it carries. The
+// evidence itself is not read: nothing verifies it yet, and a create
+// carrying any is refused.
+func readLaunchCreate(doc *etree.Document, c *commands.EPPCreateDomainCommand) {
+	el := launchExtension(doc, "create")
+	if el == nil {
+		return
+	}
+	l := &commands.EPPLaunchCreate{
+		Phase: readLaunchPhase(el.SelectElement("phase")),
+		Type:  schema.TokenValue(el.SelectAttrValue("type", "")),
+	}
+	for _, kid := range el.ChildElements() {
+		switch {
+		case kid.Tag == "codeMark", kid.Tag == "encodedSignedMark", kid.Tag == "signedMark":
+			l.Marks++
+		case kid.Tag == "notice":
+			l.Notices++
+		}
+	}
+	c.Launch = l
 }
 
 // readSecDNSCreate reads a <secDNS:create> extension (RFC 5910 §5.2.1) into

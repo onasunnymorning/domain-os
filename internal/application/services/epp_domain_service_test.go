@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
@@ -210,4 +211,51 @@ func TestEPPDomainCheckFindsTheGAPhaseOnALaterPage(t *testing.T) {
 	res, err := svc.Check(context.Background(), []string{"open.paged"})
 	require.NoError(t, err)
 	assert.True(t, res[0].Available, "the current GA phase is phase 150, past the first page of 100")
+}
+
+// LaunchCheck is Check in the launch phase named: availability under that
+// phase's label rules, resolved as a registration would resolve the phase.
+func TestEPPDomainLaunchCheck(t *testing.T) {
+	svc, _, phases := newCheckService(t)
+	landrush, err := entities.NewPhase("landrush", string(entities.PhaseTypeLaunch), time.Now().Add(-time.Hour).UTC())
+	require.NoError(t, err)
+	landrush.ID, landrush.TLDName = 2, "test"
+	landrush.Launch = entities.LaunchSettings{Mode: entities.LaunchModeLandrush, Model: entities.RegistrationModelFirstCome, AcceptSignedMarks: true}
+	landrush.Policy.MinLabelLength = 5
+	phases.byTLD["test"] = append(phases.byTLD["test"], landrush)
+
+	res, err := svc.LaunchCheck(context.Background(), []string{"abcd.test", "abcde.test", "taken.test"}, commands.EPPLaunchPhase{Value: "landrush"})
+	require.NoError(t, err)
+	assert.False(t, res[0].Available)
+	assert.Equal(t, CheckReasonPhasePolicy, res[0].Reason, "four letters, under the landrush minimum")
+	assert.True(t, res[1].Available)
+	assert.Equal(t, "landrush", res[1].PhaseName)
+	assert.False(t, res[2].Available)
+	assert.Equal(t, CheckReasonInUse, res[2].Reason)
+
+	res, err = svc.LaunchCheck(context.Background(), []string{"abcd.test"}, commands.EPPLaunchPhase{Value: "landrush", Name: "landrush"})
+	require.NoError(t, err)
+	assert.Equal(t, CheckReasonPhasePolicy, res[0].Reason, "by name too")
+
+	res, err = svc.LaunchCheck(context.Background(), []string{"abcd.test"}, commands.EPPLaunchPhase{})
+	require.NoError(t, err)
+	assert.True(t, res[0].Available, "no phase is the GA phase, whose minimum is three")
+
+	res, err = svc.LaunchCheck(context.Background(), []string{"x.closed", "x.nowhere"}, commands.EPPLaunchPhase{Value: "landrush"})
+	require.NoError(t, err, "a TLD with no phases, or not served, is an answer, not a refusal")
+	assert.Equal(t, CheckReasonNotOpen, res[0].Reason)
+	assert.Equal(t, CheckReasonNotServed, res[1].Reason)
+
+	for _, tc := range []struct {
+		phase commands.EPPLaunchPhase
+		want  error
+	}{
+		{commands.EPPLaunchPhase{Value: "sunrise"}, entities.ErrPhaseNotActive},
+		{commands.EPPLaunchPhase{Value: "custom", Name: "nope"}, entities.ErrPhaseNotFound},
+		{commands.EPPLaunchPhase{Value: "open", Name: "GA-test"}, entities.ErrPhaseNotLaunch},
+		{commands.EPPLaunchPhase{Value: "open", Name: "landrush"}, entities.ErrLaunchPhaseModeMismatch},
+	} {
+		_, err := svc.LaunchCheck(context.Background(), []string{"abcde.test"}, tc.phase)
+		require.ErrorIs(t, err, tc.want, "%+v", tc.phase)
+	}
 }

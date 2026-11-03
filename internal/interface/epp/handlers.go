@@ -12,7 +12,9 @@ import (
 	epplib "gitlab.com/internetstiftelsen-oss/epp-lib"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
+	"github.com/onasunnymorning/domain-os/internal/interface/epp/schema"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 )
 
 // Login results for epp_logins_total.
@@ -220,7 +222,27 @@ func (s *Server) domainCheck(ctx context.Context, cmd *command) {
 	names := cmd.objects // the <domain:name>s, read by describe
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
-	results, err := s.domains.Check(ctx, names)
+	var (
+		results []*queries.DomainCheckResult
+		err     error
+	)
+	if lc := launchExtension(cmd.doc, "check"); lc != nil {
+		// RFC 8334 §3.1.1: the claims check form is the default and, with
+		// the trademark form, not served (2102); the availability form is
+		// a plain check under the phase named, answered in <domain:chkData>
+		// with no extension (§3.1.1.2).
+		if form := schema.TokenValue(lc.SelectAttrValue("type", "claims")); form != "avail" {
+			s.refuse(cmd, fmt.Errorf("%w: type=%q", entities.ErrLaunchCheckFormUnsupported, form))
+			return
+		}
+		results, err = s.domains.LaunchCheck(ctx, names, readLaunchPhase(lc.SelectElement("phase")))
+		if err != nil && knownRefusal(err) {
+			s.refuse(cmd, err)
+			return
+		}
+	} else {
+		results, err = s.domains.Check(ctx, names)
+	}
 	if err != nil {
 		s.logger.Error("EPP domain check failed", "connection_id", cmd.session.id, "svtrid", cmd.svTRID, "error", err)
 		cmd.respond(epplib.StatusCommandFailed, "", nil)

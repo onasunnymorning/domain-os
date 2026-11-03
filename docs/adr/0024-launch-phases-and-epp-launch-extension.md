@@ -1,7 +1,7 @@
 # ADR 0024 — Launch phases and the EPP launch extension
 
-- **Status:** Proposed (section 1 is implemented; sections 2–4 are the design the following PRs build)
-- **Implemented so far:** 2026-11-03 — `entities.LaunchSettings` on `Phase` (`launch_*` columns on `phases`), `TLD.RegistrationContextAt` as the one rule for which phase governs a registration, `Domain.RegistrationPhaseName`, `PUT /tlds/{tld}/phases/{phase}/launch`, time-aware activity on `Phase` (`IsActiveAt`, `HasStartedAt`, `HasEndedAt`) and the `GetCurrentLaunchPhases` fix.
+- **Status:** Proposed (sections 1 and 2 are implemented; sections 3 and 4 are the design the following PRs build)
+- **Implemented so far:** 2026-11-03 — `entities.LaunchSettings` on `Phase` (`launch_*` columns on `phases`), `TLD.RegistrationContextAt` as the one rule for which phase governs a registration, `Domain.RegistrationPhaseName`, `PUT /tlds/{tld}/phases/{phase}/launch`, time-aware activity on `Phase` (`IsActiveAt`, `HasStartedAt`, `HasEndedAt`) and the `GetCurrentLaunchPhases` fix (roadmap 8a). The `launch-1.0` extension over EPP for first-come phases: the schema models, the greeting, `<launch:check type="avail">` and `<launch:create>` (roadmap 8b).
 - **Date:** 2026-11-03
 - **Deciders:** Platform / Registry
 - **Related:** [ADR 0023](0023-configurable-domain-lifecycle.md) (the lifecycle reads only the GA phase), [ADR 0018](0018-where-configuration-lives.md) (typed columns, not JSON), [ADR 0016](0016-epp-schema-validation-in-go.md) (how an EPP extension is bound), [ADR 0017](0017-roid-repository-id.md) (identifiers), [ADR 0006](0006-tenancy-model.md) (who may change a TLD)
@@ -83,23 +83,36 @@ registrations (the domain starts `pendingCreate`) and gains one for
 applications: an application starts `pendingValidation` when it is set, else
 `pendingAllocation`.
 
-## 2. RFC 8334 over EPP (next PRs)
+## 2. RFC 8334 over EPP (first-come phases implemented; applications next)
 
 The server offers `urn:ietf:params:xml:ns:launch-1.0` in the greeting and
-accepts it at login. The `launch-1.0`, `mark-1.0` and `signedMark-1.0`
-schemas are modelled per ADR 0016, with `smd:*` content accepted as
-`xs:anyType` until sunrise lands. A command whose session did not negotiate
-the extension is 2103, as today.
+accepts it at login; a command carrying the extension on a session that did
+not negotiate it is 2103, as for every extension. The `launch-1.0`,
+`mark-1.0`, `signedMark-1.0` and XML Signature schemas are pinned from the
+RST release so xmllint can load the launch schema, and the launch elements
+a client sends are modelled per ADR 0016. Of the trademark evidence a
+`<launch:create>` may carry, only `<smd:encodedSignedMark>` (the form SMD
+files take) and `<launch:codeMark>` with a `<launch:code>` are modelled; a
+decoded `<smd:signedMark>` or inline `<mark:mark>` is 2001 until sunrise
+support models the mark and signature schemas it verifies.
+
+**`<launch:phase>` names the phase** as `RegistrationContextAt` resolves it:
+the element's value is the mode, its `name` attribute the phase's name. A
+registrar sends `<launch:phase>landrush</launch:phase>` when one landrush
+phase is open, and names the phase only when two of one mode are.
 
 | Command | In a first-come phase | In an application phase |
 |---|---|---|
-| `<domain:check>` + `<launch:check type="avail">` | availability under the phase's label rules, in `<launch:chkData>` | the same; filed applications do not make a name unavailable (§3.1.1.1) |
-| `<launch:check type="claims">` (the default type) | 2306 until claims support lands | |
-| `<domain:create>` + `<launch:create type="registration">` | registered at once under the phase's prices, fees and policy; `<launch:creData>` carries the phase | 2306 `ErrLaunchCreateTypeMismatch` |
-| `<domain:create>` + `<launch:create type="application">` | 2306 | 1001 and `<launch:creData>` with a server-assigned `applicationID` |
-| `<domain:info>` + `<launch:info>` with `applicationID` | | `<domain:infData>` from the application and `<launch:infData>` with its status |
-| `<domain:update>` / `<domain:delete>` + `<launch:update>` / `<launch:delete>` | | changes or withdraws a non-final application; a final one is 2304 |
-| any `<launch:*>` with marks or notices | 2306 until sunrise and claims land | |
+| `<domain:check>` + `<launch:check type="avail">` | availability under the phase's label rules, answered in the plain `<domain:chkData>` with no extension (§3.1.1.2) | the same; filed applications do not make a name unavailable |
+| `<launch:check>` of the claims form (the default) or the trademark form | 2102 until claims support lands | |
+| `<domain:create>` + `<launch:create>` (type `registration` or none) | registered at once under the phase's prices, fees and policy, answered as a GA create is: `<launch:creData>` is for applications only (§3.3.1) | 2306 until applications land |
+| `<domain:create>` + `<launch:create type="application">` | 2306 `ErrLaunchCreateTypeMismatch` | 1001 and `<launch:creData>` with a server-assigned `applicationID` (next) |
+| `<domain:create>` in a sunrise or claims phase, or carrying marks, codes or notices | 2306 | 2306 |
+| `<domain:info>` + `<launch:info>` with `applicationID` | 2306 until applications land | `<domain:infData>` from the application and `<launch:infData>` with its status (next) |
+| `<domain:update>` / `<domain:delete>` + `<launch:update>` / `<launch:delete>` | 2306 until applications land | changes or withdraws a non-final application; a final one is 2304 (next) |
+
+A plain `<domain:check>` or `<domain:create>` without the extension is the
+GA phase's, as before.
 
 Application IDs are server-assigned and `roidType`-valid, carrying the
 installation's ROID repository ID (ADR 0017) with a prefix of their own.
@@ -138,6 +151,8 @@ refuse registrations over EPP with 2306.
   by application, with their own prices and policy, before or beside GA.
 - One rule chooses the phase everywhere; the admin API no longer accepts an
   inactive or GA phase by name (a pre-v1 break, deliberate).
+- A registrar can register in an open or landrush first-come phase over EPP
+  today; the greeting's `launch-1.0` satisfies RST epp-02/8.
 - `Phase` gains one value object, not a new shape; sunrise and claims will
   add a verifier and data feeds, not entity fields.
 - `GetCurrentGAPhase` now includes the start instant; a registration at

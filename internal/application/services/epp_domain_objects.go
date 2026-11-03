@@ -105,7 +105,14 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	if err != nil || !strings.Contains(dn.String(), ".") {
 		return nil, errors.Join(entities.ErrInvalidDomain, err)
 	}
-	t, err := s.tldForCheck(ctx, dn.ParentDomain())
+	// The phase: the GA phase in force, or the launch phase a
+	// <launch:create> names (ADR 0024). A launch phase that cannot be
+	// registered in is refused here, before anything else is read.
+	var ref entities.PhaseRef
+	if cmd.Launch != nil {
+		ref = launchRef(cmd.Launch.Phase)
+	}
+	t, err := s.tldForCheck(ctx, dn.ParentDomain(), ref)
 	if err != nil {
 		return nil, err
 	}
@@ -121,6 +128,9 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	}
 	if !accredited {
 		return nil, ErrRegistrarNotAccredited
+	}
+	if err := admitLaunchCreate(t.phase, cmd.Launch); err != nil {
+		return nil, err
 	}
 	c := eppCreate{registrant: cmd.RegistrantID}
 	if c.years, err = createYears(cmd, t.phase.Lifecycle().MaxHorizonYears()); err != nil {
@@ -161,10 +171,16 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 		}
 	}
 
+	// A launch registration names its phase; a GA one names none, and the
+	// registration path resolves the GA phase in force again as it writes.
+	var phaseName string
+	if t.phase.Type == entities.PhaseTypeLaunch {
+		phaseName = t.phase.Name.String()
+	}
 	dom, err := s.register.RegisterDomain(ctx, &commands.RegisterDomainCommand{
 		Name: dn.String(), ClID: scope.String(), AuthInfo: cmd.AuthInfo,
 		RegistrantID: c.registrant, AdminID: c.admin, TechID: c.tech, BillingID: c.billing,
-		Years: c.years, HostNames: cmd.HostNames, DSRecords: ds,
+		Years: c.years, HostNames: cmd.HostNames, DSRecords: ds, PhaseName: phaseName,
 	})
 	if err != nil {
 		// Another registrar may have registered the name since it was
@@ -175,6 +191,30 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 		return nil, err
 	}
 	return dom, nil
+}
+
+// admitLaunchCreate applies what a registration may do under phase today
+// (ADR 0024 §2): the phase must admit registrations at all
+// (LaunchSettings.AdmitsRegistration: not a sunrise or claims phase, whose
+// evidence nobody verifies yet; not an application phase, since
+// applications do not exist yet); a <launch:create> must not ask for an
+// application (RFC 8334 §3.3: type="application" in a first-come phase is a
+// mismatch); and it must carry no trademark evidence, which is not
+// verified. Without a <launch:create> the GA phase's zero settings admit.
+func admitLaunchCreate(phase *entities.Phase, launch *commands.EPPLaunchCreate) error {
+	if err := phase.Launch.AdmitsRegistration(); err != nil {
+		return fmt.Errorf("%w: %s", err, phase.Name)
+	}
+	if launch == nil {
+		return nil
+	}
+	if launch.Type == "application" {
+		return fmt.Errorf("%w: %s registers at once", entities.ErrLaunchCreateTypeMismatch, phase.Name)
+	}
+	if launch.Marks+launch.Notices > 0 {
+		return entities.ErrLaunchEvidenceUnsupported
+	}
+	return nil
 }
 
 // dsRecords applies the registry's DNSSEC policy to the DS data given, in

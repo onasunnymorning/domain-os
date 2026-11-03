@@ -101,6 +101,24 @@ func (r *Registry) AddTLD(name string, open bool) *entities.Phase {
 	return p
 }
 
+// AddLaunchPhase adds a launch phase to tld with the given settings, from
+// starts until ends (nil for no end), as the admin API would create it.
+func (r *Registry) AddLaunchPhase(tld, name string, settings entities.LaunchSettings, starts time.Time, ends *time.Time) *entities.Phase {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, err := entities.NewPhase(name, string(entities.PhaseTypeLaunch), starts.UTC())
+	if err != nil {
+		panic(err)
+	}
+	p.Launch = settings
+	p.Ends = ends
+	r.nextID++
+	p.ID = r.nextID
+	p.TLDName = entities.DomainName(tld)
+	r.phases[tld] = append(r.phases[tld], p)
+	return p
+}
+
 // SetPolicy changes the policy of every phase of tld, as the registry's
 // operator would.
 func (r *Registry) SetPolicy(tld string, fn func(*entities.PhasePolicy)) {
@@ -315,10 +333,17 @@ func (r *Registry) RegisterDomain(_ context.Context, cmd *commands.RegisterDomai
 	for _, p := range r.phases[dn.ParentDomain()] {
 		t.Phases = append(t.Phases, *p)
 	}
-	phase, err := t.GetCurrentGAPhase()
+	// As DomainService.RegisterDomain resolves it (ADR 0024): the GA phase
+	// in force, or the active launch phase named, and one that admits
+	// registrations.
+	rc, err := t.RegistrationContextAt(entities.PhaseRef{Name: entities.ClIDType(cmd.PhaseName)}, r.now().UTC())
 	if err != nil {
 		return nil, err
 	}
+	if err := rc.Phase.Launch.AdmitsRegistration(); err != nil {
+		return nil, err
+	}
+	phase := rc.Phase
 	r.nextID++
 	roid, err := entities.NewRoidType(r.nextID, entities.RoidTypeDomain, r.repository)
 	if err != nil {

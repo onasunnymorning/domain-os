@@ -38,12 +38,15 @@ const (
 
 // prefixes name namespaces in error paths, so a path reads like the frame.
 var prefixes = map[string]string{
-	NSEPP:     "",
-	NSDomain:  "domain:",
-	NSHost:    "host:",
-	NSContact: "contact:",
-	NSSecDNS:  "secDNS:",
-	NSRGP:     "rgp:",
+	NSEPP:        "",
+	NSDomain:     "domain:",
+	NSHost:       "host:",
+	NSContact:    "contact:",
+	NSSecDNS:     "secDNS:",
+	NSRGP:        "rgp:",
+	NSLaunch:     "launch:",
+	NSMark:       "mark:",
+	NSSignedMark: "smd:",
 }
 
 // Error is a frame that does not match the schema. Path locates the element

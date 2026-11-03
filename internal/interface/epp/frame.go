@@ -17,6 +17,7 @@ const (
 	nsRGP            = "urn:ietf:params:xml:ns:rgp-1.0"
 	nsSecureAuthInfo = "urn:ietf:params:xml:ns:epp:secure-authinfo-transfer-1.0"
 	nsSecDNS         = "urn:ietf:params:xml:ns:secDNS-1.1"
+	nsLaunch         = "urn:ietf:params:xml:ns:launch-1.0"
 
 	// RFC 5730 bounds a clTRID to 3..64 characters.
 	maxClTRIDLen = 64

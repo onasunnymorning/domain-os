@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+  <command>
+    <create>
+      <domain:create xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
+        <domain:name>example.com</domain:name>
+        <domain:registrant>jd1234</domain:registrant>
+        <domain:contact type="tech">sh8013</domain:contact>
+        <domain:authInfo>
+          <domain:pw>2fooBAR</domain:pw>
+        </domain:authInfo>
+      </domain:create>
+    </create>
+    <extension>
+      <launch:create xmlns:launch="urn:ietf:params:xml:ns:launch-1.0" type="application">
+        <launch:phase name="auction">custom</launch:phase>
+        <launch:codeMark>
+          <launch:code validatorID="tmch">49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE</launch:code>
+        </launch:codeMark>
+        <launch:codeMark/>
+        <launch:notice>
+          <launch:noticeID validatorID="tmch">370d0b7c9223372036854775807</launch:noticeID>
+          <launch:notAfter>2026-11-22T09:30:47Z</launch:notAfter>
+          <launch:acceptedDate>2026-11-19T09:01:30Z</launch:acceptedDate>
+        </launch:notice>
+      </launch:create>
+    </extension>
+    <clTRID>ABC-12363</clTRID>
+  </command>
+</epp>

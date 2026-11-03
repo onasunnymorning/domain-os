@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -242,4 +243,85 @@ func TestEPPDomainInfo(t *testing.T) {
 	require.ErrorIs(t, err, entities.ErrInvalidDomain)
 	_, err = svc.Info(context.Background(), "", "mine.test", nil)
 	require.ErrorIs(t, err, entities.ErrInvalidRegistrarClID, "a missing scope is refused, never treated as all")
+}
+
+// A create with <launch:create> registers in the launch phase named, under
+// its policy, and the domain remembers the phase (ADR 0024). Without the
+// extension the GA phase applies, as before.
+func TestEPPDomainCreateInLaunchPhase(t *testing.T) {
+	svc, reg, _ := objectRegistry(t)
+	now := time.Now().UTC()
+	landrush := reg.AddLaunchPhase("test", "landrush", entities.LaunchSettings{Mode: entities.LaunchModeLandrush, Model: entities.RegistrationModelFirstCome, AcceptSignedMarks: true}, now.Add(-time.Hour), nil)
+	landrush.Policy.MinLabelLength = 5
+
+	cmd := validCreate("rushed.test")
+	cmd.Launch = &commands.EPPLaunchCreate{Phase: commands.EPPLaunchPhase{Value: "landrush"}, Type: "registration"}
+	dom, err := svc.Create(context.Background(), rar1, cmd)
+	require.NoError(t, err)
+	assert.Equal(t, entities.ClIDType("landrush"), dom.RegistrationPhaseName)
+
+	short := validCreate("ab.test")
+	short.Launch = &commands.EPPLaunchCreate{Phase: commands.EPPLaunchPhase{Value: "landrush", Name: "landrush"}}
+	_, err = svc.Create(context.Background(), rar1, short)
+	require.ErrorIs(t, err, entities.ErrLabelNotValidInPhase, "the launch phase's label rules, not GA's")
+
+	dom, err = svc.Create(context.Background(), rar1, validCreate("ab.test"))
+	require.NoError(t, err)
+	assert.Empty(t, dom.RegistrationPhaseName, "a GA registration names no phase")
+	assert.Equal(t, []string{"rushed.test", "ab.test"}, reg.Registered)
+}
+
+func TestEPPDomainCreateLaunchRefusals(t *testing.T) {
+	svc, reg, _ := objectRegistry(t)
+	now := time.Now().UTC()
+	past, future := now.Add(-time.Hour), now.Add(time.Hour)
+	firstCome := func(mode entities.LaunchMode) entities.LaunchSettings {
+		return entities.LaunchSettings{Mode: mode, Model: entities.RegistrationModelFirstCome, AcceptSignedMarks: true}
+	}
+	reg.AddLaunchPhase("test", "landrush", firstCome(entities.LaunchModeLandrush), past, &future)
+	ended := past.Add(-time.Minute)
+	reg.AddLaunchPhase("test", "sunrise", firstCome(entities.LaunchModeSunrise), past.Add(-time.Hour), &ended)
+	reg.AddLaunchPhase("test", "sunrise-open", firstCome(entities.LaunchModeSunrise), past, nil)
+	reg.AddLaunchPhase("test", "auction", entities.LaunchSettings{Mode: entities.LaunchModeCustom, Model: entities.RegistrationModelApplication, AcceptSignedMarks: true}, past, nil)
+	reg.AddLaunchPhase("test", "open-a", firstCome(entities.LaunchModeOpen), past, nil)
+	reg.AddLaunchPhase("test", "open-b", firstCome(entities.LaunchModeOpen), past, nil)
+
+	launch := func(value, name, typ string, marks, notices int) *commands.EPPLaunchCreate {
+		return &commands.EPPLaunchCreate{Phase: commands.EPPLaunchPhase{Value: value, Name: name}, Type: typ, Marks: marks, Notices: notices}
+	}
+	cases := []struct {
+		name   string
+		launch *commands.EPPLaunchCreate
+		want   error
+	}{
+		{"unknown phase", launch("custom", "nope", "", 0, 0), entities.ErrPhaseNotFound},
+		{"GA phase by name", launch("open", "GA-test", "", 0, 0), entities.ErrPhaseNotLaunch},
+		{"ended phase", launch("sunrise", "sunrise", "", 0, 0), entities.ErrPhaseNotActive},
+		{"no phase of the mode", launch("claims", "", "", 0, 0), entities.ErrPhaseNotActive},
+		{"two phases of the mode", launch("open", "", "", 0, 0), entities.ErrLaunchPhaseAmbiguous},
+		{"mode does not match the name", launch("open", "landrush", "", 0, 0), entities.ErrLaunchPhaseModeMismatch},
+		{"application phase", launch("custom", "auction", "", 0, 0), entities.ErrLaunchApplicationsUnavailable},
+		{"sunrise phase", launch("sunrise", "sunrise-open", "", 0, 0), entities.ErrLaunchModeUnsupported},
+		{"sunrise before evidence", launch("sunrise", "", "", 1, 0), entities.ErrLaunchModeUnsupported},
+		{"type=application in a first-come phase", launch("landrush", "", "application", 0, 0), entities.ErrLaunchCreateTypeMismatch},
+		{"a mark", launch("landrush", "", "", 1, 0), entities.ErrLaunchEvidenceUnsupported},
+		{"a notice", launch("landrush", "", "registration", 0, 1), entities.ErrLaunchEvidenceUnsupported},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := validCreate("rushed.test")
+			cmd.Launch = tc.launch
+			_, err := svc.Create(context.Background(), rar1, cmd)
+			require.ErrorIs(t, err, tc.want)
+		})
+	}
+	assert.Empty(t, reg.Registered, "nothing is registered")
+
+	t.Run("the phase is refused before accreditation is checked", func(t *testing.T) {
+		reg.AddTLD("other", true) // nobody is accredited for it
+		cmd := validCreate("x.other")
+		cmd.Launch = launch("custom", "nope", "", 0, 0)
+		_, err := svc.Create(context.Background(), rar1, cmd)
+		require.ErrorIs(t, err, entities.ErrPhaseNotFound)
+	})
 }
