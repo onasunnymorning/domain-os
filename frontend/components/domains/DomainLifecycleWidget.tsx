@@ -13,8 +13,9 @@ interface Props {
 export function DomainLifecycleWidget({ domain }: Props) {
   const { categorized } = useCategorizedPhases(domain.TLDName || "");
 
+  // The lifecycle policy of the current GA phase, resolved by the API (ADR 0023).
   const policy = useMemo(() => {
-    return categorized?.ga?.current?.policy || categorized?.launch?.current?.[0]?.policy;
+    return categorized?.ga?.current?.lifecyclePolicy?.resolved || categorized?.launch?.current?.[0]?.lifecyclePolicy?.resolved;
   }, [categorized]);
 
   // Analyze Registration Period
@@ -90,7 +91,7 @@ export function DomainLifecycleWidget({ domain }: Props) {
 
     // Default durations (in days) fallback if policy is not loaded or missing
     addPeriod(domain.RGPStatus.addPeriodEnd, "Add Grace Period", policy?.registrationGP, 5);
-    addPeriod(domain.RGPStatus.autoRenewPeriodEnd, "Auto-Renew Grace Period", policy?.autoRenewalGP, 45);
+    addPeriod(domain.RGPStatus.autoRenewPeriodEnd, "Auto-Renew Grace Period", policy?.autorenewalGP, 45);
     addPeriod(domain.RGPStatus.renewPeriodEnd, "Renew Grace Period", policy?.renewalGP, 5);
     addPeriod(domain.RGPStatus.transferPeriodEnd, "Transfer Grace Period", policy?.transferGP, 5);
     addPeriod(domain.RGPStatus.transferLockPeriodEnd, "Transfer Lock", policy?.transferLockPeriod, 60);

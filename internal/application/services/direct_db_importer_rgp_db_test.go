@@ -22,11 +22,16 @@ func TestDirectDBImporter_ImportDomains_StartsTheEndOfLifeOfDeletedDomains(t *te
 	importer := newImporter(t)
 	const tld = "rgpimp"
 	clid := seedFixtures(t, db, tld, 9871)
-	// The phase sets its own periods: the import follows them.
+	// The phase names a policy with its own periods: the import follows them.
+	ten, three := 10, 3
+	policy, err := entities.NewLifecyclePolicy("rgpimp-short", "", entities.LifecycleSettings{RedemptionGP: &ten, PendingRestorePeriod: &three})
+	require.NoError(t, err)
+	policy.UpdatedAt = time.Now().UTC()
+	require.NoError(t, postgres.NewLifecyclePolicyRepository(db).SavePolicy(context.Background(), policy, func(*entities.LifecyclePolicy) ([]entities.DomainEvent, error) { return nil, nil }))
 	phase, err := entities.NewPhase("GA1", string(entities.PhaseTypeGA), time.Now().UTC().AddDate(0, 0, -1))
 	require.NoError(t, err)
 	phase.TLDName = tld
-	phase.Policy.RedemptionGP, phase.Policy.PendingRestorePeriod = 10, 3
+	phase.LifecyclePolicyName = policy.Name
 	_, err = postgres.NewGormPhaseRepository(db).CreatePhase(context.Background(), phase)
 	require.NoError(t, err)
 

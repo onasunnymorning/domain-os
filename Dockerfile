@@ -84,9 +84,12 @@ FROM alpine:3.21.8 AS admin-api
 ## tiff, libexpat and pcre2 are named (they arrive as dependencies) so a CVE
 ## fix in them changes this layer's text: the CI build cache keys on the
 ## command and would otherwise keep serving what the last `apk upgrade`
-## found. Name the next package Trivy flags here too.
+## found. Naming a package once is not enough when it is flagged again
+## (libexpat, 2026-11-03): pin the fixed version, so the text changes and
+## apk refuses an image that would still carry the old one. Raise the pin,
+## or name the next package Trivy flags, here.
 RUN apk upgrade --no-cache && \
-    apk add --no-cache python3 py3-pip bind-tools graphviz py3-cryptography tiff libexpat pcre2 && \
+    apk add --no-cache python3 py3-pip bind-tools graphviz py3-cryptography tiff 'libexpat>=2.10.0-r0' pcre2 && \
     pip install dnsviz dnspython --break-system-packages --root-user-action=ignore
 
 # Copy librdkafka from the build image

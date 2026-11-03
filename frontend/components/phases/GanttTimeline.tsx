@@ -206,7 +206,7 @@ function PhaseBar({ phase, range, status, onClick }: PhaseBarProps) {
   );
 
   // Policy indicator icons
-  const hasAutorenew = phase.policy?.allowAutorenew;
+  const hasAutorenew = phase.lifecyclePolicy?.resolved.allowAutorenew ?? true;
   const hasValidation = phase.policy?.requiresValidation;
 
   return (
@@ -340,7 +340,7 @@ function PhaseTooltip({ phase, status }: { phase: Phase; status: PhaseStatus }) 
 
       {/* Policy summary */}
       <div className="flex gap-2 text-[10px] text-muted-foreground">
-        {phase.policy?.allowAutorenew && (
+        {(phase.lifecyclePolicy?.resolved.allowAutorenew ?? true) && (
           <span className="flex items-center gap-0.5"><RefreshCw className="h-2.5 w-2.5" /> Autorenew</span>
         )}
         {phase.policy?.requiresValidation && (

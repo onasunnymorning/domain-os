@@ -30,7 +30,7 @@ func NewGormTLDRepo(db *gorm.DB) *GormTLDRepository {
 // phases, with no prices, fees or counts.
 func (repo *GormTLDRepository) GetWithPhases(ctx context.Context, name string) (*entities.TLD, error) {
 	dbtld := &TLD{}
-	if err := dbFrom(ctx, repo.db).Preload("Phases").Where("name = ?", name).First(dbtld).Error; err != nil {
+	if err := dbFrom(ctx, repo.db).Preload("Phases.LifecyclePolicy").Where("name = ?", name).First(dbtld).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrTLDNotFound
 		}
@@ -44,9 +44,9 @@ func (repo *GormTLDRepository) GetByName(ctx context.Context, name string, prelo
 	var err error
 
 	if preloadAll {
-		err = dbFrom(ctx, repo.db).Preload("Phases.Prices").Preload("Phases.Fees").Where("name = ?", name).First(dbtld).Error
+		err = dbFrom(ctx, repo.db).Preload("Phases.Prices").Preload("Phases.Fees").Preload("Phases.LifecyclePolicy").Where("name = ?", name).First(dbtld).Error
 	} else {
-		err = dbFrom(ctx, repo.db).Preload("Phases").Where("name = ?", name).First(dbtld).Error
+		err = dbFrom(ctx, repo.db).Preload("Phases.LifecyclePolicy").Where("name = ?", name).First(dbtld).Error
 	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -250,7 +250,7 @@ func (repo *GormTLDRepository) GetByNameForOperator(ctx context.Context, scope e
 	}
 	dbtld := &TLD{}
 	err := dbFrom(ctx, repo.db).
-		Preload("Phases").
+		Preload("Phases.LifecyclePolicy").
 		Where("name = ? AND ry_id = ?", name, scope.String()).
 		First(dbtld).Error
 	if err != nil {

@@ -1364,12 +1364,8 @@ func TestRegisterDomain(t *testing.T) {
 	techID := "tech123"
 	billingID := "billing123"
 	phase := &Phase{
-		Name: "registration",
-		Policy: PhasePolicy{
-			RegistrationGP:     30,
-			TransferLockPeriod: intPtr(60),
-			AutoRenewalGP:      7,
-		},
+		Name:            "registration",
+		LifecyclePolicy: &LifecyclePolicy{Settings: LifecycleSettings{RegistrationGP: intPtr(30), TransferLockPeriod: intPtr(60), AutoRenewalGP: intPtr(7)}},
 	}
 	years := 2
 
@@ -1391,11 +1387,11 @@ func TestRegisterDomain(t *testing.T) {
 	assert.Equal(t, expectedExpiryDate.Year(), domain.ExpiryDate.Year())
 	assert.Equal(t, expectedExpiryDate.Month(), domain.ExpiryDate.Month())
 	assert.Equal(t, expectedExpiryDate.Day(), domain.ExpiryDate.Day())
-	expectedRegistrationGPEnd := time.Now().UTC().AddDate(0, 0, phase.Policy.RegistrationGP)
+	expectedRegistrationGPEnd := time.Now().UTC().AddDate(0, 0, phase.Lifecycle().RegistrationGraceDays())
 	assert.Equal(t, expectedRegistrationGPEnd.Year(), domain.RGPStatus.AddPeriodEnd.Year())
 	assert.Equal(t, expectedRegistrationGPEnd.Month(), domain.RGPStatus.AddPeriodEnd.Month())
 	assert.Equal(t, expectedRegistrationGPEnd.Day(), domain.RGPStatus.AddPeriodEnd.Day())
-	expectedTransferLockPeriodEnd := time.Now().UTC().AddDate(0, 0, phase.Policy.TransferLockDays())
+	expectedTransferLockPeriodEnd := time.Now().UTC().AddDate(0, 0, phase.Lifecycle().TransferLockDays())
 	assert.Equal(t, expectedTransferLockPeriodEnd.Year(), domain.RGPStatus.TransferLockPeriodEnd.Year())
 	assert.Equal(t, expectedTransferLockPeriodEnd.Month(), domain.RGPStatus.TransferLockPeriodEnd.Month())
 	assert.Equal(t, expectedTransferLockPeriodEnd.Day(), domain.RGPStatus.TransferLockPeriodEnd.Day())
@@ -1464,7 +1460,7 @@ func TestDomain_Renew(t *testing.T) {
 			domStatus: &DomainStatus{OK: true},
 			expDate:   time.Date(2021, time.January, 1, 0, 0, 0, 0, time.UTC),
 			years:     0,
-			phase:     &Phase{Policy: PhasePolicy{RegistrationGP: 5}},
+			phase:     &Phase{},
 			wantErr:   ErrZeroRenewalPeriod,
 		},
 		{
@@ -1472,7 +1468,7 @@ func TestDomain_Renew(t *testing.T) {
 			domStatus: &DomainStatus{PendingCreate: true},
 			expDate:   time.Date(2021, time.January, 1, 0, 0, 0, 0, time.UTC),
 			years:     1,
-			phase:     &Phase{Policy: PhasePolicy{RegistrationGP: 5}},
+			phase:     &Phase{},
 			wantErr:   ErrDomainRenewNotAllowed,
 		},
 		{
@@ -1480,7 +1476,7 @@ func TestDomain_Renew(t *testing.T) {
 			domStatus: &DomainStatus{OK: true},
 			expDate:   time.Now().UTC(),
 			years:     11,
-			phase:     &Phase{Policy: PhasePolicy{RegistrationGP: 5, MaxHorizon: 10}},
+			phase:     &Phase{},
 			wantErr:   ErrDomainRenewExceedsMaxHorizon,
 		},
 		{
@@ -1488,7 +1484,7 @@ func TestDomain_Renew(t *testing.T) {
 			domStatus: &DomainStatus{OK: true},
 			expDate:   time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC),
 			years:     4,
-			phase:     &Phase{Policy: PhasePolicy{RenewalGP: 5, MaxHorizon: 10}},
+			phase:     &Phase{},
 			wantErr:   nil,
 		},
 		{
@@ -1497,7 +1493,7 @@ func TestDomain_Renew(t *testing.T) {
 			expDate:   time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC),
 			years:     1,
 			auto:      true,
-			phase:     &Phase{Policy: PhasePolicy{AutoRenewalGP: 45, MaxHorizon: 10}},
+			phase:     &Phase{},
 			wantErr:   nil,
 		},
 	}
@@ -1514,9 +1510,9 @@ func TestDomain_Renew(t *testing.T) {
 				assert.Equal(t, tc.years, dom.RenewedYears)
 				assert.Equal(t, dom.ClID, dom.UpRr)
 				if tc.auto {
-					assert.Equal(t, time.Now().UTC().AddDate(0, 0, tc.phase.Policy.AutoRenewalGP).Truncate(time.Hour), dom.RGPStatus.AutoRenewPeriodEnd.Truncate(time.Hour))
+					assert.Equal(t, time.Now().UTC().AddDate(0, 0, tc.phase.Lifecycle().AutoRenewalGraceDays()).Truncate(time.Hour), dom.RGPStatus.AutoRenewPeriodEnd.Truncate(time.Hour))
 				} else {
-					assert.Equal(t, time.Now().UTC().AddDate(0, 0, tc.phase.Policy.RenewalGP).Truncate(time.Hour), dom.RGPStatus.RenewPeriodEnd.Truncate(time.Hour))
+					assert.Equal(t, time.Now().UTC().AddDate(0, 0, tc.phase.Lifecycle().RenewalGraceDays()).Truncate(time.Hour), dom.RGPStatus.RenewPeriodEnd.Truncate(time.Hour))
 				}
 			}
 		})
@@ -1536,13 +1532,8 @@ func TestDomain_MarkForDeletion(t *testing.T) {
 			name:            "domain can be marked for deletion",
 			DomainStatus:    DomainStatus{OK: true},
 			DomainRGPStatus: DomainRGPStatus{},
-			Phase: &Phase{
-				Policy: PhasePolicy{
-					RedemptionGP:    30,
-					PendingDeleteGP: 5,
-				},
-			},
-			wantErr: nil,
+			Phase:           &Phase{},
+			wantErr:         nil,
 		},
 		{
 			name:         "domain within AddGracePeriod",
@@ -1550,25 +1541,15 @@ func TestDomain_MarkForDeletion(t *testing.T) {
 			DomainRGPStatus: DomainRGPStatus{
 				AddPeriodEnd: now.AddDate(0, 0, 1),
 			},
-			Phase: &Phase{
-				Policy: PhasePolicy{
-					RedemptionGP:    30,
-					PendingDeleteGP: 5,
-				},
-			},
+			Phase:   &Phase{},
 			wantErr: nil,
 		},
 		{
 			name:            "domain not deletable",
 			DomainStatus:    DomainStatus{PendingDelete: true},
 			DomainRGPStatus: DomainRGPStatus{},
-			Phase: &Phase{
-				Policy: PhasePolicy{
-					RedemptionGP:    30,
-					PendingDeleteGP: 5,
-				},
-			},
-			wantErr: ErrDomainDeleteNotAllowed,
+			Phase:           &Phase{},
+			wantErr:         ErrDomainDeleteNotAllowed,
 		},
 		{
 			// RFC 5731 §2.3: an update prohibition stops updates, not a
@@ -1576,25 +1557,15 @@ func TestDomain_MarkForDeletion(t *testing.T) {
 			name:            "an update prohibition does not prevent a delete",
 			DomainStatus:    DomainStatus{ClientUpdateProhibited: true, ServerUpdateProhibited: true},
 			DomainRGPStatus: DomainRGPStatus{},
-			Phase: &Phase{
-				Policy: PhasePolicy{
-					RedemptionGP:    30,
-					PendingDeleteGP: 5,
-				},
-			},
-			wantErr: nil,
+			Phase:           &Phase{},
+			wantErr:         nil,
 		},
 		{
 			name:            "a delete prohibition prevents a delete",
 			DomainStatus:    DomainStatus{ServerDeleteProhibited: true},
 			DomainRGPStatus: DomainRGPStatus{},
-			Phase: &Phase{
-				Policy: PhasePolicy{
-					RedemptionGP:    30,
-					PendingDeleteGP: 5,
-				},
-			},
-			wantErr: ErrDomainDeleteNotAllowed,
+			Phase:           &Phase{},
+			wantErr:         ErrDomainDeleteNotAllowed,
 		},
 	}
 
@@ -1698,12 +1669,7 @@ func TestDomain_GetHostsAsStringSlice(t *testing.T) {
 }
 func TestDomain_Expire(t *testing.T) {
 	now := time.Now().UTC()
-	phase := &Phase{
-		Policy: PhasePolicy{
-			RedemptionGP:    30,
-			PendingDeleteGP: 5,
-		},
-	}
+	phase := &Phase{} // the standard lifecycle: 30-day redemption, 5-day pending delete
 
 	testcases := []struct {
 		name          string
@@ -1812,8 +1778,8 @@ func TestDomain_Expire(t *testing.T) {
 			require.ErrorIs(t, err, tc.wantErr)
 			if err == nil {
 				assert.True(t, tc.domain.Status.PendingDelete)
-				assert.Equal(t, tc.wantRGPStatus.RedemptionPeriodEnd, tc.domain.ExpiryDate.AddDate(0, 0, phase.Policy.RedemptionGP))
-				assert.Equal(t, tc.wantRGPStatus.PurgeDate, tc.domain.ExpiryDate.AddDate(0, 0, phase.Policy.PendingDeleteGP))
+				assert.Equal(t, tc.wantRGPStatus.RedemptionPeriodEnd, tc.domain.ExpiryDate.AddDate(0, 0, phase.Lifecycle().RedemptionDays()))
+				assert.Equal(t, tc.wantRGPStatus.PurgeDate, tc.domain.ExpiryDate.AddDate(0, 0, phase.Lifecycle().PendingDeleteDays()))
 				assert.True(t, tc.domain.RGPStatus.PurgeDate.After(tc.domain.RGPStatus.RedemptionPeriodEnd))
 			}
 		})
@@ -2138,10 +2104,10 @@ func TestForceRenew(t *testing.T) {
 		RGPStatus:  DomainRGPStatus{},
 	}
 
-	phase := &Phase{Policy: PhasePolicy{
-		AutoRenewalGP: 45, // 45 days for auto-renew
-		RenewalGP:     30, // 30 days for manual renew
-	}}
+	phase := &Phase{LifecyclePolicy: &LifecyclePolicy{Settings: LifecycleSettings{
+		AutoRenewalGP: intPtr(45), // 45 days for auto-renew
+		RenewalGP:     intPtr(30), // 30 days for manual renew
+	}}}
 
 	t.Run("Renew with valid years and auto-renew", func(t *testing.T) {
 		err := domain.ForceRenew(2, true, phase)

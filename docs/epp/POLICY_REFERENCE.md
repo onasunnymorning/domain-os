@@ -237,16 +237,16 @@ A request whose report is not sent by its deadline (`pendingRestoreEnd`) lapses:
 
 Restores requested before this model (pendingRestore without pendingDelete or a deadline, completed by the old `Restore` loop without a report) are moved to it by the `migrate` job: pendingDelete again, the report due 7 days after the job ran, the redemption end and purge date kept.
 
-A domain imported from an escrow deposit (RFC 9022) in its end of life keeps it ([`entities.Domain.ApplyDepositEndOfLife`](../../pkg/domain/entities/restore.go)). A deposit says which RGP period a domain is in, not when it ends, so the period starts in full at the import, under the TLD's current GA phase: `redemptionPeriod` is restorable for `redemptionGP`; `pendingRestore` keeps its restore, with the report due here after `pendingRestorePeriod` (and the redemption period started in full behind it, for if the report does not come); `pendingDelete` is purged after `pendingdeleteGP`. An EPP `pendingDelete` with none of these RGP statuses is read as `redemptionPeriod`, the longer reading of what is unknown. The bulk importer reads the phase; the admin-API import path uses the default periods.
+A domain imported from an escrow deposit (RFC 9022) in its end of life keeps it ([`entities.Domain.ApplyDepositEndOfLife`](../../pkg/domain/entities/restore.go)). A deposit says which RGP period a domain is in, not when it ends, so the period starts in full at the import, under the TLD's current GA phase: `redemptionPeriod` is restorable for `redemptionGP`; `pendingRestore` keeps its restore, with the report due here after `pendingRestorePeriod` (and the redemption period started in full behind it, for if the report does not come); `pendingDelete` is purged after `pendingdeleteGP`. An EPP `pendingDelete` with none of these RGP statuses is read as `redemptionPeriod`, the longer reading of what is unknown. The bulk importer reads the phase's lifecycle policy; the admin-API import path uses `gtld-standard`.
 
-| Phase policy setting | Default | Meaning |
+| Lifecycle policy setting | `gtld-standard` | Meaning |
 |---|---|---|
 | `redemptionGP` | 30 days | How long a deleted domain can be restored (`redemptionPeriod`) |
 | `pendingdeleteGP` | 5 days | How long it then waits to be purged |
-| `pendingRestorePeriod` | 7 days | How long the registrar has to send the report after a request. A phase stored before this setting existed has 0, read as 7 |
+| `pendingRestorePeriod` | 7 days | How long the registrar has to send the report after a request |
 | `restoreReportRequired` | true | `false` restores a domain on its request alone, for registries (often ccTLDs) that do not require a report: the request answers 1000 with no `<rgp:upData>` and records the three events |
 
-Set on the phase's policy (`PUT /tlds/{tld}/phases/{phase}/policy`, or the admin UI's phase page); a change applies to restores requested after it. The admin API acts for the sponsor with the same rules: `POST /domains/{name}/restore` requests, `POST /domains/{name}/restore/report` reports (JSON `preData`, `postData`, `delTime`, `resTime`, `resReason`, `statements`, `other`); 409 for a state that does not allow the step, 400 for a refused report.
+Set on the lifecycle policy the TLD's current GA phase names (ADR 0023: `PUT /lifecycle-policies/{name}` under `registry:policy:admin`, or the admin UI's Lifecycle Policies page; `PUT /tlds/{tld}/phases/{phase}/lifecycle-policy` names one on a phase); a change applies to restores requested after it. The admin API acts for the sponsor with the same rules: `POST /domains/{name}/restore` requests, `POST /domains/{name}/restore/report` reports (JSON `preData`, `postData`, `delTime`, `resTime`, `resReason`, `statements`, `other`); 409 for a state that does not allow the step, 400 for a refused report.
 
 **Transfer codes** (RFC 9154; [`entities.AuthInfoHash`](../../pkg/domain/entities/authInfoHash.go)). A domain's authorization information is its transfer code. The user guide is the admin UI's *Domain Transfers* page (`frontend/lib/constants/domainTransfersDoc.ts`).
 - **Unset is the normal state.** A domain is created with no code unless `<domain:create>` gives a non-empty `<domain:pw>`; the sponsor sets one with `<domain:update>` when the registrant asks to transfer, and clears it with an empty `<domain:pw/>` or `<domain:null/>`. Escrow imports create domains with no code. A completed transfer clears the code: a code works once.
@@ -277,14 +277,14 @@ On approval, in one transaction ([`entities.TransferResolution`](../../pkg/domai
 
 A transfer unanswered at its `acDate` is approved by the registry (`serverApproved`): the `TransferApprovalLoop` workflow runs hourly on the `lifecycle` queue (schedule `transfer-approval-loop`, at :15) and completes it as an approval by the losing registrar would, through the same transaction, with poll messages to both registrars and the `domain.transferred` event carrying the workflow ID as correlation ID and the run ID as trace ID (INV-16). It re-checks each transfer before approving it, so one answered meanwhile is left alone. Each hourly sweep pages through the due transfers with an (acDate, ID) cursor, so one that cannot be approved is passed over and retried by the next sweep; transfers of domains since deleted are left out. A change to `pendingTransferPeriod` applies to transfers requested after it; a pending transfer keeps its `acDate`.
 
-| Phase policy setting | Default | Meaning |
+| Lifecycle policy setting | `gtld-standard` | Meaning |
 |---|---|---|
 | `pendingTransferPeriod` | 5 days | How long the losing registrar has to answer; the pending transfer's `acDate` |
-| `transferGP` | 5 days | The transfer grace period (`transferPeriod`). A phase stored before this default existed has 0, read as 5 |
+| `transferGP` | 5 days | The transfer grace period (`transferPeriod`) |
 | `transferLockPeriod` | 60 days | No transfer this long after a registration or a transfer. **0 is a setting**: no lock, for an RST or OT&E TLD (RST epp-19 transfers a domain it has just created) |
 | `maxHorizon` | 10 years | The furthest expiry a transfer may give |
 
-All four are set on the phase's policy (`PUT /tlds/{tld}/phases/{phase}/policy`, or the admin UI's phase page) and apply to the next command.
+All four are settings of the lifecycle policy the TLD's current GA phase names (ADR 0023: `PUT /lifecycle-policies/{name}`, or the admin UI's Lifecycle Policies page) and apply to the next command.
 
 **`<poll>`** (RFC 5730 §2.9.2.3). Each registrar has its own message queue (ADR 0006). A transfer step queues a message for each of its two registrars that did not take it, carrying the transfer as it stood in `<domain:trnData>`: the losing registrar is told of a request and a cancellation, the gaining registrar of an approval (told to replace the contacts) and a rejection, and both of the registry's own approval or cancellation. `<poll op="req">` answers 1301 with the oldest message (`<msgQ count id>`, `<qDate>`, `<msg>`) and leaves it queued, or 1300 when the queue is empty. `<poll op="ack" msgID="…">` removes it and answers 1000 with `<msgQ count id>`, the messages that remain; a message not in the registrar's queue, another registrar's or one already acknowledged, is 2303, and an ack without `msgID` 2003. Messages are kept until acknowledged.
 

@@ -140,7 +140,8 @@ func NewTestAPI() (*TestAPI, error) {
 	hostService := services.NewHostService(hostRepo, hostAddressRepo, roidService, eventPublisher)
 	registrarService := services.NewRegistrarService(registrarRepo, eventPublisher)
 	contactService := services.NewContactService(contactRepo, *roidService, eventPublisher)
-	phaseService := services.NewPhaseService(phaseRepo, tldRepo, eventPublisher)
+	lifecyclePolicyRepo := postgres.NewLifecyclePolicyRepository(db)
+	phaseService := services.NewPhaseService(phaseRepo, tldRepo, lifecyclePolicyRepo, eventPublisher)
 	ianaRegistrarService := services.NewIANARegistrarService(ianaRegistrarRepo)
 	accreditationService := services.NewAccreditationService(accreditationRepo, registrarRepo, tldRepo, eventPublisher)
 	feeService := services.NewFeeService(phaseRepo, feeRepo)
@@ -170,6 +171,7 @@ func NewTestAPI() (*TestAPI, error) {
 	rest.NewRegistrarController(router, registrarService, ianaRegistrarService, auth)
 	rest.NewContactController(router, contactService, auth)
 	rest.NewPhaseController(router, phaseService, auth)
+	rest.NewLifecyclePoliciesController(router, services.NewLifecyclePolicyService(lifecyclePolicyRepo), auth)
 	rest.NewFeeController(router, feeService, auth)
 	rest.NewPriceController(router, priceService, auth)
 	rest.NewAccreditationController(router, accreditationService, auth)
@@ -319,6 +321,20 @@ func (a *TestAPI) DELETEAs(path, tenantID string) *httptest.ResponseRecorder {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		panic(fmt.Sprintf("DELETE %s failed: %v", path, err))
+	}
+	return toRecorder(resp)
+}
+
+// PUTAs performs a PUT as the given registry operator (X-Tenant-ID), for
+// the phase edits the API confines to the TLD's operator.
+func (a *TestAPI) PUTAs(path, tenantID string, body interface{}) *httptest.ResponseRecorder {
+	payloadBytes, _ := json.Marshal(body)
+	req, _ := http.NewRequest(http.MethodPut, a.Server.URL+path, bytes.NewReader(payloadBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", tenantID)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		panic(fmt.Sprintf("PUT %s failed: %v", path, err))
 	}
 	return toRecorder(resp)
 }

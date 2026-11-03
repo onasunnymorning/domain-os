@@ -51,8 +51,7 @@ func TestRequestRestore(t *testing.T) {
 	})
 	t.Run("the phase sets the pending restore period", func(t *testing.T) {
 		d := deletedDomain(t, now, now.AddDate(0, 3, 0))
-		p := &Phase{Policy: NewPhasePolicy()}
-		p.Policy.PendingRestorePeriod = 3
+		p := &Phase{LifecyclePolicy: &LifecyclePolicy{Settings: LifecycleSettings{PendingRestorePeriod: intPtr(3)}}}
 		require.NoError(t, d.RequestRestore(p, now))
 		assert.Equal(t, now.AddDate(0, 0, 3), d.RGPStatus.PendingRestoreEnd)
 	})
@@ -185,21 +184,37 @@ func TestRevertRestore(t *testing.T) {
 	require.NoError(t, d.RequestRestore(phase, deadline), "the registrar may ask again within redemption")
 }
 
+// TestCompleteRestore_NoReportZeroWindow: a phase that waives the report
+// with a zero-day window restores on the request alone; the deadline, which
+// is the request's instant, is the report's and does not apply.
+func TestCompleteRestore_NoReportZeroWindow(t *testing.T) {
+	now := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+	phase := &Phase{LifecyclePolicy: &LifecyclePolicy{Settings: LifecycleSettings{PendingRestorePeriod: intPtr(0), RestoreReportRequired: boolPtr(false)}}}
+	d := deletedDomain(t, now, now.AddDate(0, 3, 0))
+	require.NoError(t, d.RequestRestore(phase, now))
+	assert.Equal(t, now, d.RGPStatus.PendingRestoreEnd)
+	years, err := d.CompleteRestore(nil, phase, now)
+	require.NoError(t, err)
+	assert.Equal(t, 1, years)
+	assert.False(t, d.Status.PendingRestore)
+	assert.False(t, d.Status.PendingDelete)
+
+	// A report, though, is held to its deadline.
+	d = deletedDomain(t, now, now.AddDate(0, 3, 0))
+	required := &Phase{LifecyclePolicy: &LifecyclePolicy{Settings: LifecycleSettings{PendingRestorePeriod: intPtr(1)}}}
+	require.NoError(t, d.RequestRestore(required, now))
+	_, err = d.CompleteRestore(goodReport(now), required, now.AddDate(0, 0, 2))
+	assert.ErrorIs(t, err, ErrRestoreNotPending)
+}
+
 func TestRestorePolicy(t *testing.T) {
-	p := NewPhasePolicy()
+	p := StandardLifecyclePolicy()
 	assert.Equal(t, PendingRestorePeriod, p.PendingRestoreDays())
 	assert.True(t, p.RequiresRestoreReport())
 
-	old := PhasePolicy{} // a phase stored before the settings existed
-	assert.Equal(t, PendingRestorePeriod, old.PendingRestoreDays())
-	assert.True(t, old.RequiresRestoreReport())
-
-	no := false
-	p.UpdatePolicy(&PhasePolicy{PendingRestorePeriod: 3, RestoreReportRequired: &no})
-	assert.Equal(t, 3, p.PendingRestoreDays())
-	assert.False(t, p.RequiresRestoreReport())
-	p.UpdatePolicy(&PhasePolicy{})
-	assert.False(t, p.RequiresRestoreReport(), "left out, the setting is kept")
+	custom := &LifecyclePolicy{Settings: LifecycleSettings{PendingRestorePeriod: intPtr(3), RestoreReportRequired: boolPtr(false)}}
+	assert.Equal(t, 3, custom.PendingRestoreDays())
+	assert.False(t, custom.RequiresRestoreReport())
 }
 
 func TestPendingRestoreNeedsPendingDelete(t *testing.T) {
@@ -225,7 +240,7 @@ func TestNewRestoreLapsedPollMessage(t *testing.T) {
 
 func TestApplyDepositEndOfLife(t *testing.T) {
 	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
-	policy := NewPhasePolicy()
+	policy := StandardLifecyclePolicy()
 	redemptionEnd := now.AddDate(0, 0, RedemptionGP)
 	cases := []struct {
 		name                 string
@@ -245,7 +260,7 @@ func TestApplyDepositEndOfLife(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			d := &Domain{Status: tc.status}
-			d.ApplyDepositEndOfLife(tc.rgp, &policy, now)
+			d.ApplyDepositEndOfLife(tc.rgp, policy, now)
 			require.NoError(t, d.Status.Validate())
 			assert.True(t, d.Status.PendingDelete)
 			assert.Equal(t, tc.pendingRestore, d.Status.PendingRestore)
@@ -259,16 +274,20 @@ func TestApplyDepositEndOfLife(t *testing.T) {
 	}
 	t.Run("a live domain is left as it is", func(t *testing.T) {
 		d := &Domain{Status: DomainStatus{OK: true}}
-		d.ApplyDepositEndOfLife([]string{"addPeriod"}, &policy, now)
+		d.ApplyDepositEndOfLife([]string{"addPeriod"}, policy, now)
 		assert.Equal(t, DomainStatus{OK: true}, d.Status)
 		assert.True(t, d.RGPStatus.IsNil())
 	})
-	t.Run("the phase's periods apply", func(t *testing.T) {
-		p := NewPhasePolicy()
-		p.RedemptionGP, p.PendingRestorePeriod = 10, 3
+	t.Run("the policy's periods apply", func(t *testing.T) {
+		p := &LifecyclePolicy{Settings: LifecycleSettings{RedemptionGP: intPtr(10), PendingRestorePeriod: intPtr(3)}}
 		d := &Domain{Status: DomainStatus{PendingDelete: true}}
-		d.ApplyDepositEndOfLife([]string{"pendingRestore"}, &p, now)
+		d.ApplyDepositEndOfLife([]string{"pendingRestore"}, p, now)
 		assert.Equal(t, now.AddDate(0, 0, 3), d.RGPStatus.PendingRestoreEnd)
 		assert.Equal(t, now.AddDate(0, 0, 10), d.RGPStatus.RedemptionPeriodEnd)
+	})
+	t.Run("nil follows gtld-standard", func(t *testing.T) {
+		d := &Domain{Status: DomainStatus{PendingDelete: true}}
+		d.ApplyDepositEndOfLife([]string{"redemptionPeriod"}, nil, now)
+		assert.Equal(t, redemptionEnd, d.RGPStatus.RedemptionPeriodEnd)
 	})
 }

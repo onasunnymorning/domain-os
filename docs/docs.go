@@ -222,6 +222,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/agent/ask": {
+            "post": {
+                "description": "Sends a question to the Ask G agent and streams the result via SSE",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "agent"
+                ],
+                "summary": "Ask the AI agent a question",
+                "parameters": [
+                    {
+                        "description": "Question payload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.askRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/askg.Result"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/dnssec": {
             "get": {
                 "description": "Runs dnsviz to generate an interactive map of DNSSEC trust chains for the provided domain",
@@ -924,9 +976,9 @@ const docTemplate = `{
                 "summary": "List purgeable domains",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "List domains that are purgeable after the provided time in RFC3339 format (optional, default=current UTC time)",
-                        "name": "after",
+                        "type": "string",
+                        "description": "List domains whose purge date falls on or before the provided time in RFC3339 format (optional, default=current UTC time). The legacy parameter name 'after' is also accepted.",
+                        "name": "before",
                         "in": "query"
                     },
                     {
@@ -985,9 +1037,9 @@ const docTemplate = `{
                 "summary": "Count purgeable domains",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "List domains that are purgeable after the provided time in RFC3339 format (optional, default=current UTC time)",
-                        "name": "after",
+                        "type": "string",
+                        "description": "Count domains whose purge date falls on or before the provided time in RFC3339 format (optional, default=current UTC time). The legacy parameter name 'after' is also accepted.",
+                        "name": "before",
                         "in": "query"
                     },
                     {
@@ -1183,7 +1235,7 @@ const docTemplate = `{
                 }
             },
             "put": {
-                "description": "Update a domain",
+                "description": "Update a domain. UpdatedAt in the body is the domain's version as the caller read it (from GET /domains/{name}): the update is made only if the domain is still at that version, and 409 if it has changed since, so a stale copy never overwrites a change the caller did not see. Reload and retry.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1225,6 +1277,9 @@ const docTemplate = `{
                     "404": {
                         "description": "Not Found"
                     },
+                    "409": {
+                        "description": "Conflict"
+                    },
                     "500": {
                         "description": "Internal Server Error"
                     }
@@ -1249,6 +1304,12 @@ const docTemplate = `{
                         "description": "Delete all hosts associated with the domain prior to deleting the domain",
                         "name": "drophosts",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Operator scope (RegistryOperator RyID). Omit only with the registry:platform:admin permission.",
+                        "name": "X-Tenant-ID",
+                        "in": "header"
                     }
                 ],
                 "responses": {
@@ -1821,6 +1882,12 @@ const docTemplate = `{
                         "name": "name",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Operator scope (RegistryOperator RyID). Omit only with the registry:platform:admin permission.",
+                        "name": "X-Tenant-ID",
+                        "in": "header"
                     }
                 ],
                 "responses": {
@@ -1967,14 +2034,14 @@ const docTemplate = `{
         },
         "/domains/{name}/restore": {
             "post": {
-                "description": "Restore a domain. It marks the domain as pendingRestore, this relies on a downstream process to process the restore. The operation will fail with error if the domain is not in a state that allows restoration.",
+                "description": "Requests the restore of a deleted domain in its redemption period, for its sponsor (RFC 3915). The domain becomes pendingRestore, still pendingDelete, until its restore report is sent (POST /domains/{name}/restore/report) or the phase's pending restore period ends, when the restore lapses. A phase that requires no report restores the domain at once.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Domains"
                 ],
-                "summary": "Restore a domain",
+                "summary": "Request a domain's restore",
                 "parameters": [
                     {
                         "type": "string",
@@ -1996,6 +2063,62 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/domains/{name}/restore/report": {
+            "post": {
+                "description": "Sends the restore report of a domain whose restore was requested, for its sponsor (RFC 3915 §4.2.5), which completes the restore: the domain leaves pendingDelete and is renewed for a year, and further years while its expiry would be past. The report needs preData, postData, resReason, two statements, and delTime before resTime, neither in the future.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Domains"
+                ],
+                "summary": "Send a domain's restore report",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain Name",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The restore report",
+                        "name": "report",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/entities.RestoreReport"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.Domain"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
                     },
                     "500": {
                         "description": "Internal Server Error"
@@ -2084,6 +2207,1742 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/epp/certificate-pins": {
+            "get": {
+                "description": "A page of every registrar's usable pins whose certificate expires within expiring_within (a Go duration, default 720h, at most 366 days), expired ones included, soonest first. Cursor-paginated (INV-11)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP credentials"
+                ],
+                "summary": "List certificate pins expiring soon, across registrars",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Go duration, e.g. 720h",
+                        "name": "expiring_within",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "pagesize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.ListItemResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
+        "/epp/families": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "List registrar families",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.RegistrarFamily"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/epp/families/{name}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "Get a registrar family",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Family name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.RegistrarFamily"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            },
+            "put": {
+                "description": "Its members are replaced. A registrar is in at most one family. With the header If-None-Match: * the save is create-only and an existing family is 412, checked in the same transaction",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "Create or replace a registrar family",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Family name: lower-case letters, digits and hyphens",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The family",
+                        "name": "family",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commands.SaveRegistrarFamilyCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.RegistrarFamily"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "Delete a registrar family",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Family name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
+        "/epp/lockouts": {
+            "get": {
+                "description": "Each locked (login, source address) pair, its registrar, and when the lockout ends.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "List EPP logins locked out after failed passwords",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Only this registrar's logins",
+                        "name": "clid",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.EPPLoginLockout"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/epp/policies": {
+            "get": {
+                "description": "Every EPP policy, the built-in \"default\" and \"probation\" included.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "List EPP policies",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.EPPPolicy"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
+        "/epp/policies/{name}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "Get an EPP policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Policy name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.EPPPolicy"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            },
+            "put": {
+                "description": "Every limit must be given: at least 1, except creates_per_day (0 is no cap), and each check burst at least check_names. The built-in policies can be changed this way too. With the header If-None-Match: * the save is create-only and an existing policy is 412, checked in the same transaction",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "Create or replace an EPP policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Policy name: lower-case letters, digits and hyphens",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The policy",
+                        "name": "policy",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commands.SaveEPPPolicyCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.EPPPolicy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    }
+                }
+            },
+            "delete": {
+                "description": "A custom policy no registrar or family is assigned. The built-in policies cannot be deleted.",
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "Delete an EPP policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Policy name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            }
+        },
+        "/epp/sessions": {
+            "get": {
+                "description": "Every live session on every node: who it is (registrar, login), where from, which node, which credentials it authenticated with, when it connected and logged in, and its command count and last command time (as of the node's last heartbeat). Filter by clid, login, client_ip or credential_id.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP sessions"
+                ],
+                "summary": "List live EPP sessions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar client ID",
+                        "name": "clid",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "EPP login ID",
+                        "name": "login",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Source address",
+                        "name": "client_ip",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Password, pin or allowed network ID",
+                        "name": "credential_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "pagesize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.ListItemResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "503": {
+                        "description": "Service Unavailable"
+                    }
+                }
+            },
+            "delete": {
+                "description": "Ends every session of a registrar (clid), a login, a source address (client_ip), or that authenticated with a credential (credential_id): the second half of a compromise retire. At least one filter is required.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP sessions"
+                ],
+                "summary": "End every live EPP session matching a filter",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar client ID",
+                        "name": "clid",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "EPP login ID",
+                        "name": "login",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Source address",
+                        "name": "client_ip",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Password, pin or allowed network ID",
+                        "name": "credential_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "503": {
+                        "description": "Service Unavailable"
+                    }
+                }
+            }
+        },
+        "/epp/sessions/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP sessions"
+                ],
+                "summary": "Get a live EPP session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.EPPSession"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "503": {
+                        "description": "Service Unavailable"
+                    }
+                }
+            },
+            "delete": {
+                "description": "Asks the node holding the session to close it. The request is recorded as an epp.session.kill_requested event first, and is not sent if it cannot be recorded. It is accepted, not confirmed: a node that cannot reach Redis at that moment misses it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP sessions"
+                ],
+                "summary": "End a live EPP session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/entities.EPPSession"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "503": {
+                        "description": "Service Unavailable"
+                    }
+                }
+            }
+        },
+        "/epp/suspensions": {
+            "get": {
+                "description": "Each suspended login, its registrar, whether its registrar's or its family's strikes suspended it, and when the suspension ends.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "List EPP logins suspended for failed creates",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Only this registrar's logins",
+                        "name": "clid",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.EPPLoginSuspension"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/arrangements/default": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Get the default escrow arrangement",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowArrangementResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Set the default escrow arrangement",
+                "parameters": [
+                    {
+                        "description": "Parties",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.setArrangementRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowArrangementResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Remove the default escrow arrangement",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/escrow/arrangements/tlds": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "List TLD escrow arrangement overrides",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/arrangements/tlds/{tld}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Get a TLD escrow arrangement override",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "TLD",
+                        "name": "tld",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowArrangementResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Set a TLD escrow arrangement override",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "TLD",
+                        "name": "tld",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Parties",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.setArrangementRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowArrangementResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Remove a TLD escrow arrangement override",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "TLD",
+                        "name": "tld",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/escrow/arrangements/tlds/{tld}/effective": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Get a TLD's effective escrow arrangement",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "TLD",
+                        "name": "tld",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.EffectiveEscrowArrangement"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/deposits/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow"
+                ],
+                "summary": "Get an escrow deposit record",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Deposit ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/key-versions/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Get a key version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Key version ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowKeyVersionResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/key-versions/{id}/activate": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Activate a key version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Key version ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Confirm replacing the active version",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/rest.activateKeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowKeyVersionResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/key-versions/{id}/deactivate": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Deactivate a key version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Key version ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowKeyVersionResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/key-versions/{id}/destroy": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Destroy a key version's material",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Key version ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fingerprint confirmation",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.destroyKeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowKeyVersionResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/key-versions/{id}/probe": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Probe a key version on a worker",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Key version ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/key-versions/{id}/public-key": {
+            "get": {
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Download a key version's public key",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Key version ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/key-versions/{id}/revoke": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Revoke a key version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Key version ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Reason",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.revokeKeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowKeyVersionResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/parties": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "List escrow parties",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope; omit for the platform registry",
+                        "name": "X-Tenant-ID",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Register an escrow party",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope; omit for the platform registry",
+                        "name": "X-Tenant-ID",
+                        "in": "header"
+                    },
+                    {
+                        "description": "Party",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.createEscrowPartyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowPartyResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/parties/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Get an escrow party",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Party ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/parties/{id}/audit": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Get an escrow party's audit trail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Party ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/parties/{id}/versions/generate": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Generate a symmetric key version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Party ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Purpose",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.generateKeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowKeyVersionResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/parties/{id}/versions/private": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Import a private key version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Party ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Key",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.importPrivateKeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowKeyVersionResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/parties/{id}/versions/public": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow keys"
+                ],
+                "summary": "Add a public key version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Party ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Key",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.addPublicKeyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowKeyVersionResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/sanitizations": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow"
+                ],
+                "summary": "List escrow sanitization runs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by TLD",
+                        "name": "tld",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by outcome (RUNNING, PASS, QUARANTINED, ERROR)",
+                        "name": "outcome",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by source validation run",
+                        "name": "sourceValidationRunId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "pagesize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor from a previous page",
+                        "name": "cursor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow"
+                ],
+                "summary": "Produce a sanitized-pseudonymized derivative of an accepted deposit",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Source validation run",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.startEscrowSanitizationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/rest.startEscrowImportResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/sanitizations/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow"
+                ],
+                "summary": "Get an escrow sanitization run",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sanitization run ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/rest.EscrowSanitizationRunResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/synthetic": {
+            "post": {
+                "description": "Builds a made-up FULL deposit for the given TLD — registrars, domains with unique contacts and subordinate hosts, NNDNs — that the escrow validator accepts without findings, and streams it as a gzip download. Nothing in it is real data.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/gzip"
+                ],
+                "tags": [
+                    "Escrow"
+                ],
+                "summary": "Generate a synthetic RDE deposit (.xml.gz)",
+                "parameters": [
+                    {
+                        "description": "Deposit shape",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.generateSyntheticDepositRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The deposit, gzip-compressed XML",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/validations": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow"
+                ],
+                "summary": "List escrow validation runs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by TLD",
+                        "name": "tld",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by outcome (RUNNING, PASS, FAIL, ERROR)",
+                        "name": "outcome",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Only runs that verified or decrypted with this key version",
+                        "name": "keyVersionId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "pagesize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor from a previous page",
+                        "name": "cursor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow"
+                ],
+                "summary": "Validate an RDE deposit (signed .ryde+.sig, or unsigned .xml/.xml.gz)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Deposit artifact set",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.startEscrowValidationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/rest.startEscrowImportResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/escrow/validations/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Escrow"
+                ],
+                "summary": "Get an escrow validation run",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Run ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/events": {
+            "get": {
+                "description": "List the most recent domain events across all entities",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "List recent events",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Maximum number of events to return (default 20, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.DomainEvent"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/events/search": {
+            "get": {
+                "description": "Search domain events with filtering by subject, type, source, actor, ROID, and date range. Supports cursor-based pagination across hot (PostgreSQL) and warm (S3 archive) storage tiers.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "events"
+                ],
+                "summary": "Search events with filters",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by subject (exact match, e.g. domain name)",
+                        "name": "subject",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by event type (exact match or prefix with * suffix, e.g. 'domain.*')",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by event source (exact match)",
+                        "name": "source",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by actor (exact match)",
+                        "name": "actor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by ROID (exact match)",
+                        "name": "roid",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by Trace ID (exact match)",
+                        "name": "trace_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by Correlation ID (exact match)",
+                        "name": "correlation_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter events after this time (ISO 8601, inclusive)",
+                        "name": "after",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter events before this time (ISO 8601, exclusive)",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum number of events per page (default 50, max 200)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque cursor for pagination (from previous response's nextCursor)",
+                        "name": "cursor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.EventSearchResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             }
@@ -2631,6 +4490,136 @@ const docTemplate = `{
                 }
             }
         },
+        "/lifecycle-policies": {
+            "get": {
+                "description": "Every lifecycle policy, gtld-standard included, each with the phases that name it (usedBy) and its settings resolved.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Lifecycle policies"
+                ],
+                "summary": "List lifecycle policies",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.LifecyclePolicy"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
+        "/lifecycle-policies/{name}": {
+            "get": {
+                "description": "The policy as stored (a null setting is the default), resolved, and the phases that name it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Lifecycle policies"
+                ],
+                "summary": "Get a lifecycle policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Policy name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.LifecyclePolicy"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            },
+            "put": {
+                "description": "Durations are whole days, each 0 to its bound (grace periods and the transfer lock 365, pending transfer and pending restore 30, redemption 365, pending delete 90); maxHorizon is 1 to 10 years. A setting left null is the policy's default. The change reaches every phase that names the policy at once. With If-None-Match: * the save is create-only (412 if the name is taken); with If-Match: \"\u003cupdatedAt\u003e\" it is refused (412) if the policy changed since it was read.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Lifecycle policies"
+                ],
+                "summary": "Create or replace a lifecycle policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Policy name: 1 to 32 lower-case letters, digits and hyphens, starting with a letter",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The policy",
+                        "name": "policy",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commands.SaveLifecyclePolicyCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.LifecyclePolicy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "412": {
+                        "description": "Precondition Failed"
+                    }
+                }
+            },
+            "delete": {
+                "description": "A policy no phase names. gtld-standard cannot be deleted.",
+                "tags": [
+                    "Lifecycle policies"
+                ],
+                "summary": "Delete a lifecycle policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Policy name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            }
+        },
         "/nndns": {
             "get": {
                 "description": "List NNDNs",
@@ -2847,6 +4836,12 @@ const docTemplate = `{
                         "name": "name",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Operator scope (RegistryOperator RyID). Omit only with the registry:platform:admin permission.",
+                        "name": "X-Tenant-ID",
+                        "in": "header"
                     }
                 ],
                 "responses": {
@@ -3286,6 +5281,319 @@ const docTemplate = `{
                 }
             }
         },
+        "/rdap/access-networks": {
+            "get": {
+                "description": "Most specific first: that is the order a client's network is found in.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "RDAP"
+                ],
+                "summary": "List the networks assigned RDAP access policies",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.RDAPAccessNetwork"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "network is a CIDR or a single address. policy is required: an empty one removes the assignment, so the network's clients are anonymous; a missing or null one is refused.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "RDAP"
+                ],
+                "summary": "Assign a network an RDAP access policy",
+                "parameters": [
+                    {
+                        "description": "The network and policy",
+                        "name": "assignment",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commands.AssignRDAPAccessNetworkCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.RDAPAccessNetwork"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
+        "/rdap/access-policies": {
+            "get": {
+                "description": "Every access policy, the built-in \"anonymous\" and \"monitoring\" included.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "RDAP"
+                ],
+                "summary": "List RDAP access policies",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.RDAPAccessPolicy"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
+        "/rdap/access-policies/{name}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "RDAP"
+                ],
+                "summary": "Get an RDAP access policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Policy name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.RDAPAccessPolicy"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            },
+            "put": {
+                "description": "perAddress needs a rate and burst of at least 1; perAggregate both or neither (no aggregate limit); notFoundCost at least 1 and within every burst. The built-in policies can be changed this way too.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "RDAP"
+                ],
+                "summary": "Create or replace an RDAP access policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Policy name: lower-case letters, digits and hyphens",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The policy",
+                        "name": "policy",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commands.SaveRDAPAccessPolicyCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.RDAPAccessPolicy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    }
+                }
+            },
+            "delete": {
+                "description": "A custom policy no network is assigned. The built-in policies cannot be deleted.",
+                "tags": [
+                    "RDAP"
+                ],
+                "summary": "Delete an RDAP access policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Policy name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            }
+        },
+        "/rdap/publication-policies": {
+            "get": {
+                "description": "Every publication policy, the built-in \"gtld-rdp-2024\" and \"cctld-minimal\" included.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "RDAP"
+                ],
+                "summary": "List RDAP publication policies",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.RDAPPublicationPolicy"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    }
+                }
+            }
+        },
+        "/rdap/publication-policies/{name}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "RDAP"
+                ],
+                "summary": "Get an RDAP publication policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Policy name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.RDAPPublicationPolicy"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            },
+            "put": {
+                "description": "Each role listed must give every field a rule (publish, publish-if-disclosed or withhold, with a method for withhold); a role left out is not published. The built-in policies can be changed this way too.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "RDAP"
+                ],
+                "summary": "Create or replace an RDAP publication policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Policy name: lower-case letters, digits and hyphens",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The policy",
+                        "name": "policy",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commands.SaveRDAPPublicationPolicyCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.RDAPPublicationPolicy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    }
+                }
+            },
+            "delete": {
+                "description": "A custom policy no TLD is assigned. The built-in policies cannot be deleted.",
+                "tags": [
+                    "RDAP"
+                ],
+                "summary": "Delete an RDAP publication policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Policy name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            }
+        },
         "/registrars": {
             "get": {
                 "description": "Returns paginated list of Registrars optinally filtered.",
@@ -3417,7 +5725,7 @@ const docTemplate = `{
         },
         "/registrars/bulk": {
             "post": {
-                "description": "Bulk create Registrars can create up to 1000 registrars at a time",
+                "description": "Bulk create Registrars can create up to 1000 registrars at a time. Registrars that collide on a unique constraint (e.g. a name that is already taken) are skipped rather than failing the batch; the response lists the ClIDs that were created and those that were skipped.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3444,7 +5752,10 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "201": {
-                        "description": "Created"
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/response.BulkCreateRegistrarsResult"
+                        }
                     },
                     "400": {
                         "description": "Bad Request"
@@ -3625,6 +5936,647 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/registrars/{clid}/epp": {
+            "get": {
+                "description": "Logins with their passwords (never the hashes), certificate pins and allowed networks, each with its state now",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP credentials"
+                ],
+                "summary": "Get a registrar's EPP credentials",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar client ID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "403": {
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
+        "/registrars/{clid}/epp/allowed-networks": {
+            "post": {
+                "description": "A CIDR (no broader than /24 for IPv4 or /48 for IPv6) or a single address. At most twenty are usable at once",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP credentials"
+                ],
+                "summary": "Allow a source network for a registrar's EPP connections",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar client ID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Network",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commands.AddEPPAllowedNetworkCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            }
+        },
+        "/registrars/{clid}/epp/allowed-networks/{id}/retire": {
+            "post": {
+                "description": "kind \"normal\" (default) refuses new logins from \"at\" (default: in 7 days; a time not in the future means now) while open sessions run on. kind \"compromise\" takes effect at once and also ends every session that used the credential",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP credentials"
+                ],
+                "summary": "Retire an EPP password, certificate pin or allowed network",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar client ID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Credential ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "How and when",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/commands.RetireEPPCredentialCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            }
+        },
+        "/registrars/{clid}/epp/certificate-pins": {
+            "post": {
+                "description": "Pins the SHA-256 of the certificate's public key. A pin may be added before the certificate is valid; an expired certificate is refused. logins restricts the pin to those logins. At most three pins are usable at once",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP credentials"
+                ],
+                "summary": "Pin a client certificate's key for a registrar",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar client ID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "PEM certificate",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commands.AddEPPCertificatePinCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            }
+        },
+        "/registrars/{clid}/epp/certificate-pins/{id}/retire": {
+            "post": {
+                "description": "kind \"normal\" (default) refuses new logins from \"at\" (default: in 7 days; a time not in the future means now) while open sessions run on. kind \"compromise\" takes effect at once and also ends every session that used the credential",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP credentials"
+                ],
+                "summary": "Retire an EPP password, certificate pin or allowed network",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar client ID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Credential ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "How and when",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/commands.RetireEPPCredentialCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            }
+        },
+        "/registrars/{clid}/epp/create-outcomes": {
+            "get": {
+                "description": "For each UTC day: domain creates that created a domain, and those refused because the name is registered (2302), the basis for a fee on failed creates. Days with neither are left out. from and to default to the last 30 days, and may be at most 366 days apart.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "A registrar's daily domain create outcomes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar ClID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "First UTC day, YYYY-MM-DD",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Last UTC day, YYYY-MM-DD",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.EPPCreateOutcomes"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
+        "/registrars/{clid}/epp/logins": {
+            "post": {
+                "description": "The login ID is the clID the registrar's system sends in \u003clogin\u003e. It must be unique and may not be another registrar's client ID. Role is transform (default) or readonly",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP credentials"
+                ],
+                "summary": "Add an EPP login to a registrar",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar client ID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Login",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commands.CreateEPPLoginCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            }
+        },
+        "/registrars/{clid}/epp/logins/{login}": {
+            "patch": {
+                "description": "Set role, enabled or session_cap (0 is the policy default). Disabling a login refuses new logins; open sessions run until they end",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP credentials"
+                ],
+                "summary": "Change an EPP login",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar client ID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Login ID",
+                        "name": "login",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Changes",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commands.UpdateEPPLoginCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
+        "/registrars/{clid}/epp/logins/{login}/lockouts": {
+            "delete": {
+                "description": "Clears the login's lockouts, failure counts and strikes from every source address at once. Recorded as an epp.login.lockout_lifted event with the operator as actor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "Lift an EPP login's lockouts",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar ClID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Login ID",
+                        "name": "login",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The lockouts lifted",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.EPPLoginLockout"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
+        "/registrars/{clid}/epp/logins/{login}/passwords": {
+            "post": {
+                "description": "Without a body (or with an empty password) the server generates a 16-character password and returns it once. A login has at most two usable passwords",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP credentials"
+                ],
+                "summary": "Add a password to an EPP login",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar client ID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Login ID",
+                        "name": "login",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Password",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/commands.AddEPPPasswordCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            }
+        },
+        "/registrars/{clid}/epp/logins/{login}/passwords/{id}/retire": {
+            "post": {
+                "description": "kind \"normal\" (default) refuses new logins from \"at\" (default: in 7 days; a time not in the future means now) while open sessions run on. kind \"compromise\" takes effect at once and also ends every session that used the credential",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP credentials"
+                ],
+                "summary": "Retire an EPP password, certificate pin or allowed network",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar client ID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Credential ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "How and when",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/commands.RetireEPPCredentialCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Conflict"
+                    }
+                }
+            }
+        },
+        "/registrars/{clid}/epp/logins/{login}/suspension": {
+            "delete": {
+                "description": "Ends the suspension at once and clears the strikes that caused it, so the login's next create over budget starts escalation afresh. Recorded as an epp.login.suspension_lifted event with the operator as actor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "Lift an EPP login's suspension for failed creates",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar ClID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Login ID",
+                        "name": "login",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The suspension that was lifted",
+                        "schema": {
+                            "$ref": "#/definitions/entities.EPPLoginSuspension"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
+        "/registrars/{clid}/epp/policy": {
+            "get": {
+                "description": "The registrar's policy, and its family with the family's policy, if it is in one.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "What EPP policy applies to a registrar",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar ClID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.EPPRegistrarPolicy"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            },
+            "put": {
+                "description": "\"default\", or an empty policy, removes the assignment.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "EPP"
+                ],
+                "summary": "Assign a registrar its EPP policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registrar ClID",
+                        "name": "clid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The policy",
+                        "name": "assignment",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commands.AssignEPPPolicyCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.EPPRegistrarPolicy"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
                     }
                 }
             }
@@ -4001,14 +6953,14 @@ const docTemplate = `{
         },
         "/sync/fx/{currency}": {
             "put": {
-                "description": "Reads in the exchange rates from OpenFX API (https://openexchangerates.org/) and refreshes the database.\nThis will replace all FXRates in the database.\nUse this endpoint when there is an update to the exchange rates by OpenFX.\nExpect this endpoint to be slow, as it downloads and processes the JSON file from another server and then updates the database.",
+                "description": "Reads in the latest exchange rates from the Frankfurter API (https://frankfurter.dev/) and refreshes the database.\nThis atomically replaces all FX rates for the given base currency. No API key is required.\nThe scheduled update-fx workflow does this daily for every phase base currency; use this endpoint for ad-hoc refreshes.\nExpect this endpoint to be slower than a local read, as it queries an external API before updating the database.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Sync"
                 ],
-                "summary": "Sync FX from OpenFX to the database",
+                "summary": "Sync FX rates from Frankfurter to the database",
                 "parameters": [
                     {
                         "type": "string",
@@ -4278,6 +7230,12 @@ const docTemplate = `{
                         "name": "tldName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Operator scope (RegistryOperator RyID). Omit only with the registry:platform:admin permission.",
+                        "name": "X-Tenant-ID",
+                        "in": "header"
                     }
                 ],
                 "responses": {
@@ -4327,6 +7285,48 @@ const docTemplate = `{
                         "type": "string",
                         "description": "cursor",
                         "name": "cursor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {}
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/tlds/{tldName}/dns/ds-records": {
+            "get": {
+                "description": "The DNSSEC delegation signer records of the TLD's delegated domains: those that are active, not pending delete, and linked to at least one nameserver.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TLDs"
+                ],
+                "summary": "Get DS records for a TLD",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "TLD",
+                        "name": "tld",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Output format: text for zone file lines",
+                        "name": "format",
                         "in": "query"
                     }
                 ],
@@ -4615,6 +7615,12 @@ const docTemplate = `{
                         "name": "phaseName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Operator scope (RegistryOperator RyID). Omit only with the registry:platform:admin permission.",
+                        "name": "X-Tenant-ID",
+                        "in": "header"
                     }
                 ],
                 "responses": {
@@ -4837,9 +7843,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/tlds/{tldName}/phases/{phaseName}/policy": {
+        "/tlds/{tldName}/phases/{phaseName}/lifecycle-policy": {
             "put": {
-                "description": "Update a phase's policy.",
+                "description": "Names the lifecycle policy (ADR 0023) the phase follows; the policy must exist and the phase must not have ended. The response carries the policy name and the resolved policy. A tenant's phase edit: it needs no policy permission, since it changes no policy.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4849,7 +7855,64 @@ const docTemplate = `{
                 "tags": [
                     "TLDs"
                 ],
-                "summary": "Update a phase's polkcy",
+                "summary": "Name the lifecycle policy a phase follows",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "TLD name",
+                        "name": "tldName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Phase name",
+                        "name": "phaseName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The policy to name",
+                        "name": "policy",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commands.SetPhaseLifecyclePolicyCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.Phase"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/tlds/{tldName}/phases/{phaseName}/policy": {
+            "put": {
+                "description": "Update a phase's commercial and launch settings: label lengths, validation, base currency and the contact data policy. Lifecycle timing is the phase's named lifecycle policy (see the lifecycle-policy endpoint and /lifecycle-policies).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TLDs"
+                ],
+                "summary": "Update a phase's policy",
                 "parameters": [
                     {
                         "type": "string",
@@ -5136,6 +8199,79 @@ const docTemplate = `{
                 }
             }
         },
+        "/tlds/{tldName}/rdap/publication-policy": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "RDAP"
+                ],
+                "summary": "What RDAP publication policy applies to a TLD",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "TLD",
+                        "name": "tldName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.RDAPTLDPublication"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            },
+            "put": {
+                "description": "policy is required. An empty policy removes the assignment, so the TLD has the built-in for its type; a missing or null one is refused.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "RDAP"
+                ],
+                "summary": "Assign a TLD its RDAP publication policy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "TLD",
+                        "name": "tldName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The policy",
+                        "name": "assignment",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commands.AssignRDAPPublicationPolicyCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.RDAPTLDPublication"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
         "/tlds/{tldName}/status/{status}": {
             "post": {
                 "description": "Toggle the status for a TLD to ON. Currently supports AllowEscrowImport only",
@@ -5211,6 +8347,201 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/tombstones": {
+            "get": {
+                "description": "List domain tombstones with cursor-based pagination and optional filters",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Tombstones"
+                ],
+                "summary": "List tombstones",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "pagesize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Name equals",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Name like",
+                        "name": "name_like",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "TLD equals",
+                        "name": "tld",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Registrar client ID",
+                        "name": "registrar",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Purge reason",
+                        "name": "purge_reason",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.ListItemResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/tombstones/by-name/{name}": {
+            "get": {
+                "description": "Get all tombstone incarnations for a given domain name",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Tombstones"
+                ],
+                "summary": "Get tombstones by domain name",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.DomainTombstone"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/tombstones/count": {
+            "get": {
+                "description": "Count domain tombstones matching the given filters",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Tombstones"
+                ],
+                "summary": "Count tombstones",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name equals",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Name like",
+                        "name": "name_like",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "TLD equals",
+                        "name": "tld",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Registrar client ID",
+                        "name": "registrar",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Purge reason",
+                        "name": "purge_reason",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.CountResult"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/tombstones/{roid}": {
+            "get": {
+                "description": "Get a single domain tombstone by its ROID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Tombstones"
+                ],
+                "summary": "Get tombstone by ROID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tombstone ROID",
+                        "name": "roid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.DomainTombstone"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
                     },
                     "500": {
                         "description": "Internal Server Error"
@@ -5567,6 +8898,53 @@ const docTemplate = `{
                 }
             }
         },
+        "/workflows/{workflowId}": {
+            "delete": {
+                "description": "Forcefully terminates a running Temporal workflow execution with an optional reason",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workflows"
+                ],
+                "summary": "Terminate a workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workflow ID",
+                        "name": "workflowId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Termination reason",
+                        "name": "reason",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/workflows/{workflowId}/result": {
             "get": {
                 "description": "Returns the result of a completed workflow, or status if still running",
@@ -5705,9 +9083,447 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/zone-slavings": {
+            "get": {
+                "description": "List all active zone slaving monitors for a registry operator",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZoneSlavings"
+                ],
+                "summary": "List active zone slaving monitors",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope (RegistryOperator RyID)",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/entities.ZoneSlaving"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            },
+            "post": {
+                "description": "Create a new zone slaving monitor and start its Temporal schedule",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZoneSlavings"
+                ],
+                "summary": "Create zone slaving monitor",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope (RegistryOperator RyID)",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Slaving configuration",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/interfaces.CreateSlavingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/entities.ZoneSlaving"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/zone-slavings/{id}": {
+            "get": {
+                "description": "Get a zone slaving monitor by ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZoneSlavings"
+                ],
+                "summary": "Get zone slaving monitor",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope (RegistryOperator RyID)",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Slaving ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.ZoneSlaving"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            },
+            "patch": {
+                "description": "Complete or abandon a zone slaving monitor",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZoneSlavings"
+                ],
+                "summary": "Update zone slaving monitor status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope (RegistryOperator RyID)",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Slaving ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Action: complete or abandon",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/rest.updateStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/zone-slavings/{id}/confidence": {
+            "get": {
+                "description": "Get the current migration confidence state for a zone slaving monitor",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZoneSlavings"
+                ],
+                "summary": "Get slaving confidence rollup",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope (RegistryOperator RyID)",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Slaving ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/entities.SlavingConfidenceRollup"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
+        },
+        "/zone-slavings/{id}/observations": {
+            "get": {
+                "description": "List serial observation history with cursor-based pagination",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZoneSlavings"
+                ],
+                "summary": "List observation history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Operator scope (RegistryOperator RyID)",
+                        "name": "X-Tenant-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Slaving ID (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Pagination cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size (default 25, max 200)",
+                        "name": "pagesize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request"
+                    },
+                    "500": {
+                        "description": "Internal Server Error"
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "askg.Evidence": {
+            "type": "object",
+            "properties": {
+                "input": {
+                    "description": "input the model supplied"
+                },
+                "result": {
+                    "description": "scoped result returned (already authz-filtered)"
+                },
+                "tool": {
+                    "description": "tool name invoked",
+                    "type": "string"
+                }
+            }
+        },
+        "askg.Outcome": {
+            "type": "string",
+            "enum": [
+                "answer",
+                "escalate",
+                "action_required"
+            ],
+            "x-enum-varnames": [
+                "OutcomeAnswer",
+                "OutcomeEscalate",
+                "OutcomeActionRequired"
+            ]
+        },
+        "askg.Result": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "description": "Action is the recommended action for OutcomeActionRequired (never executed).",
+                    "type": "string"
+                },
+                "answer": {
+                    "description": "Answer is populated for OutcomeAnswer — a grounded answer with provenance.",
+                    "type": "string"
+                },
+                "evidence": {
+                    "description": "Evidence captures every retrieval that informed the outcome.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/askg.Evidence"
+                    }
+                },
+                "iterations": {
+                    "description": "Iterations records how many model turns were used.",
+                    "type": "integer"
+                },
+                "outcome": {
+                    "description": "Outcome discriminates the three possible result types.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/askg.Outcome"
+                        }
+                    ]
+                },
+                "reason": {
+                    "description": "Reason is populated for OutcomeEscalate and OutcomeActionRequired.",
+                    "type": "string"
+                },
+                "total_usage": {
+                    "description": "TotalUsage aggregates token usage across all model turns.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/askg.Usage"
+                        }
+                    ]
+                }
+            }
+        },
+        "askg.Usage": {
+            "type": "object",
+            "properties": {
+                "cache_creation_input_tokens": {
+                    "type": "integer"
+                },
+                "cache_read_input_tokens": {
+                    "type": "integer"
+                },
+                "input_tokens": {
+                    "type": "integer"
+                },
+                "output_tokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "commands.AddEPPAllowedNetworkCommand": {
+            "type": "object",
+            "required": [
+                "network"
+            ],
+            "properties": {
+                "network": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                }
+            }
+        },
+        "commands.AddEPPCertificatePinCommand": {
+            "type": "object",
+            "required": [
+                "certificate_pem"
+            ],
+            "properties": {
+                "certificate_pem": {
+                    "type": "string"
+                },
+                "logins": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "commands.AddEPPPasswordCommand": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "commands.AssignEPPPolicyCommand": {
+            "type": "object",
+            "properties": {
+                "policy": {
+                    "type": "string"
+                }
+            }
+        },
+        "commands.AssignRDAPAccessNetworkCommand": {
+            "type": "object",
+            "required": [
+                "network"
+            ],
+            "properties": {
+                "network": {
+                    "type": "string"
+                },
+                "policy": {
+                    "type": "string"
+                }
+            }
+        },
+        "commands.AssignRDAPPublicationPolicyCommand": {
+            "type": "object",
+            "properties": {
+                "policy": {
+                    "type": "string"
+                }
+            }
+        },
         "commands.CreateContactCommand": {
             "type": "object",
             "required": [
@@ -5748,10 +9564,6 @@ const docTemplate = `{
                         "$ref": "#/definitions/entities.ContactPostalInfo"
                     }
                 },
-                "RoID": {
-                    "description": "If not provided, one will be generated. Allowing it to be specified allows import of escrow contacts without changing the ID",
-                    "type": "string"
-                },
                 "Status": {
                     "$ref": "#/definitions/entities.ContactStatus"
                 },
@@ -5769,7 +9581,6 @@ const docTemplate = `{
         "commands.CreateDomainCommand": {
             "type": "object",
             "required": [
-                "AuthInfo",
                 "ClID",
                 "ExpiryDate",
                 "Name"
@@ -5792,6 +9603,13 @@ const docTemplate = `{
                 },
                 "CreatedAt": {
                     "type": "string"
+                },
+                "DSRecords": {
+                    "description": "DSRecords are the domain's DNSSEC delegation signer records.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entities.DSRecord"
+                    }
                 },
                 "DropCatch": {
                     "type": "boolean"
@@ -5820,10 +9638,6 @@ const docTemplate = `{
                 "RenewedYears": {
                     "type": "integer"
                 },
-                "RoID": {
-                    "description": "if not provided, it will be generated",
-                    "type": "string"
-                },
                 "Status": {
                     "$ref": "#/definitions/entities.DomainStatus"
                 },
@@ -5837,6 +9651,21 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "UpdatedAt": {
+                    "description": "UpdatedAt is the domain's version as the caller read it, not a value\nto store: the update is made only if the domain is still at it.",
+                    "type": "string"
+                }
+            }
+        },
+        "commands.CreateEPPLoginCommand": {
+            "type": "object",
+            "required": [
+                "login_id"
+            ],
+            "properties": {
+                "login_id": {
+                    "type": "string"
+                },
+                "role": {
                     "type": "string"
                 }
             }
@@ -5844,13 +9673,13 @@ const docTemplate = `{
         "commands.CreateFeeCommand": {
             "type": "object",
             "required": [
-                "amount",
                 "currency",
                 "name"
             ],
             "properties": {
                 "amount": {
                     "type": "integer",
+                    "minimum": 0,
                     "example": 1000
                 },
                 "currency": {
@@ -5888,10 +9717,6 @@ const docTemplate = `{
                     "example": "sh8013"
                 },
                 "Name": {
-                    "type": "string"
-                },
-                "RoID": {
-                    "description": "if not provided, it will be generated",
                     "type": "string"
                 },
                 "Status": {
@@ -5982,11 +9807,7 @@ const docTemplate = `{
         "commands.CreatePriceCommand": {
             "type": "object",
             "required": [
-                "currency",
-                "registrationAmount",
-                "renewalAmount",
-                "restoreAmount",
-                "transferAmount"
+                "currency"
             ],
             "properties": {
                 "currency": {
@@ -5995,18 +9816,22 @@ const docTemplate = `{
                 },
                 "registrationAmount": {
                     "type": "integer",
+                    "minimum": 0,
                     "example": 1000
                 },
                 "renewalAmount": {
                     "type": "integer",
+                    "minimum": 0,
                     "example": 1000
                 },
                 "restoreAmount": {
                     "type": "integer",
+                    "minimum": 0,
                     "example": 1000
                 },
                 "transferAmount": {
                     "type": "integer",
+                    "minimum": 0,
                     "example": 1000
                 }
             }
@@ -6093,6 +9918,14 @@ const docTemplate = `{
         "commands.CreateTLDCommand": {
             "type": "object",
             "properties": {
+                "allowEscrowImport": {
+                    "description": "default true; permits escrow imports for this TLD",
+                    "type": "boolean"
+                },
+                "createOperatorRegistrars": {
+                    "description": "default true; creates 9998-{tld} and 9999-{tld} registrar accounts",
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -6135,7 +9968,6 @@ const docTemplate = `{
         "commands.RegisterDomainCommand": {
             "type": "object",
             "required": [
-                "AuthInfo",
                 "ClID",
                 "Name"
             ],
@@ -6153,6 +9985,13 @@ const docTemplate = `{
                 },
                 "ClID": {
                     "type": "string"
+                },
+                "DSRecords": {
+                    "description": "DSRecords are the domain's DNSSEC delegation signer records.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entities.DSRecord"
+                    }
                 },
                 "Fee": {
                     "description": "Optional, if provided must match the calculated fee, if not provided the fee calculated fee will be used regardless of the amount or class",
@@ -6217,6 +10056,108 @@ const docTemplate = `{
                 }
             }
         },
+        "commands.RetireEPPCredentialCommand": {
+            "type": "object",
+            "properties": {
+                "at": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                }
+            }
+        },
+        "commands.SaveEPPPolicyCommand": {
+            "type": "object",
+            "required": [
+                "limits"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "limits": {
+                    "$ref": "#/definitions/entities.EPPPolicyLimits"
+                }
+            }
+        },
+        "commands.SaveLifecyclePolicyCommand": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "settings": {
+                    "$ref": "#/definitions/entities.LifecycleSettings"
+                }
+            }
+        },
+        "commands.SaveRDAPAccessPolicyCommand": {
+            "type": "object",
+            "required": [
+                "limits"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "limits": {
+                    "$ref": "#/definitions/entities.RDAPAccessLimits"
+                }
+            }
+        },
+        "commands.SaveRDAPPublicationPolicyCommand": {
+            "type": "object",
+            "required": [
+                "roles"
+            ],
+            "properties": {
+                "contactFormUri": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "roles": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "$ref": "#/definitions/entities.RDAPFieldRule"
+                        }
+                    }
+                }
+            }
+        },
+        "commands.SaveRegistrarFamilyCommand": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "policy": {
+                    "type": "string"
+                }
+            }
+        },
+        "commands.SetPhaseLifecyclePolicyCommand": {
+            "type": "object",
+            "required": [
+                "lifecyclePolicy"
+            ],
+            "properties": {
+                "lifecyclePolicy": {
+                    "type": "string",
+                    "example": "gtld-standard"
+                }
+            }
+        },
         "commands.TLDResult": {
             "type": "object",
             "properties": {
@@ -6240,7 +10181,6 @@ const docTemplate = `{
         "commands.UpdateDomainCommand": {
             "type": "object",
             "required": [
-                "AuthInfo",
                 "ClID",
                 "ExpiryDate"
             ],
@@ -6301,6 +10241,20 @@ const docTemplate = `{
                 }
             }
         },
+        "commands.UpdateEPPLoginCommand": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "session_cap": {
+                    "type": "integer"
+                }
+            }
+        },
         "commands.UpdatePhasePolicyCommand": {
             "type": "object",
             "properties": {
@@ -6313,16 +10267,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "algorithm": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 },
                 "flags": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 },
                 "hdr": {
                     "$ref": "#/definitions/dns.RR_Header"
                 },
                 "protocol": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 },
                 "publicKey": {
                     "type": "string"
@@ -6333,19 +10290,22 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "algorithm": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 },
                 "digest": {
                     "type": "string"
                 },
                 "digestType": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 },
                 "hdr": {
                     "$ref": "#/definitions/dns.RR_Header"
                 },
                 "keyTag": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 }
             }
         },
@@ -6364,20 +10324,24 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "class": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 },
                 "name": {
                     "type": "string"
                 },
                 "rdlength": {
                     "description": "Length of data after header.",
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 },
                 "rrtype": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 },
                 "ttl": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 }
             }
         },
@@ -6385,7 +10349,8 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "expire": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 },
                 "hdr": {
                     "$ref": "#/definitions/dns.RR_Header"
@@ -6394,19 +10359,23 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "minttl": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 },
                 "ns": {
                     "type": "string"
                 },
                 "refresh": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 },
                 "retry": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 },
                 "serial": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int32"
                 }
             }
         },
@@ -6658,13 +10627,27 @@ const docTemplate = `{
                 }
             }
         },
+        "entities.DSRecord": {
+            "type": "object",
+            "properties": {
+                "Algorithm": {
+                    "type": "integer"
+                },
+                "Digest": {
+                    "type": "string"
+                },
+                "DigestType": {
+                    "type": "integer"
+                },
+                "KeyTag": {
+                    "type": "integer"
+                }
+            }
+        },
         "entities.Domain": {
             "type": "object",
             "properties": {
                 "AdminID": {
-                    "type": "string"
-                },
-                "AuthInfo": {
                     "type": "string"
                 },
                 "BillingID": {
@@ -6678,6 +10661,13 @@ const docTemplate = `{
                 },
                 "CreatedAt": {
                     "type": "string"
+                },
+                "DSRecords": {
+                    "description": "DSRecords are the domain's DNSSEC delegation signer records, in the\norder they were given.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entities.DSRecord"
+                    }
                 },
                 "DropCatch": {
                     "type": "boolean"
@@ -6723,6 +10713,10 @@ const docTemplate = `{
                 "TechID": {
                     "type": "string"
                 },
+                "TransferredAt": {
+                    "description": "TransferredAt is when the domain last moved to another registrar\n(\u003cdomain:trDate\u003e), zero if it never has.",
+                    "type": "string"
+                },
                 "UName": {
                     "description": "is used in case the domain is an IDN domain. This element contains the Unicode representation of the domain name (aka U-label).",
                     "type": "string"
@@ -6738,14 +10732,27 @@ const docTemplate = `{
         "entities.DomainEvent": {
             "type": "object",
             "properties": {
+                "actor": {
+                    "type": "string"
+                },
+                "after_state": {},
+                "before_state": {},
+                "command": {},
                 "correlation_id": {
                     "type": "string"
                 },
                 "data": {
                     "description": "DomainLifeCycleEvent, RegistrarLifecycleEvent, etc."
                 },
+                "description": {
+                    "description": "Human-readable summary, e.g. \"Host ns1.dns.com added to domain foo.bar\"",
+                    "type": "string"
+                },
                 "id": {
                     "description": "UUID v4",
+                    "type": "string"
+                },
+                "roid": {
                     "type": "string"
                 },
                 "source": {
@@ -6798,6 +10805,10 @@ const docTemplate = `{
                     "description": "AutoRenewPeriodEnd is the end of the period in which the domain may be deleted by the registrar after an auto-renew without causing a charge. This should be handled by the billing system.",
                     "type": "string"
                 },
+                "pendingRestoreEnd": {
+                    "description": "PendingRestoreEnd is when a requested restore lapses unless its\nreport has been sent (RFC 3915 pendingRestore; see restore.go). Zero\nwhen no restore is pending.",
+                    "type": "string"
+                },
                 "purgeDate": {
                     "description": "PurgeDate is date after which the domain should be purged and become available for registration again.",
                     "type": "string"
@@ -6812,6 +10823,10 @@ const docTemplate = `{
                 },
                 "transferLockPeriodEnd": {
                     "description": "TransferLockPeriodEnd is the end of the period in which the domain cannot be transferred. This applies after a registration and a transfer.",
+                    "type": "string"
+                },
+                "transferPeriodEnd": {
+                    "description": "TransferPeriodEnd is the end of the transfer grace period\n(RFC 3915 transferPeriod): the days after a transfer in which the\ngaining registrar may delete the domain for a refund.",
                     "type": "string"
                 }
             }
@@ -6860,7 +10875,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "PendingRestore": {
-                    "description": "PendingRestore means a restore command has been received but there is a pending action that needs to be completed before the domain is fully restored",
+                    "description": "PendingRestore means a restore has been requested and its report is awaited (RFC 3915 pendingRestore, an RGP status, not an EPP one: the domain stays PendingDelete meanwhile; see restore.go)",
                     "type": "boolean"
                 },
                 "PendingTransfer": {
@@ -6893,6 +10908,472 @@ const docTemplate = `{
                 }
             }
         },
+        "entities.DomainTombstone": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "CreatedAt is when this tombstone record was created.",
+                    "type": "string"
+                },
+                "drop_catch": {
+                    "description": "DropCatch indicates whether the DropCatch flag was set on the domain at purge time.",
+                    "type": "boolean"
+                },
+                "expired_at": {
+                    "description": "ExpiredAt is when the domain expired (nil if admin-deleted before expiry).",
+                    "type": "string"
+                },
+                "last_snapshot": {
+                    "description": "LastSnapshot is the full domain entity serialized as JSON at the time of purge.\nThis provides a self-contained view of the domain's final state without needing\nto query the event stream."
+                },
+                "name": {
+                    "description": "Name is the domain name (A-label / punycode).",
+                    "type": "string"
+                },
+                "purge_reason": {
+                    "description": "PurgeReason describes why the domain was purged (e.g., \"expired\", \"admin_delete\").",
+                    "type": "string"
+                },
+                "purged_at": {
+                    "description": "PurgedAt is when PurgeDomain() ran.",
+                    "type": "string"
+                },
+                "registered_at": {
+                    "description": "RegisteredAt is the original domain creation date.",
+                    "type": "string"
+                },
+                "registrar_clid": {
+                    "description": "RegistrarClID is the registrar's client ID at the time of purge.",
+                    "type": "string"
+                },
+                "roid": {
+                    "description": "RoID is the primary key — the ROID of the purged domain, unique per incarnation.",
+                    "type": "string"
+                },
+                "tld_name": {
+                    "description": "TLDName is the parent TLD.",
+                    "type": "string"
+                },
+                "uname": {
+                    "description": "UName is the Unicode representation of the domain name (IDN only).",
+                    "type": "string"
+                }
+            }
+        },
+        "entities.DriftTier": {
+            "type": "string",
+            "enum": [
+                "expected",
+                "warning",
+                "critical"
+            ],
+            "x-enum-varnames": [
+                "DriftTierExpected",
+                "DriftTierWarning",
+                "DriftTierCritical"
+            ]
+        },
+        "entities.EPPCommandRates": {
+            "type": "object",
+            "properties": {
+                "check": {
+                    "$ref": "#/definitions/entities.EPPRate"
+                },
+                "info": {
+                    "$ref": "#/definitions/entities.EPPRate"
+                },
+                "poll": {
+                    "$ref": "#/definitions/entities.EPPRate"
+                },
+                "transform": {
+                    "$ref": "#/definitions/entities.EPPRate"
+                }
+            }
+        },
+        "entities.EPPCreateOutcomes": {
+            "type": "object",
+            "properties": {
+                "clid": {
+                    "type": "string"
+                },
+                "day": {
+                    "type": "string"
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "succeeded": {
+                    "type": "integer"
+                }
+            }
+        },
+        "entities.EPPFailedCreateBudget": {
+            "type": "object",
+            "properties": {
+                "failures": {
+                    "type": "integer"
+                },
+                "ratio_percent": {
+                    "type": "integer"
+                }
+            }
+        },
+        "entities.EPPLoginLockout": {
+            "type": "object",
+            "properties": {
+                "clid": {
+                    "type": "string"
+                },
+                "client_ip": {
+                    "type": "string"
+                },
+                "ends_at": {
+                    "type": "string"
+                },
+                "login": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.EPPLoginRole": {
+            "type": "string",
+            "enum": [
+                "transform",
+                "readonly"
+            ],
+            "x-enum-varnames": [
+                "EPPLoginRoleTransform",
+                "EPPLoginRoleReadonly"
+            ]
+        },
+        "entities.EPPLoginSuspension": {
+            "type": "object",
+            "properties": {
+                "clid": {
+                    "type": "string"
+                },
+                "ends_at": {
+                    "type": "string"
+                },
+                "family": {
+                    "type": "string"
+                },
+                "login": {
+                    "type": "string"
+                },
+                "scope": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.EPPPolicy": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "limits": {
+                    "$ref": "#/definitions/entities.EPPPolicyLimits"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.EPPPolicyLimits": {
+            "type": "object",
+            "properties": {
+                "check_names": {
+                    "description": "CheckNames is the most names one \u003ccheck\u003e may carry (2306 over it).\nAvailability is metered per name by the rate limits, so this bounds\nround trips, not capacity.",
+                    "type": "integer"
+                },
+                "creates_per_day": {
+                    "description": "CreatesPerDay caps the registrar's domain creates per UTC day; 0 is\nno cap. Only creates that succeed count.",
+                    "type": "integer"
+                },
+                "failed_creates": {
+                    "description": "FailedCreates is when the registrar's domain creates of names that\nare already registered (2302) are a dropcatch run, and escalated.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entities.EPPFailedCreateBudget"
+                        }
+                    ]
+                },
+                "family_failed_creates": {
+                    "description": "FamilyFailedCreates is the same for a family, across its members. It\napplies through the family's policy only.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entities.EPPFailedCreateBudget"
+                        }
+                    ]
+                },
+                "family_rates": {
+                    "description": "FamilyRates are a family's command rates, shared by all its members.\nThey apply through the family's policy only.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entities.EPPCommandRates"
+                        }
+                    ]
+                },
+                "rates": {
+                    "description": "Rates are the registrar's command rates, one token bucket per class.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entities.EPPCommandRates"
+                        }
+                    ]
+                },
+                "sessions_per_family": {
+                    "description": "SessionsPerFamily caps a family's sessions, across all its members.\nIt applies through the family's policy only.",
+                    "type": "integer"
+                },
+                "sessions_per_login": {
+                    "description": "SessionsPerLogin caps one login's sessions, unless the login has a\nsession cap of its own.",
+                    "type": "integer"
+                },
+                "sessions_per_registrar": {
+                    "description": "SessionsPerRegistrar caps a registrar's logged-in sessions, across\nevery node and login.",
+                    "type": "integer"
+                }
+            }
+        },
+        "entities.EPPRate": {
+            "type": "object",
+            "properties": {
+                "burst": {
+                    "type": "integer"
+                },
+                "per_second": {
+                    "type": "integer"
+                }
+            }
+        },
+        "entities.EPPRegistrarPolicy": {
+            "type": "object",
+            "properties": {
+                "family": {
+                    "$ref": "#/definitions/entities.RegistrarFamily"
+                },
+                "family_policy": {
+                    "$ref": "#/definitions/entities.EPPPolicy"
+                },
+                "policy": {
+                    "$ref": "#/definitions/entities.EPPPolicy"
+                }
+            }
+        },
+        "entities.EPPSession": {
+            "type": "object",
+            "properties": {
+                "authenticated_at": {
+                    "type": "string"
+                },
+                "clid": {
+                    "description": "Set once the session has logged in.",
+                    "type": "string"
+                },
+                "client_ip": {
+                    "$ref": "#/definitions/netip.Addr"
+                },
+                "commands": {
+                    "type": "integer"
+                },
+                "connected_at": {
+                    "type": "string"
+                },
+                "credential_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "family": {
+                    "description": "Family is the registrar family the session counts against, if its\nregistrar is in one.",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_command_at": {
+                    "type": "string"
+                },
+                "login_id": {
+                    "type": "string"
+                },
+                "node": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/entities.EPPLoginRole"
+                }
+            }
+        },
+        "entities.EffectiveEscrowArrangement": {
+            "type": "object",
+            "properties": {
+                "depositor": {
+                    "$ref": "#/definitions/entities.EscrowArrangementSide"
+                },
+                "operatorRevision": {
+                    "type": "integer"
+                },
+                "platformRevision": {
+                    "type": "integer"
+                },
+                "receiver": {
+                    "$ref": "#/definitions/entities.EscrowArrangementSide"
+                },
+                "tldRevision": {
+                    "type": "integer"
+                }
+            }
+        },
+        "entities.EscrowArrangementLevel": {
+            "type": "string",
+            "enum": [
+                "platform",
+                "operator",
+                "tld"
+            ],
+            "x-enum-varnames": [
+                "EscrowArrangementPlatform",
+                "EscrowArrangementOperator",
+                "EscrowArrangementTLD"
+            ]
+        },
+        "entities.EscrowArrangementSide": {
+            "type": "object",
+            "properties": {
+                "from": {
+                    "description": "the level it was inherited from",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entities.EscrowArrangementLevel"
+                        }
+                    ]
+                },
+                "partyId": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.EscrowFinding": {
+            "type": "object",
+            "properties": {
+                "at": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "locator": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "object": {
+                    "description": "Object is the identifier the finding is about, taken from the deposit:\na domain or host name, a contact or registrar id. It is the one field\nhere that carries deposit content, and it exists because Locator alone\n(\"domain#2374 offset=2820739\") cannot be acted on without the deposit\nin hand. It is confined to this record and the operational summary,\nboth tenant-scoped; it must never reach a log line or an ICANN\nnotification. See rdereport.resultsFromFindings.",
+                    "type": "string"
+                },
+                "objectType": {
+                    "type": "string"
+                },
+                "rule": {
+                    "description": "Rule names the specific check behind the code, where the code alone is\ntoo coarse to act on. It is a constant phrase, never a value from the\ndeposit, and it is part of the tally key below.",
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "string"
+                },
+                "stage": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.EscrowFindingTally": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "object": {
+                    "description": "Object splits a code across the distinct things it fired on, where the\nthing itself is what has to be acted on: a sanitisation run counts one\nrow per gap in the profile, with the number of times the source used\nit. Like EscrowFinding.Object it is drawn from the deposit and stays\ninside this tenant-scoped record.",
+                    "type": "string"
+                },
+                "objectType": {
+                    "type": "string"
+                },
+                "rule": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "string"
+                },
+                "stage": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.EscrowSanitizationCounts": {
+            "type": "object",
+            "properties": {
+                "dropped": {
+                    "type": "integer"
+                },
+                "kept": {
+                    "description": "Elements counts what the classifier did, by action.",
+                    "type": "integer"
+                },
+                "objectsByType": {
+                    "description": "ObjectsByType counts the RDE objects in the derivative, keyed by object\nnamespace URI.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                "rewritten": {
+                    "type": "integer"
+                },
+                "synthesized": {
+                    "type": "integer"
+                },
+                "tokenized": {
+                    "type": "integer"
+                }
+            }
+        },
+        "entities.EventSearchResult": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entities.DomainEvent"
+                    }
+                },
+                "nextCursor": {
+                    "type": "string"
+                },
+                "tier": {
+                    "description": "\"hot\", \"warm\", \"mixed\"",
+                    "type": "string"
+                },
+                "totalCount": {
+                    "type": "integer"
+                }
+            }
+        },
         "entities.FX": {
             "type": "object",
             "properties": {
@@ -6903,7 +11384,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "rate": {
-                    "type": "number"
+                    "type": "number",
+                    "format": "float64"
                 },
                 "targetCurrency": {
                     "type": "string"
@@ -7069,6 +11551,97 @@ const docTemplate = `{
                 "IANARegistrarStatusUnknown"
             ]
         },
+        "entities.LifecyclePolicy": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "settings": {
+                    "$ref": "#/definitions/entities.LifecycleSettings"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "updatedBy": {
+                    "type": "string"
+                },
+                "usedBy": {
+                    "description": "UsedBy is the phases that name the policy, filled in by the service\non a read so a change's reach is visible before it is made; it is\nnot stored.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entities.LifecyclePolicyUse"
+                    }
+                }
+            }
+        },
+        "entities.LifecyclePolicyUse": {
+            "type": "object",
+            "properties": {
+                "phase": {
+                    "type": "string"
+                },
+                "tld": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.LifecycleSettings": {
+            "type": "object",
+            "properties": {
+                "allowAutorenew": {
+                    "description": "AllowAutoRenew: whether the expiry loop may auto-renew in the TLD.",
+                    "type": "boolean"
+                },
+                "autorenewalGP": {
+                    "description": "AutoRenewalGP: the same after an auto-renew (autoRenewPeriod).",
+                    "type": "integer"
+                },
+                "maxHorizon": {
+                    "description": "MaxHorizon: the furthest expiry, in years from now, a registration,\nrenewal or transfer may reach.",
+                    "type": "integer"
+                },
+                "pendingRestorePeriod": {
+                    "description": "PendingRestorePeriod: days a registrar has to send the restore report\nafter requesting a restore.",
+                    "type": "integer"
+                },
+                "pendingTransferPeriod": {
+                    "description": "PendingTransferPeriod: days the losing registrar has to answer a\ntransfer request before the registry approves it.",
+                    "type": "integer"
+                },
+                "pendingdeleteGP": {
+                    "description": "PendingDeleteGP: days after redemption until the purge.",
+                    "type": "integer"
+                },
+                "redemptionGP": {
+                    "description": "RedemptionGP: days a deleted domain is restorable.",
+                    "type": "integer"
+                },
+                "registrationGP": {
+                    "description": "RegistrationGP: days after a create in which a delete earns a refund\nand skips redemption (RFC 3915 addPeriod).",
+                    "type": "integer"
+                },
+                "renewalGP": {
+                    "description": "RenewalGP: days after a renew in which a delete earns its refund\n(renewPeriod).",
+                    "type": "integer"
+                },
+                "restoreReportRequired": {
+                    "description": "RestoreReportRequired: whether a restore waits for the registrar's\nrestore report; false restores a domain on its request alone.",
+                    "type": "boolean"
+                },
+                "transferGP": {
+                    "description": "TransferGP: the same after a transfer (transferPeriod).",
+                    "type": "integer"
+                },
+                "transferLockPeriod": {
+                    "description": "TransferLockPeriod: days after a registration or a transfer in which\nthe domain cannot be transferred; 0 is no lock.",
+                    "type": "integer"
+                }
+            }
+        },
         "entities.NNDN": {
             "type": "object",
             "properties": {
@@ -7118,6 +11691,11 @@ const docTemplate = `{
                 "NNDNStateMirrored": "A mirrored IDN variant of a domain name.",
                 "NNDNStateWithheld": "Potentially a future registrable domain."
             },
+            "x-enum-descriptions": [
+                "Indicates the NNDN is not available for registration.",
+                "Potentially a future registrable domain.",
+                "A mirrored IDN variant of a domain name."
+            ],
             "x-enum-varnames": [
                 "NNDNStateBlocked",
                 "NNDNStateWithheld",
@@ -7141,6 +11719,13 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "integer"
+                },
+                "lifecyclePolicy": {
+                    "$ref": "#/definitions/entities.LifecyclePolicy"
+                },
+                "lifecyclePolicyName": {
+                    "description": "LifecyclePolicyName names the lifecycle policy the phase follows\n(ADR 0023); gtld-standard unless set. LifecyclePolicy is that policy\nas loaded with the phase, nil when it was not: read it with Lifecycle.",
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"
@@ -7182,14 +11767,6 @@ const docTemplate = `{
                     ],
                     "example": "optional"
                 },
-                "allowAutorenew": {
-                    "type": "boolean",
-                    "example": true
-                },
-                "autorenewalGP": {
-                    "type": "integer",
-                    "example": 45
-                },
                 "baseCurrency": {
                     "type": "string",
                     "example": "USD"
@@ -7202,10 +11779,6 @@ const docTemplate = `{
                     ],
                     "example": "prohibited"
                 },
-                "maxHorizon": {
-                    "type": "integer",
-                    "example": 10
-                },
                 "maxLabelLength": {
                     "type": "integer",
                     "example": 63
@@ -7214,14 +11787,6 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 2
                 },
-                "pendingdeleteGP": {
-                    "type": "integer",
-                    "example": 5
-                },
-                "redemptionGP": {
-                    "type": "integer",
-                    "example": 30
-                },
                 "registrantContactDataPolicy": {
                     "allOf": [
                         {
@@ -7229,14 +11794,6 @@ const docTemplate = `{
                         }
                     ],
                     "example": "mandatory"
-                },
-                "registrationGP": {
-                    "type": "integer",
-                    "example": 5
-                },
-                "renewalGP": {
-                    "type": "integer",
-                    "example": 5
                 },
                 "requiresValidation": {
                     "type": "boolean",
@@ -7249,14 +11806,6 @@ const docTemplate = `{
                         }
                     ],
                     "example": "mandatory"
-                },
-                "transferGP": {
-                    "type": "integer",
-                    "example": 5
-                },
-                "transferLockPeriod": {
-                    "type": "integer",
-                    "example": 60
                 }
             }
         },
@@ -7281,7 +11830,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "id": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "label": {
                     "type": "string"
@@ -7290,16 +11840,20 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "registrationAmount": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "renewalAmount": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "restoreAmount": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "transferAmount": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 }
             }
         },
@@ -7404,6 +11958,146 @@ const docTemplate = `{
                 }
             }
         },
+        "entities.RDAPAccessLimits": {
+            "type": "object",
+            "properties": {
+                "notFoundCost": {
+                    "description": "NotFoundCost is the tokens a lookup that finds nothing takes, at\nleast 1.",
+                    "type": "integer"
+                },
+                "perAddress": {
+                    "description": "PerAddress is the bucket of one client address.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entities.EPPRate"
+                        }
+                    ]
+                },
+                "perAggregate": {
+                    "description": "PerAggregate is the bucket of the address's aggregate. A zero rate\nis no aggregate limit.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/entities.EPPRate"
+                        }
+                    ]
+                }
+            }
+        },
+        "entities.RDAPAccessNetwork": {
+            "type": "object",
+            "properties": {
+                "network": {
+                    "$ref": "#/definitions/netip.Prefix"
+                },
+                "policy": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.RDAPAccessPolicy": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "limits": {
+                    "$ref": "#/definitions/entities.RDAPAccessLimits"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "updatedBy": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.RDAPFieldRule": {
+            "type": "object",
+            "properties": {
+                "method": {
+                    "$ref": "#/definitions/entities.RDAPRedactionMethod"
+                },
+                "rule": {
+                    "$ref": "#/definitions/entities.RDAPRule"
+                }
+            }
+        },
+        "entities.RDAPPublicationPolicy": {
+            "type": "object",
+            "properties": {
+                "contactFormUri": {
+                    "description": "ContactFormURI replaces a withheld email whose method is\nreplacementValue. Without one, such an email is removed instead.",
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "roles": {
+                    "description": "Roles are the roles the policy publishes, each with a rule for every\nfield. A role it does not list is treated as not collected: no entity\nis served for it and nothing about it is listed as redacted.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "$ref": "#/definitions/entities.RDAPFieldRule"
+                        }
+                    }
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "updatedBy": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.RDAPRedactionMethod": {
+            "type": "string",
+            "enum": [
+                "removal",
+                "emptyValue",
+                "replacementValue"
+            ],
+            "x-enum-varnames": [
+                "RDAPRemoval",
+                "RDAPEmptyValue",
+                "RDAPReplacementValue"
+            ]
+        },
+        "entities.RDAPRule": {
+            "type": "string",
+            "enum": [
+                "publish",
+                "publish-if-disclosed",
+                "withhold"
+            ],
+            "x-enum-varnames": [
+                "RDAPPublish",
+                "RDAPPublishIfDisclosed",
+                "RDAPWithhold"
+            ]
+        },
+        "entities.RDAPTLDPublication": {
+            "type": "object",
+            "properties": {
+                "assigned": {
+                    "description": "Assigned is false when the TLD has the built-in by default.",
+                    "type": "boolean"
+                },
+                "policy": {
+                    "description": "Policy is the policy that applies: the assigned one, or the built-in\nfor the TLD's type.",
+                    "type": "string"
+                },
+                "tld": {
+                    "type": "string"
+                }
+            }
+        },
         "entities.Registrar": {
             "type": "object",
             "properties": {
@@ -7483,6 +12177,33 @@ const docTemplate = `{
                 },
                 "whoisInfo": {
                     "$ref": "#/definitions/entities.WhoisInfo"
+                }
+            }
+        },
+        "entities.RegistrarFamily": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "policy": {
+                    "description": "Policy is the family's policy; empty is \"default\".",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
                 }
             }
         },
@@ -7593,6 +12314,121 @@ const docTemplate = `{
                 }
             }
         },
+        "entities.RestoreReport": {
+            "type": "object",
+            "properties": {
+                "delTime": {
+                    "description": "DelTime is when the domain was deleted.",
+                    "type": "string"
+                },
+                "other": {
+                    "description": "Other is anything else the registrar adds; optional.",
+                    "type": "string"
+                },
+                "postData": {
+                    "description": "PostData is the registration data as restored.",
+                    "type": "string"
+                },
+                "preData": {
+                    "description": "PreData is the registration data before the domain was deleted.",
+                    "type": "string"
+                },
+                "resReason": {
+                    "description": "ResReason is why the domain is restored.",
+                    "type": "string"
+                },
+                "resTime": {
+                    "description": "ResTime is when the restore was requested.",
+                    "type": "string"
+                },
+                "statements": {
+                    "description": "Statements are the registrar's two statements.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "entities.SlaveConfidence": {
+            "type": "object",
+            "properties": {
+                "confidenceReady": {
+                    "description": "true iff IncrementsTracked \u003e= 1 AND ConsecutiveConverged \u003e= N",
+                    "type": "boolean"
+                },
+                "consecutiveConverged": {
+                    "description": "current streak of consecutive converged checks",
+                    "type": "integer"
+                },
+                "converged": {
+                    "type": "boolean"
+                },
+                "incrementsTracked": {
+                    "description": "# of master serial increments observed while this slave was tracked",
+                    "type": "integer"
+                },
+                "latestDriftTier": {
+                    "$ref": "#/definitions/entities.DriftTier"
+                },
+                "latestSerial": {
+                    "type": "integer",
+                    "format": "int32"
+                },
+                "latestStatus": {
+                    "$ref": "#/definitions/entities.SlaveStatus"
+                },
+                "nameserver": {
+                    "type": "string"
+                }
+            }
+        },
+        "entities.SlaveStatus": {
+            "type": "string",
+            "enum": [
+                "converged",
+                "lagging",
+                "stalled",
+                "unreachable"
+            ],
+            "x-enum-varnames": [
+                "SlaveStatusConverged",
+                "SlaveStatusLagging",
+                "SlaveStatusStalled",
+                "SlaveStatusUnreachable"
+            ]
+        },
+        "entities.SlavingConfidenceRollup": {
+            "type": "object",
+            "properties": {
+                "allConfidenceReady": {
+                    "description": "true iff every slave is ConfidenceReady",
+                    "type": "boolean"
+                },
+                "lastRunAt": {
+                    "type": "string"
+                },
+                "masterSerial": {
+                    "type": "integer",
+                    "format": "int32"
+                },
+                "slaves": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entities.SlaveConfidence"
+                    }
+                },
+                "slavingID": {
+                    "type": "string"
+                },
+                "totalRuns": {
+                    "type": "integer"
+                },
+                "zone": {
+                    "type": "string"
+                }
+            }
+        },
         "entities.Spec5Label": {
             "type": "object",
             "properties": {
@@ -7638,6 +12474,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/entities.Phase"
                     }
+                },
+                "RegistrarCount": {
+                    "description": "RegistrarCount represents the number of accredited registrars for this TLD",
+                    "type": "integer"
                 },
                 "RyID": {
                     "description": "RyID is the Registry Operator ID",
@@ -7793,14 +12633,133 @@ const docTemplate = `{
                 }
             }
         },
+        "entities.ZoneSlaving": {
+            "type": "object",
+            "properties": {
+                "checkInterval": {
+                    "description": "Polling interval (default 5m)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/time.Duration"
+                        }
+                    ]
+                },
+                "confidenceN": {
+                    "description": "Consecutive converged checks required for confidence-ready (default 5)",
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "graceMultiplier": {
+                    "description": "Warning tier multiplier on retry (default 2.5)",
+                    "type": "number",
+                    "format": "float64"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "masterNS": {
+                    "description": "Master nameserver set",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "slaveNS": {
+                    "description": "Slave nameserver set being validated",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "stalledAfterN": {
+                    "description": "Consecutive checks with no slave advance -\u003e stalled (default 3)",
+                    "type": "integer"
+                },
+                "status": {
+                    "$ref": "#/definitions/entities.ZoneSlavingStatus"
+                },
+                "tenantID": {
+                    "description": "Required. RegistryOperator RyID.",
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "zone": {
+                    "description": "e.g. \"example.com\"",
+                    "type": "string"
+                }
+            }
+        },
+        "entities.ZoneSlavingStatus": {
+            "type": "string",
+            "enum": [
+                "active",
+                "completed",
+                "abandoned"
+            ],
+            "x-enum-varnames": [
+                "ZoneSlavingStatusActive",
+                "ZoneSlavingStatusCompleted",
+                "ZoneSlavingStatusAbandoned"
+            ]
+        },
         "gin.H": {
             "type": "object",
             "additionalProperties": {}
+        },
+        "interfaces.CreateSlavingRequest": {
+            "type": "object",
+            "required": [
+                "masterNS",
+                "slaveNS",
+                "zone"
+            ],
+            "properties": {
+                "checkIntervalSeconds": {
+                    "description": "default 300",
+                    "type": "integer"
+                },
+                "confidenceN": {
+                    "description": "default 5",
+                    "type": "integer"
+                },
+                "graceMultiplier": {
+                    "description": "default 2.5",
+                    "type": "number"
+                },
+                "masterNS": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "slaveNS": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "stalledAfterN": {
+                    "description": "default 3",
+                    "type": "integer"
+                },
+                "zone": {
+                    "type": "string"
+                }
+            }
         },
         "money.Money": {
             "type": "object"
         },
         "netip.Addr": {
+            "type": "object"
+        },
+        "netip.Prefix": {
             "type": "object"
         },
         "queries.DomainCheckResult": {
@@ -7886,6 +12845,25 @@ const docTemplate = `{
                 }
             }
         },
+        "response.BulkCreateRegistrarsResult": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "description": "Created is the ClIDs that were inserted",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "skipped": {
+                    "description": "Skipped is the ClIDs that were requested but not inserted",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "response.CanAutoRenewResponse": {
             "type": "object",
             "properties": {
@@ -7905,7 +12883,8 @@ const docTemplate = `{
             "properties": {
                 "count": {
                     "description": "Count is the number of objects that were counted",
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "filter": {
                     "description": "Filter is the filter that was applied to the count"
@@ -7961,11 +12940,275 @@ const docTemplate = `{
                 }
             }
         },
+        "rest.EscrowArrangementResponse": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "type": "string"
+                },
+                "depositorPartyId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "level": {
+                    "type": "string"
+                },
+                "operator": {
+                    "type": "string"
+                },
+                "receiverPartyId": {
+                    "type": "string"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "tld": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.EscrowKeyOwnerResponse": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string"
+                },
+                "operator": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.EscrowKeyVersionResponse": {
+            "type": "object",
+            "properties": {
+                "activatedAt": {
+                    "type": "string"
+                },
+                "compromised": {
+                    "type": "boolean"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "type": "string"
+                },
+                "deactivatedAt": {
+                    "type": "string"
+                },
+                "destroyedAt": {
+                    "type": "string"
+                },
+                "fingerprint": {
+                    "type": "string"
+                },
+                "hasPublicKey": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "keyExpiresAt": {
+                    "type": "string"
+                },
+                "lastProbeAt": {
+                    "type": "string"
+                },
+                "lastProbeOk": {
+                    "type": "boolean"
+                },
+                "material": {
+                    "type": "string"
+                },
+                "notAfter": {
+                    "type": "string"
+                },
+                "notBefore": {
+                    "type": "string"
+                },
+                "notice": {
+                    "description": "Notice is what the operator should know about a key that was accepted\nwith a change, e.g. subkeys that could not be read and were left out.",
+                    "type": "string"
+                },
+                "owner": {
+                    "type": "string"
+                },
+                "partyId": {
+                    "type": "string"
+                },
+                "probeWorkflowId": {
+                    "type": "string"
+                },
+                "purpose": {
+                    "type": "string"
+                },
+                "revocationReason": {
+                    "type": "string"
+                },
+                "revokedAt": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "rest.EscrowPartyResponse": {
+            "type": "object",
+            "properties": {
+                "activePurposes": {
+                    "description": "ActivePurposes are the purposes that hold an ACTIVE key version, so a\ncaller can tell a party that can take part in a deposit today from one\nthat is only configured to.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "manageable": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner": {
+                    "$ref": "#/definitions/rest.EscrowKeyOwnerResponse"
+                },
+                "purposes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "role": {
+                    "description": "Role is kind and side said in the direction deposits travel: \"source\",\n\"receiving-identity\", and, once escrow targets exist, \"destination\" and\n\"sending-identity\". It is derived, so it adds nothing a client could not\nwork out — but every client was working it out, and each in its own\nwords. Kind and side stay: they are what the record and the resolver\nmatch on, and a client that already reads them is unaffected.",
+                    "type": "string"
+                },
+                "side": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.EscrowSanitizationRunResponse": {
+            "type": "object",
+            "properties": {
+                "completedAt": {
+                    "type": "string"
+                },
+                "counts": {
+                    "$ref": "#/definitions/entities.EscrowSanitizationCounts"
+                },
+                "derivativeBytes": {
+                    "type": "integer"
+                },
+                "derivativeObjectKey": {
+                    "type": "string"
+                },
+                "derivativeSha256": {
+                    "type": "string"
+                },
+                "findingTally": {
+                    "description": "FindingTally is exact where Findings is truncated: one row per distinct\nthing a code fired on, with every occurrence counted.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entities.EscrowFindingTally"
+                    }
+                },
+                "findings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/entities.EscrowFinding"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "description": "Label is always \"sanitized-pseudonymized\": the derivative is not\nanonymous and must not be described as such.",
+                    "type": "string"
+                },
+                "manifestObjectKey": {
+                    "type": "string"
+                },
+                "outcome": {
+                    "type": "string"
+                },
+                "policyVersion": {
+                    "type": "string"
+                },
+                "runId": {
+                    "type": "string"
+                },
+                "sourceArtifactSha256": {
+                    "type": "string"
+                },
+                "sourceDepositId": {
+                    "type": "string"
+                },
+                "sourceValidationRunId": {
+                    "type": "string"
+                },
+                "stageReached": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "syntheticSuffix": {
+                    "type": "string"
+                },
+                "tenantId": {
+                    "type": "string"
+                },
+                "tld": {
+                    "type": "string"
+                },
+                "tokenKeyFingerprint": {
+                    "description": "TokenKeyFingerprint and TokenKeyVersionID identify the pseudonymisation\nkey the derivative was tokenised with (issue #429).",
+                    "type": "string"
+                },
+                "tokenKeyVersionId": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
+                },
+                "workflowVersion": {
+                    "type": "string"
+                }
+            }
+        },
         "rest.SyncResult": {
             "type": "object",
             "properties": {
                 "Message": {
                     "type": "string"
+                }
+            }
+        },
+        "rest.activateKeyRequest": {
+            "type": "object",
+            "properties": {
+                "confirmReplace": {
+                    "type": "boolean"
                 }
             }
         },
@@ -8006,6 +13249,35 @@ const docTemplate = `{
                 }
             }
         },
+        "rest.addPublicKeyRequest": {
+            "type": "object",
+            "required": [
+                "armoredPublicKey",
+                "purpose"
+            ],
+            "properties": {
+                "armoredPublicKey": {
+                    "type": "string"
+                },
+                "notAfter": {
+                    "type": "string"
+                },
+                "notBefore": {
+                    "type": "string"
+                },
+                "purpose": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.askRequest": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string"
+                }
+            }
+        },
         "rest.confirmTLDCleanupRequest": {
             "type": "object",
             "required": [
@@ -8016,6 +13288,98 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "workflowId": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.createEscrowPartyRequest": {
+            "type": "object",
+            "required": [
+                "kind",
+                "name",
+                "side"
+            ],
+            "properties": {
+                "kind": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "side": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.destroyKeyRequest": {
+            "type": "object",
+            "required": [
+                "confirmFingerprint"
+            ],
+            "properties": {
+                "confirmFingerprint": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.generateKeyRequest": {
+            "type": "object",
+            "required": [
+                "purpose"
+            ],
+            "properties": {
+                "purpose": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.generateSyntheticDepositRequest": {
+            "type": "object",
+            "required": [
+                "tld"
+            ],
+            "properties": {
+                "avgHostsPerDomain": {
+                    "type": "number"
+                },
+                "contactsPerDomain": {
+                    "type": "integer"
+                },
+                "domains": {
+                    "type": "integer"
+                },
+                "nndns": {
+                    "type": "integer"
+                },
+                "seed": {
+                    "description": "Seed makes the output reproducible. Omitted, the server picks one and\nreturns it in X-Synthetic-Seed.",
+                    "type": "integer"
+                },
+                "tld": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.importPrivateKeyRequest": {
+            "type": "object",
+            "required": [
+                "armoredPrivateKey",
+                "purpose"
+            ],
+            "properties": {
+                "armoredPrivateKey": {
+                    "type": "string"
+                },
+                "notAfter": {
+                    "type": "string"
+                },
+                "notBefore": {
+                    "type": "string"
+                },
+                "passphrase": {
+                    "type": "string"
+                },
+                "purpose": {
                     "type": "string"
                 }
             }
@@ -8058,6 +13422,31 @@ const docTemplate = `{
                 }
             }
         },
+        "rest.revokeKeyRequest": {
+            "type": "object",
+            "required": [
+                "reason"
+            ],
+            "properties": {
+                "compromised": {
+                    "type": "boolean"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.setArrangementRequest": {
+            "type": "object",
+            "properties": {
+                "depositorPartyId": {
+                    "type": "string"
+                },
+                "receiverPartyId": {
+                    "type": "string"
+                }
+            }
+        },
         "rest.signalWorkflowRequest": {
             "type": "object",
             "required": [
@@ -8070,12 +13459,66 @@ const docTemplate = `{
                 }
             }
         },
+        "rest.startEscrowImportResponse": {
+            "type": "object",
+            "properties": {
+                "runId": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
+                }
+            }
+        },
+        "rest.startEscrowSanitizationRequest": {
+            "type": "object",
+            "required": [
+                "sourceValidationRunId"
+            ],
+            "properties": {
+                "sourceValidationRunId": {
+                    "type": "string"
+                },
+                "syntheticSuffix": {
+                    "description": "SyntheticSuffix overrides the configured default for this run.",
+                    "type": "string"
+                }
+            }
+        },
+        "rest.startEscrowValidationRequest": {
+            "type": "object",
+            "required": [
+                "artifactObjectKey",
+                "tld"
+            ],
+            "properties": {
+                "artifactObjectKey": {
+                    "type": "string"
+                },
+                "intakeRef": {
+                    "type": "string"
+                },
+                "profile": {
+                    "description": "Profile selects the artifact shape: \"ryde+sig\" (default) or \"xml\" for an\nunsigned .xml / .xml.gz deposit.",
+                    "type": "string"
+                },
+                "signatureObjectKey": {
+                    "type": "string"
+                },
+                "tld": {
+                    "type": "string"
+                }
+            }
+        },
         "rest.startRegistrarSyncRequest": {
             "type": "object",
             "properties": {
-                "batchSize": {
-                    "type": "integer"
-                },
                 "mode": {
                     "description": "reserved for future use (\"init\"|\"sync\")",
                     "type": "string"
@@ -8104,6 +13547,21 @@ const docTemplate = `{
                 },
                 "workflowId": {
                     "type": "string"
+                }
+            }
+        },
+        "rest.updateStatusRequest": {
+            "type": "object",
+            "required": [
+                "action"
+            ],
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "complete",
+                        "abandon"
+                    ]
                 }
             }
         },
@@ -8144,11 +13602,57 @@ const docTemplate = `{
                 }
             }
         },
+        "time.Duration": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+                -9223372036854775808,
+                9223372036854775807,
+                1,
+                1000,
+                1000000,
+                1000000000,
+                60000000000,
+                3600000000000,
+                1,
+                1000,
+                1000000,
+                1000000000,
+                60000000000,
+                1,
+                1000,
+                1000000,
+                1000000000,
+                60000000000,
+                3600000000000
+            ],
+            "x-enum-varnames": [
+                "minDuration",
+                "maxDuration",
+                "Nanosecond",
+                "Microsecond",
+                "Millisecond",
+                "Second",
+                "Minute",
+                "Hour",
+                "Nanosecond",
+                "Microsecond",
+                "Millisecond",
+                "Second",
+                "Minute",
+                "Nanosecond",
+                "Microsecond",
+                "Millisecond",
+                "Second",
+                "Minute",
+                "Hour"
+            ]
+        },
         "workflows.WorkflowMeta": {
             "type": "object",
             "properties": {
                 "category": {
-                    "description": "\"data-pipeline\" | \"lifecycle\" | \"operations\"",
+                    "description": "\"data\" | \"lifecycle\"",
                     "type": "string"
                 },
                 "description": {
@@ -8167,6 +13671,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "queue": {
+                    "type": "string"
+                },
+                "scheduleId": {
+                    "description": "Temporal schedule ID for UI deep-links",
                     "type": "string"
                 },
                 "scheduleInfo": {

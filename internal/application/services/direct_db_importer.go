@@ -852,7 +852,7 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 			if st, ok := statusMap[r.Name]; ok {
 				d.Status = st
 			}
-			d.ApplyDepositEndOfLife(rgpMap[r.Name], &policy, importedAt)
+			d.ApplyDepositEndOfLife(rgpMap[r.Name], policy, importedAt)
 			d.DSRecords = dsMap[r.Name]
 
 			if t, err := parseJiscTime(r.CrDate); err == nil {
@@ -950,28 +950,30 @@ func (s *DirectDBImporter) ImportDomains(ctx context.Context, sqliteDB *sql.DB, 
 }
 
 // stagedTableExists reports whether the staging database has the named table.
-// endOfLifePolicy is the policy a deleted domain's imported end of life
-// follows (entities.Domain.ApplyDepositEndOfLife): the redemption, pending
-// delete and pending restore periods of tld's current GA phase, or the
-// defaults where the phase cannot be read or sets none.
-func (s *DirectDBImporter) endOfLifePolicy(ctx context.Context, tld string) entities.PhasePolicy {
-	policy := entities.NewPhasePolicy()
+// endOfLifePolicy is the lifecycle policy a deleted domain's imported end of
+// life follows (entities.Domain.ApplyDepositEndOfLife): the one named by
+// tld's current GA phase (ADR 0023), or gtld-standard where the phase or
+// its policy cannot be read. Only the periods the import uses are read.
+func (s *DirectDBImporter) endOfLifePolicy(ctx context.Context, tld string) *entities.LifecyclePolicy {
+	policy := entities.StandardLifecyclePolicy()
 	if s.PG == nil {
 		return policy
 	}
 	var row struct {
-		RedemptionGP         int `pg:"redemption_gp"`
-		PendingDeleteGP      int `pg:"pending_delete_gp"`
-		PendingRestorePeriod int `pg:"pending_restore_period"`
+		Name                 string `pg:"name"`
+		RedemptionGP         *int   `pg:"redemption_gp"`
+		PendingDeleteGP      *int   `pg:"pending_delete_gp"`
+		PendingRestorePeriod *int   `pg:"pending_restore_period"`
 	}
-	_, err := s.PG.QueryOneContext(ctx, &row, `SELECT COALESCE(redemption_gp, 0) AS redemption_gp, COALESCE(pending_delete_gp, 0) AS pending_delete_gp,
-		COALESCE(pending_restore_period, 0) AS pending_restore_period FROM phases
-		WHERE tld_name = ? AND type = 'GA' AND starts <= now() AND (ends IS NULL OR ends > now()) ORDER BY starts DESC LIMIT 1`, tld)
+	_, err := s.PG.QueryOneContext(ctx, &row, `SELECT lp.name, lp.redemption_gp, lp.pending_delete_gp, lp.pending_restore_period
+		FROM phases p JOIN lifecycle_policies lp ON lp.name = p.lifecycle_policy_name
+		WHERE p.tld_name = ? AND p.type = 'GA' AND p.starts <= now() AND (p.ends IS NULL OR p.ends > now()) ORDER BY p.starts DESC LIMIT 1`, tld)
 	if err != nil {
-		log.Printf("IngestDomains: no current GA phase policy for %s (%v); deleted domains get the default periods", tld, err)
+		log.Printf("IngestDomains: no current GA phase policy for %s (%v); deleted domains get the standard periods", tld, err)
 		return policy
 	}
-	policy.UpdatePolicy(&entities.PhasePolicy{RedemptionGP: row.RedemptionGP, PendingDeleteGP: row.PendingDeleteGP, PendingRestorePeriod: row.PendingRestorePeriod})
+	policy.Name = row.Name
+	policy.Settings = entities.LifecycleSettings{RedemptionGP: row.RedemptionGP, PendingDeleteGP: row.PendingDeleteGP, PendingRestorePeriod: row.PendingRestorePeriod}
 	return policy
 }
 

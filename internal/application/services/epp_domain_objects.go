@@ -123,7 +123,7 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 		return nil, ErrRegistrarNotAccredited
 	}
 	c := eppCreate{registrant: cmd.RegistrantID}
-	if c.years, err = createYears(cmd, t.phase.Policy.MaxHorizon); err != nil {
+	if c.years, err = createYears(cmd, t.phase.Lifecycle().MaxHorizonYears()); err != nil {
 		return nil, err
 	}
 	if !t.phase.Policy.LabelIsAllowed(dn.Label()) {

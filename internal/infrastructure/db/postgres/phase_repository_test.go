@@ -172,9 +172,9 @@ func (s *PhaseSuite) TestPhaseRepo_UpdatePhase() {
 	f := false
 	endDate := time.Now().UTC().AddDate(0, 0, 1)
 	createdPhase.Ends = &endDate
-	createdPhase.Policy.AllowAutoRenew = &f
+	createdPhase.Policy.RequiresValidation = &f
 	createdPhase.Policy.BaseCurrency = "PEN"
-	createdPhase.Policy.MaxHorizon = 20
+	createdPhase.Policy.MinLabelLength = 2
 
 	updatedPhase, err := repo.UpdatePhase(context.Background(), createdPhase)
 	s.Require().NoError(err)
@@ -187,9 +187,12 @@ func (s *PhaseSuite) TestPhaseRepo_UpdatePhase() {
 	s.Require().NotEqual(createdPhase.UpdatedAt, updatedPhase.UpdatedAt)
 	s.Require().NotNil(updatedPhase.Ends)
 	s.Require().Equal(endDate, *updatedPhase.Ends)
-	s.Require().Equal(&f, updatedPhase.Policy.AllowAutoRenew)
+	s.Require().Equal(&f, updatedPhase.Policy.RequiresValidation)
 	s.Require().Equal("PEN", updatedPhase.Policy.BaseCurrency)
-	s.Require().Equal(20, updatedPhase.Policy.MaxHorizon)
+	s.Require().Equal(2, updatedPhase.Policy.MinLabelLength)
+	s.Require().Equal(entities.LifecyclePolicyStandard, updatedPhase.LifecyclePolicyName, "a phase names gtld-standard until told otherwise")
+	s.Require().NotNil(updatedPhase.LifecyclePolicy, "and it is loaded with the phase")
+	s.Require().Equal(entities.DefaultLifecycle(), updatedPhase.Lifecycle().Resolved())
 
 	// Try and update a phase but remove the TLDName
 	createdPhase.TLDName = ""

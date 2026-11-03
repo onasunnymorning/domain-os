@@ -17,20 +17,55 @@ import (
 type PhaseService struct {
 	tldRepo        repositories.TLDRepository
 	phaseRepo      repositories.PhaseRepository
+	lifecycleRepo  repositories.LifecyclePolicyRepository
 	eventPublisher repositories.EventPublisher
 }
 
-// NewPhaseService returns a new instance of PhaseService
+// NewPhaseService returns a new instance of PhaseService. lifecycleRepo
+// answers which lifecycle policies a phase may name (ADR 0023).
 func NewPhaseService(
 	phaseRepo repositories.PhaseRepository,
 	tldRepo repositories.TLDRepository,
+	lifecycleRepo repositories.LifecyclePolicyRepository,
 	eventPublisher repositories.EventPublisher,
 ) *PhaseService {
 	return &PhaseService{
 		tldRepo:        tldRepo,
 		phaseRepo:      phaseRepo,
+		lifecycleRepo:  lifecycleRepo,
 		eventPublisher: eventPublisher,
 	}
+}
+
+// SetLifecyclePolicy names the lifecycle policy a phase follows, within
+// scope (INV-02): an operator scope reaches only its own TLDs, read with
+// the operator in the query, and another operator's TLD is
+// entities.ErrTLDNotFound. The policy must exist
+// (entities.ErrLifecyclePolicyNotFound) and the phase must not have ended
+// (entities.ErrUpdateHistoricPhase). The change applies to lifecycle
+// decisions made after it; dates already written to domains stay.
+func (svc *PhaseService) SetLifecyclePolicy(ctx context.Context, scope entities.RegistryScope, cmd *commands.SetPhaseLifecyclePolicyCommand) (*entities.Phase, error) {
+	if err := scope.Validate(); err != nil {
+		return nil, err
+	}
+	if !scope.IsPlatform() {
+		if _, err := svc.tldRepo.GetByNameForOperator(ctx, scope.Operator(), cmd.TLDName); err != nil {
+			return nil, err
+		}
+	}
+	phase, err := svc.phaseRepo.GetPhaseByTLDAndName(ctx, cmd.TLDName, cmd.PhaseName)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := phase.CanUpdate(); err != nil {
+		return nil, err
+	}
+	policy, err := svc.lifecycleRepo.GetPolicy(ctx, cmd.LifecyclePolicy)
+	if err != nil {
+		return nil, err
+	}
+	phase.SetLifecyclePolicy(policy)
+	return svc.UpdatePhase(ctx, phase)
 }
 
 // CreatePhase handles the creation of a new phase

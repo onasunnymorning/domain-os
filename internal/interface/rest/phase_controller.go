@@ -29,6 +29,7 @@ func NewPhaseController(e *gin.Engine, phaseService interfaces.PhaseService, han
 		phaseGroup.GET("active", ctrl.ListActivePhasesPerTLD)
 		phaseGroup.GET(":phaseName", ctrl.GetPhase)
 		phaseGroup.PUT(":phaseName/policy", ctrl.UpdatePhasePolicy)
+		phaseGroup.PUT(":phaseName/lifecycle-policy", ctrl.SetLifecyclePolicy)
 		phaseGroup.DELETE(":phaseName", ctrl.DeletePhase)
 		phaseGroup.PUT(":phaseName/end", ctrl.EndPhase)
 		phaseGroup.POST(":phaseName/premium-list/:premiumListName", ctrl.SetPremiumList)
@@ -381,9 +382,52 @@ func (ctrl *PhaseController) UnSetPremiumList(ctx *gin.Context) {
 	ctx.JSON(200, phase)
 }
 
+// SetLifecyclePolicy godoc
+// @Summary Name the lifecycle policy a phase follows
+// @Description Names the lifecycle policy (ADR 0023) the phase follows; the policy must exist and the phase must not have ended. The response carries the policy name and the resolved policy. A tenant's phase edit: the request names the TLD's operator in X-Tenant-ID (another operator's TLD is 404), or holds registry:platform:admin; it needs no policy permission, since it changes no policy.
+// @Tags TLDs
+// @Accept json
+// @Produce json
+// @Param tldName path string true "TLD name"
+// @Param phaseName path string true "Phase name"
+// @Param X-Tenant-ID header string false "Operator scope (RegistryOperator RyID). Omit only with the registry:platform:admin permission."
+// @Param policy body commands.SetPhaseLifecyclePolicyCommand true "The policy to name"
+// @Success 200 {object} entities.Phase
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /tlds/{tldName}/phases/{phaseName}/lifecycle-policy [put]
+func (ctrl *PhaseController) SetLifecyclePolicy(ctx *gin.Context) {
+	var cmd commands.SetPhaseLifecyclePolicyCommand
+	if err := ctx.ShouldBindJSON(&cmd); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	cmd.TLDName, cmd.PhaseName = ctx.Param("tldName"), ctx.Param("phaseName")
+	scope, ok := RegistryScopeFromRequest(ctx)
+	if !ok {
+		return
+	}
+	phase, err := ctrl.phaseService.SetLifecyclePolicy(ctx.Request.Context(), scope, &cmd)
+	switch {
+	case err == nil:
+		ctx.JSON(200, phase)
+	case errors.Is(err, entities.ErrPhaseNotFound), errors.Is(err, entities.ErrLifecyclePolicyNotFound), errors.Is(err, entities.ErrTLDNotFound):
+		ctx.JSON(404, gin.H{"error": err.Error()})
+	case errors.Is(err, entities.ErrUpdateHistoricPhase):
+		ctx.JSON(400, gin.H{"error": err.Error()})
+	default:
+		ctx.JSON(500, gin.H{"error": err.Error()})
+	}
+}
+
 // UpdatePhasePolicy godoc
-// @Summary Update a phase's polkcy
-// @Description Update a phase's policy.
+// @Summary Update a phase's policy
+// @Description Update a phase's commercial and launch settings: label lengths, validation, base currency and the contact data policy. Lifecycle timing is the phase's named lifecycle policy (see the lifecycle-policy endpoint and /lifecycle-policies).
 // @Tags TLDs
 // @Accept json
 // @Produce json
@@ -427,6 +471,10 @@ func (ctrl *PhaseController) UpdatePhasePolicy(ctx *gin.Context) {
 	// update the policy
 	if cmd.Policy != nil {
 		phase.Policy.UpdatePolicy(cmd.Policy)
+	}
+	if err := phase.Policy.Validate(); err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
 	}
 
 	// Update the phase

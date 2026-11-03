@@ -553,7 +553,7 @@ func TestBatchAutoRenewDomains_PhaseDisallowsAutoRenew(t *testing.T) {
 
 	// Build a TLD where the GA phase disallows auto-renew
 	tld := newTestTLDWithGAPhase("com")
-	tld.Phases[0].Policy.AllowAutoRenew = ptrBool(false)
+	tld.Phases[0].LifecyclePolicy = &entities.LifecyclePolicy{Settings: entities.LifecycleSettings{AllowAutoRenew: ptrBool(false)}}
 	tldRepo.On("GetByName", mock.Anything, "com", true).Return(tld, nil)
 
 	result := svc.BatchAutoRenewDomains(context.Background(), names, 1)
@@ -731,7 +731,7 @@ func TestPartitionExpiredDomains_PhaseDisallowsAutoRenew(t *testing.T) {
 		Return([]*entities.Domain{dom}, nil)
 
 	tld := newTestTLDWithGAPhase("com")
-	tld.Phases[0].Policy.AllowAutoRenew = ptrBool(false)
+	tld.Phases[0].LifecyclePolicy = &entities.LifecyclePolicy{Settings: entities.LifecycleSettings{AllowAutoRenew: ptrBool(false)}}
 	tldRepo.On("GetByName", mock.Anything, "com", true).Return(tld, nil)
 
 	result := svc.PartitionExpiredDomains(context.Background(), names)

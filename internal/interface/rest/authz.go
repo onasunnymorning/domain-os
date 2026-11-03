@@ -41,6 +41,12 @@ const (
 	// to registrars, and registrar families (ADR 0019). Reading them needs
 	// it too: families say which registrars are affiliated.
 	ScopeEPPPolicyAdmin = "epp:policy:admin"
+	// ScopeRegistryPolicyAdmin allows changing the lifecycle policies (ADR
+	// 0023): platform-wide records, so tenant membership cannot scope a
+	// change to them. Reading them needs only a valid token, since a phase
+	// editor picks from them; naming one on a phase is a phase edit under
+	// the operator's tenant and needs no more than that.
+	ScopeRegistryPolicyAdmin = "registry:policy:admin"
 	// ScopeRDAPPolicyAdmin allows changing the RDAP publication policies and
 	// their assignment to TLDs (ADR 0021), and from Phase 4 the access
 	// policies (ADR 0022). Reading them needs it too.

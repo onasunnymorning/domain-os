@@ -266,7 +266,8 @@ func main() {
 	// tldService is created below after registrar deps are initialized
 	// Phases
 	phaseRepo := postgres.NewGormPhaseRepository(gormDB)
-	phaseService := appservices.NewPhaseService(phaseRepo, tldRepo, eventPublisher)
+	lifecyclePolicyRepo := postgres.NewLifecyclePolicyRepository(gormDB)
+	phaseService := appservices.NewPhaseService(phaseRepo, tldRepo, lifecyclePolicyRepo, eventPublisher)
 	// Fees
 	feeRepo := postgres.NewFeeRepository(gormDB)
 	feeService := appservices.NewFeeService(phaseRepo, feeRepo)
@@ -425,6 +426,8 @@ func main() {
 	rest.NewEventController(r, domainService, authMiddleware)
 	rest.NewEventSearchController(r, eventSearchService, authMiddleware)
 	rest.NewPhaseController(r, phaseService, authMiddleware)
+	// Lifecycle policies (ADR 0023): the named timing a phase follows.
+	rest.NewLifecyclePoliciesController(r, appservices.NewLifecyclePolicyService(lifecyclePolicyRepo), authMiddleware)
 	rest.NewFeeController(r, feeService, authMiddleware)
 	rest.NewPriceController(r, priceService, authMiddleware)
 	rest.NewAccreditationController(r, accreditationService, authMiddleware)

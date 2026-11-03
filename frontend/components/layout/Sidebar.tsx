@@ -18,7 +18,8 @@ import {
   KeyRound,
   FlaskConical,
   Zap,
-  Plug
+  Plug,
+  Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AlpacaLogo } from '@/components/icons/AlpacaLogo';
@@ -31,6 +32,7 @@ const navigation = [
   { name: 'Registrars', href: '/registrars', icon: Users },
   { name: 'Domains', href: '/domains', icon: Server },
   { name: 'EPP', href: '/epp', icon: Plug },
+  { name: 'Lifecycle Policies', href: '/lifecycle-policies', icon: Clock },
   { name: 'Blocking', href: '/nndns', icon: ServerOff },
   { name: 'Workflows', href: '/workflows', icon: Zap },
   { name: 'Escrow Runs', href: '/escrow/validations', icon: FileSearch },

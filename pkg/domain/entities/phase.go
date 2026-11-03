@@ -41,6 +41,27 @@ type Phase struct {
 	UpdatedAt       time.Time   `json:"updatedAt"`
 	TLDName         DomainName  `json:"tldName"`
 	Policy          PhasePolicy `json:"policy"`
+	// LifecyclePolicyName names the lifecycle policy the phase follows
+	// (ADR 0023); gtld-standard unless set. LifecyclePolicy is that policy
+	// as loaded with the phase, nil when it was not: read it with Lifecycle.
+	LifecyclePolicyName string           `json:"lifecyclePolicyName"`
+	LifecyclePolicy     *LifecyclePolicy `json:"lifecyclePolicy,omitempty"`
+}
+
+// Lifecycle is the phase's lifecycle policy: the one loaded with it, or the
+// built-in defaults when none was, so a phase built in code (a test, the
+// in-memory registry) follows gtld-standard without naming it.
+func (p *Phase) Lifecycle() *LifecyclePolicy {
+	if p.LifecyclePolicy != nil {
+		return p.LifecyclePolicy
+	}
+	return StandardLifecyclePolicy()
+}
+
+// SetLifecyclePolicy names policy on the phase and keeps it loaded.
+func (p *Phase) SetLifecyclePolicy(policy *LifecyclePolicy) {
+	p.LifecyclePolicyName = policy.Name
+	p.LifecyclePolicy = policy
 }
 
 // Phase factory. Phase name is of type ClIDType and phaseType is a string (GA or Launch)
@@ -63,6 +84,8 @@ func NewPhase(name, phaseType string, start time.Time) (*Phase, error) {
 		Type:   PhaseType(phaseType),
 		Starts: start,
 		Policy: NewPhasePolicy(),
+		// The standard lifecycle, until the operator names another.
+		LifecyclePolicyName: LifecyclePolicyStandard,
 	}
 	return new_phase, nil
 }

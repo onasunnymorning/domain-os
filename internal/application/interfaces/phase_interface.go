@@ -17,4 +17,7 @@ type PhaseService interface {
 	ListActiveGAPhases(ctx context.Context, pageSize int, pageCursor string) ([]*entities.Phase, error)
 	EndPhase(ctx context.Context, cmd *commands.EndPhaseCommand) (*entities.Phase, error)
 	UpdatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error)
+	// SetLifecyclePolicy names the lifecycle policy a phase follows (ADR
+	// 0023), within scope: a TLD outside it is entities.ErrTLDNotFound.
+	SetLifecyclePolicy(ctx context.Context, scope entities.RegistryScope, cmd *commands.SetPhaseLifecyclePolicyCommand) (*entities.Phase, error)
 }

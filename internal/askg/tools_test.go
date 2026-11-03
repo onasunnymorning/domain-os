@@ -122,13 +122,12 @@ func TestInProcessToolExecutor_GetTLD_Found(t *testing.T) {
 					{Currency: "USD", RegistrationAmount: 1000, RenewalAmount: 1000, TransferAmount: 1000, RestoreAmount: 5000},
 				},
 				Policy: entities.PhasePolicy{
-					MinLabelLength:  3,
-					MaxLabelLength:  63,
-					RedemptionGP:    30,
-					PendingDeleteGP: 5,
-					AllowAutoRenew:  &allowAutoRenew,
-					BaseCurrency:    "USD",
+					MinLabelLength: 3,
+					MaxLabelLength: 63,
+					BaseCurrency:   "USD",
 				},
+				LifecyclePolicyName: entities.LifecyclePolicyStandard,
+				LifecyclePolicy:     &entities.LifecyclePolicy{Name: entities.LifecyclePolicyStandard, Settings: entities.LifecycleSettings{AllowAutoRenew: &allowAutoRenew}},
 			},
 		},
 	}

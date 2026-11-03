@@ -5,26 +5,14 @@ export type PhaseStatus = 'past' | 'current' | 'future';
 
 export type ContactDataPolicyType = 'mandatory' | 'optional' | 'prohibited';
 
+import type { LifecyclePolicy } from './lifecycle';
+
+// The phase's commercial and launch settings. Lifecycle timing (grace
+// periods, locks, redemption, the restore report, the horizon) is the
+// phase's named lifecycle policy (ADR 0023): see Phase.lifecyclePolicy.
 export interface PhasePolicy {
   minLabelLength?: number;
   maxLabelLength?: number;
-  registrationGP?: number;
-  renewalGP?: number;
-  autoRenewalGP?: number;
-  // Grace period after a transfer (RFC 3915 transferPeriod).
-  transferGP?: number;
-  // Days the losing registrar has to answer a transfer request before the registry approves it.
-  pendingTransferPeriod?: number;
-  redemptionGP?: number;
-  pendingdeleteGP?: number;
-  // Days a registrar has to send the restore report after requesting a restore (RFC 3915).
-  pendingRestorePeriod?: number;
-  // Whether a restore waits for the restore report; unset is true. False restores on the request alone.
-  restoreReportRequired?: boolean;
-  // Days after a registration or a transfer in which the domain cannot be transferred; 0 is no lock.
-  transferLockPeriod?: number;
-  maxHorizon?: number;
-  allowAutorenew?: boolean;
   requiresValidation?: boolean;
   baseCurrency?: string;
   registrantContactDataPolicy?: ContactDataPolicyType;
@@ -62,6 +50,9 @@ export interface Phase {
   updatedAt: string;
   tldName: string;
   policy: PhasePolicy;
+  // The lifecycle policy the phase names, and that policy as the API resolved it.
+  lifecyclePolicyName: string;
+  lifecyclePolicy?: LifecyclePolicy;
 }
 
 export interface CategorizedPhases {

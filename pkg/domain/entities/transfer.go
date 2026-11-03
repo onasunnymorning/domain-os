@@ -158,8 +158,8 @@ func (d *Domain) RequestTransfer(gaining ClIDType, authInfo string, years int, p
 		return nil, fmt.Errorf("%w: it is in its transfer lock period until %s", ErrTransferNotEligible, d.RGPStatus.TransferLockPeriodEnd.UTC().Format(time.RFC3339))
 	}
 	expiry := d.ExpiryDate.AddDate(years, 0, 0)
-	if expiry.After(now.AddDate(phase.Policy.MaxHorizon, 0, 0)) {
-		return nil, fmt.Errorf("%w of %d years", ErrTransferExceedsMaxHorizon, phase.Policy.MaxHorizon)
+	if horizon := phase.Lifecycle().MaxHorizonYears(); expiry.After(now.AddDate(horizon, 0, 0)) {
+		return nil, fmt.Errorf("%w of %d years", ErrTransferExceedsMaxHorizon, horizon)
 	}
 
 	// A transfer is not an update: only the transfer prohibitions stop it,
@@ -175,7 +175,7 @@ func (d *Domain) RequestTransfer(gaining ClIDType, authInfo string, years int, p
 		RequestedAt:    now,
 		LosingClID:     d.ClID,
 		ActingClID:     d.ClID,
-		ActionDate:     now.AddDate(0, 0, phase.Policy.PendingTransferDays()),
+		ActionDate:     now.AddDate(0, 0, phase.Lifecycle().PendingTransferDays()),
 		Years:          years,
 		ExpiryDate:     expiry,
 	}, nil
@@ -229,8 +229,8 @@ func (d *Domain) CompleteTransfer(t *DomainTransfer, phase *Phase, now time.Time
 	d.RGPStatus.AddPeriodEnd = time.Time{}
 	d.RGPStatus.RenewPeriodEnd = time.Time{}
 	d.RGPStatus.AutoRenewPeriodEnd = time.Time{}
-	d.RGPStatus.TransferPeriodEnd = now.AddDate(0, 0, phase.Policy.TransferGraceDays())
-	d.RGPStatus.TransferLockPeriodEnd = now.AddDate(0, 0, phase.Policy.TransferLockDays())
+	d.RGPStatus.TransferPeriodEnd = now.AddDate(0, 0, phase.Lifecycle().TransferGraceDays())
+	d.RGPStatus.TransferLockPeriodEnd = now.AddDate(0, 0, phase.Lifecycle().TransferLockDays())
 	// Grandfathered pricing granted until a transfer ends here.
 	if d.GrandFathering.GFExpiryCondition == GFConditionTransfer {
 		d.GrandFathering = DomainGrandFathering{}

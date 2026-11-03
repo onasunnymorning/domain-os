@@ -22,6 +22,11 @@ type Phase struct {
 	TLDName         string `gorm:"uniqueIndex:idx_unq_name_tld,not null"`
 	// TLD                  TLD    // This creates the foreign key relationship
 	entities.PhasePolicy `gorm:"embedded"`
+	// LifecyclePolicyName names the phase's lifecycle policy (ADR 0023). The
+	// foreign key keeps a named policy from being deleted. LifecyclePolicy
+	// is that policy when preloaded; never written through the phase.
+	LifecyclePolicyName string                 `gorm:"size:32;not null;default:'gtld-standard';index"`
+	LifecyclePolicy     *LifecyclePolicyRecord `gorm:"foreignKey:LifecyclePolicyName;references:Name"`
 }
 
 // TableName returns the table name for the Phase model
@@ -41,6 +46,11 @@ func (p *Phase) ToEntity() *entities.Phase {
 		UpdatedAt: p.UpdatedAt,
 		TLDName:   entities.DomainName(p.TLDName),
 		Policy:    p.PhasePolicy,
+
+		LifecyclePolicyName: p.LifecyclePolicyName,
+	}
+	if p.LifecyclePolicy != nil {
+		phase.LifecyclePolicy = p.LifecyclePolicy.toEntity()
 	}
 	if p.PremiumListName != nil {
 		phase.PremiumListName = p.PremiumListName
@@ -79,6 +89,10 @@ func (p *Phase) FromEntity(phase *entities.Phase) {
 	p.UpdatedAt = phase.UpdatedAt
 	p.TLDName = string(phase.TLDName)
 	p.PhasePolicy = phase.Policy
+	p.LifecyclePolicyName = phase.LifecyclePolicyName
+	if p.LifecyclePolicyName == "" {
+		p.LifecyclePolicyName = entities.LifecyclePolicyStandard
+	}
 
 	if phase.PremiumListName != nil {
 		p.PremiumListName = phase.PremiumListName

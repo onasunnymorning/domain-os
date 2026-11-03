@@ -408,8 +408,8 @@ func RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, b
 	dom.CrRr = dom.ClID
 
 	// Set the RGP statuses
-	dom.RGPStatus.AddPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RegistrationGP)
-	dom.RGPStatus.TransferLockPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.TransferLockDays())
+	dom.RGPStatus.AddPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Lifecycle().RegistrationGraceDays())
+	dom.RGPStatus.TransferLockPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Lifecycle().TransferLockDays())
 
 	// Set the expiry date
 	dom.ExpiryDate = dom.CreatedAt.AddDate(years, 0, 0)
@@ -439,7 +439,7 @@ func (d *Domain) Renew(years int, isAutoRenew bool, phase *Phase) error {
 	}
 
 	// Check if we exceed the maximum renewal period
-	if d.ExpiryDate.AddDate(years, 0, 0).After(time.Now().UTC().AddDate(phase.Policy.MaxHorizon, 0, 0)) {
+	if d.ExpiryDate.AddDate(years, 0, 0).After(time.Now().UTC().AddDate(phase.Lifecycle().MaxHorizonYears(), 0, 0)) {
 		return errors.Join(ErrInvalidRenewal, ErrDomainRenewExceedsMaxHorizon)
 	}
 
@@ -449,9 +449,9 @@ func (d *Domain) Renew(years int, isAutoRenew bool, phase *Phase) error {
 
 	// Set the RGP statuses
 	if isAutoRenew {
-		d.RGPStatus.AutoRenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.AutoRenewalGP)
+		d.RGPStatus.AutoRenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Lifecycle().AutoRenewalGraceDays())
 	} else {
-		d.RGPStatus.RenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RenewalGP)
+		d.RGPStatus.RenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Lifecycle().RenewalGraceDays())
 	}
 
 	return nil
@@ -475,9 +475,9 @@ func (d *Domain) ForceRenew(years int, isAutoRenew bool, phase *Phase) error {
 
 	// Set the RGP statuses
 	if isAutoRenew {
-		d.RGPStatus.AutoRenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.AutoRenewalGP)
+		d.RGPStatus.AutoRenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Lifecycle().AutoRenewalGraceDays())
 	} else {
-		d.RGPStatus.RenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RenewalGP)
+		d.RGPStatus.RenewPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Lifecycle().RenewalGraceDays())
 	}
 
 	return nil
@@ -518,9 +518,9 @@ func (d *Domain) MarkForDeletion(phase *Phase) error {
 	}
 	// If the domain is no longer in AddGracePeriod, we set the RGP statuses as per the phase policy EOL settings
 	// Since this is a delete command, we set the RedemptionPeriodEnd and PurgeDate based on current time and the phase policy
-	d.RGPStatus.RedemptionPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Policy.RedemptionGP)
+	d.RGPStatus.RedemptionPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Lifecycle().RedemptionDays())
 	// Set the purge date based on the redemption period end date and the phase policy
-	d.RGPStatus.PurgeDate = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, phase.Policy.PendingDeleteGP)
+	d.RGPStatus.PurgeDate = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, phase.Lifecycle().PendingDeleteDays())
 	return nil
 }
 
@@ -560,9 +560,9 @@ func (d *Domain) Expire(phase *Phase) error {
 	}
 
 	// Set the redemption period end date based on the phase policy and expiration date
-	d.RGPStatus.RedemptionPeriodEnd = d.ExpiryDate.AddDate(0, 0, phase.Policy.RedemptionGP)
+	d.RGPStatus.RedemptionPeriodEnd = d.ExpiryDate.AddDate(0, 0, phase.Lifecycle().RedemptionDays())
 	// Set the purge date based on the redemption period end date and the phase policy
-	d.RGPStatus.PurgeDate = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, phase.Policy.PendingDeleteGP)
+	d.RGPStatus.PurgeDate = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, phase.Lifecycle().PendingDeleteDays())
 	return nil
 }
 

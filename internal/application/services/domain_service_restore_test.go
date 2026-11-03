@@ -75,7 +75,7 @@ func (r *restoreDomains) add(doms ...*entities.Domain) {
 // restoreTestService is a DomainService over restoreDomains, with a GA
 // phase priced at the restoreTest prices; setPolicy, if given, changes the
 // phase's policy. It returns the events published.
-func restoreTestService(t *testing.T, setPolicy func(*entities.PhasePolicy)) (*DomainService, *restoreDomains, *[]entities.DomainEvent) {
+func restoreTestService(t *testing.T, setPolicy func(*entities.LifecycleSettings)) (*DomainService, *restoreDomains, *[]entities.DomainEvent) {
 	t.Helper()
 	domains := &restoreDomains{byName: map[string]*entities.Domain{}, changed: map[string]int{}}
 	tldRepo := new(mockTLDRepository)
@@ -86,7 +86,8 @@ func restoreTestService(t *testing.T, setPolicy func(*entities.PhasePolicy)) (*D
 	_, err = tld.Phases[0].AddPrice(*price)
 	require.NoError(t, err)
 	if setPolicy != nil {
-		setPolicy(&tld.Phases[0].Policy)
+		tld.Phases[0].SetLifecyclePolicy(entities.StandardLifecyclePolicy())
+		setPolicy(&tld.Phases[0].LifecyclePolicy.Settings)
 	}
 	tldRepo.On("GetByName", mock.Anything, "com", true).Return(tld, nil)
 	var events []entities.DomainEvent
@@ -148,9 +149,9 @@ func TestRequestRestoreAsRead(t *testing.T) {
 		assert.Nil(t, le.Quote.Price, "a request is not charged")
 	})
 	t.Run("a phase without the report restores at once, with both charges", func(t *testing.T) {
-		svc, domains, events := restoreTestService(t, func(p *entities.PhasePolicy) {
+		svc, domains, events := restoreTestService(t, func(s *entities.LifecycleSettings) {
 			no := false
-			p.RestoreReportRequired = &no
+			s.RestoreReportRequired = &no
 		})
 		dom := deletedForRestore("noreport.com", 10)
 		expiry := dom.ExpiryDate
@@ -243,9 +244,9 @@ func TestCompleteRestoreAsRead(t *testing.T) {
 		assert.Zero(t, domains.writes)
 	})
 	t.Run("the admin API keeps a domain with nameservers active", func(t *testing.T) {
-		svc, domains, _ := restoreTestService(t, func(p *entities.PhasePolicy) {
+		svc, domains, _ := restoreTestService(t, func(s *entities.LifecycleSettings) {
 			no := false
-			p.RestoreReportRequired = &no
+			s.RestoreReportRequired = &no
 		})
 		dom := deletedForRestore("delegated.com", 10)
 		dom.Hosts = []*entities.Host{{Name: "ns1.example.net"}}

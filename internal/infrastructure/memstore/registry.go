@@ -111,6 +111,20 @@ func (r *Registry) SetPolicy(tld string, fn func(*entities.PhasePolicy)) {
 	}
 }
 
+// SetLifecycle changes the lifecycle settings of every phase of tld, as a
+// policy change reaching the phases that name it would. Each phase gets a
+// policy of its own to edit, starting from gtld-standard's settings.
+func (r *Registry) SetLifecycle(tld string, fn func(*entities.LifecycleSettings)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, p := range r.phases[tld] {
+		if p.LifecyclePolicy == nil {
+			p.SetLifecyclePolicy(entities.StandardLifecyclePolicy())
+		}
+		fn(&p.LifecyclePolicy.Settings)
+	}
+}
+
 // Accredit accredits a registrar for a TLD.
 func (r *Registry) Accredit(clid, tld string) {
 	r.mu.Lock()
@@ -435,7 +449,7 @@ func (r *Registry) RequestRestoreAsRead(_ context.Context, dom *entities.Domain,
 	if err := dom.RequestRestore(phase, now); err != nil {
 		return nil, err
 	}
-	if !phase.Policy.RequiresRestoreReport() {
+	if !phase.Lifecycle().RequiresRestoreReport() {
 		if _, err := dom.CompleteRestore(nil, phase, now); err != nil {
 			return nil, err
 		}
