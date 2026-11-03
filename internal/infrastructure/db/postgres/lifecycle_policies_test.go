@@ -77,6 +77,9 @@ func TestLifecyclePolicyRepository(t *testing.T) {
 	uses, err := repo.PolicyUses(ctx, "lc-repo-short")
 	require.NoError(t, err)
 	assert.Equal(t, []entities.LifecyclePolicyUse{{TLD: "lcrepo", Phase: "ga-1"}}, uses)
+	all, err := repo.ListPolicyUses(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, uses, all["lc-repo-short"], "the same, for every policy in one read")
 	err = repo.DeletePolicy(ctx, "lc-repo-short", func(*entities.LifecyclePolicy) []entities.DomainEvent { return nil })
 	assert.ErrorIs(t, err, entities.ErrLifecyclePolicyInUse)
 	assert.ErrorContains(t, err, "lcrepo/ga-1")
@@ -169,6 +172,45 @@ func TestMigrateLifecyclePolicies(t *testing.T) {
 	ps, err := repo.ListPolicies(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, ps, 4)
+}
+
+// TestMigrateLifecyclePolicies_OlderSchema runs the migration on a phases
+// table from before the restore and transfer settings existed: their
+// columns are absent, not NULL, and read as the defaults the old code gave
+// them.
+func TestMigrateLifecyclePolicies_OlderSchema(t *testing.T) {
+	tx := getTestDB().Begin()
+	defer tx.Rollback()
+	for _, stmt := range []string{
+		"CREATE SCHEMA lifecycle_migration_old_test",
+		"SET LOCAL search_path TO lifecycle_migration_old_test",
+		`CREATE TABLE phases (id bigserial PRIMARY KEY, name text, tld_name text, type text, starts timestamptz,
+			registration_gp bigint, renewal_gp bigint, auto_renewal_gp bigint, redemption_gp bigint, pending_delete_gp bigint,
+			transfer_lock_period bigint, max_horizon bigint, allow_auto_renew boolean,
+			lifecycle_policy_name varchar(32) NOT NULL DEFAULT 'gtld-standard')`,
+	} {
+		require.NoError(t, tx.Exec(stmt).Error, stmt)
+	}
+	require.NoError(t, prepareLifecyclePolicies(tx))
+	require.NoError(t, tx.Exec(`INSERT INTO phases (name, tld_name, type, starts, registration_gp, renewal_gp, auto_renewal_gp, redemption_gp, pending_delete_gp, transfer_lock_period, max_horizon, allow_auto_renew) VALUES
+		('ga', 'old', 'GA', '2024-01-01', 5, 5, 45, 30, 5, NULL, 10, NULL),
+		('ga', 'older', 'GA', '2024-01-01', 5, 5, 45, 10, 5, 0, 10, false)`).Error)
+	require.NoError(t, migrateLifecyclePolicies(tx))
+	var assigned []struct{ TLDName, LifecyclePolicyName string }
+	require.NoError(t, tx.Raw("SELECT tld_name, lifecycle_policy_name FROM phases ORDER BY id").Scan(&assigned).Error)
+	assert.Equal(t, entities.LifecyclePolicyStandard, assigned[0].LifecyclePolicyName, "the settings it never had are the defaults")
+	assert.Equal(t, "migrated-older-ga", assigned[1].LifecyclePolicyName)
+	p, err := NewLifecyclePolicyRepository(tx).GetPolicy(context.Background(), "migrated-older-ga")
+	require.NoError(t, err)
+	assert.Equal(t, 10, p.RedemptionDays())
+	assert.Equal(t, 0, p.TransferLockDays())
+	assert.Equal(t, entities.PendingRestorePeriod, p.PendingRestoreDays(), "a column the schema never had: the default")
+	assert.True(t, p.RequiresRestoreReport())
+	assert.False(t, p.AutoRenewAllowed())
+	for _, col := range inlineLifecycleColumns {
+		assert.False(t, tx.Migrator().HasColumn("phases", col), "%s is gone", col)
+	}
+	require.NoError(t, migrateLifecyclePolicies(tx), "a rerun finds nothing to do")
 }
 
 // TestMigrateLifecyclePolicies_RefusesWhatNoPolicyMay: a stored value the

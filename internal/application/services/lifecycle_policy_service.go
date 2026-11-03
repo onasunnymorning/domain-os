@@ -31,10 +31,12 @@ func (s *LifecyclePolicyService) ListPolicies(ctx context.Context) ([]*entities.
 	if err != nil {
 		return nil, fmt.Errorf("list lifecycle policies: %w", err)
 	}
+	uses, err := s.repo.ListPolicyUses(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("phases naming the lifecycle policies: %w", err)
+	}
 	for _, p := range ps {
-		if p.UsedBy, err = s.repo.PolicyUses(ctx, p.Name); err != nil {
-			return nil, fmt.Errorf("phases naming lifecycle policy %s: %w", p.Name, err)
-		}
+		p.UsedBy = uses[p.Name]
 	}
 	return ps, nil
 }

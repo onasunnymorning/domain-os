@@ -27,15 +27,15 @@ func TestLifecycleSettings_Validate(t *testing.T) {
 	assert.NoError(t, LifecycleSettings{}.Validate())
 	assert.NoError(t, DefaultLifecycle().Settings().Validate())
 	for name, s := range map[string]LifecycleSettings{
-		"negative":              {RenewalGP: intPtr(-1)},
-		"grace over a year":     {AutoRenewalGP: intPtr(MaxGraceDays + 1)},
-		"lock over a year":      {TransferLockPeriod: intPtr(366)},
-		"pending transfer":      {PendingTransferPeriod: intPtr(31)},
-		"redemption":            {RedemptionGP: intPtr(400)},
-		"pending delete":        {PendingDeleteGP: intPtr(91)},
-		"pending restore":       {PendingRestorePeriod: intPtr(31)},
-		"horizon zero":          {MaxHorizon: intPtr(0)},
-		"horizon over 10 years": {MaxHorizon: intPtr(11)},
+		"negative":               {RenewalGP: intPtr(-1)},
+		"grace over a year":      {AutoRenewalGP: intPtr(MaxGraceDays + 1)},
+		"lock over a year":       {TransferLockPeriod: intPtr(366)},
+		"pending transfer":       {PendingTransferPeriod: intPtr(31)},
+		"redemption":             {RedemptionGP: intPtr(400)},
+		"pending delete":         {PendingDeleteGP: intPtr(91)},
+		"pending restore":        {PendingRestorePeriod: intPtr(31)},
+		"horizon zero":           {MaxHorizon: intPtr(0)},
+		"horizon over 10 years":  {MaxHorizon: intPtr(11)},
 		"no window for a report": {PendingRestorePeriod: intPtr(0)},
 	} {
 		t.Run(name, func(t *testing.T) { assert.ErrorIs(t, s.Validate(), ErrInvalidLifecyclePolicy) })

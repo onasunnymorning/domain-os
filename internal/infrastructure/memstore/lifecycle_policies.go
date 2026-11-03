@@ -81,6 +81,18 @@ func (r *LifecyclePolicies) DeletePolicy(_ context.Context, name string, events 
 	return nil
 }
 
+func (r *LifecyclePolicies) ListPolicyUses(_ context.Context) (map[string][]entities.LifecyclePolicyUse, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string][]entities.LifecyclePolicyUse, len(r.Uses))
+	for k, v := range r.Uses {
+		if len(v) > 0 {
+			out[k] = slices.Clone(v)
+		}
+	}
+	return out, nil
+}
+
 func (r *LifecyclePolicies) PolicyUses(_ context.Context, name string) ([]entities.LifecyclePolicyUse, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

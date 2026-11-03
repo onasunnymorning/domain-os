@@ -36,6 +36,7 @@ import {
 import { format } from 'date-fns';
 import { STANDARD_LIFECYCLE_POLICY } from '@/lib/constants/lifecycleDefaults';
 import { useLifecyclePolicies } from '@/lib/hooks/useLifecyclePolicies';
+import type { ResolvedLifecycle } from '@/lib/types/lifecycle';
 import { setPhaseLifecyclePolicy } from '@/lib/api/lifecycle';
 
 // ---------------------------------------------------------------------------
@@ -309,6 +310,13 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
   const [showPolicyPicker, setShowPolicyPicker] = useState(false);
   const [pickedPolicy, setPickedPolicy] = useState(STANDARD_LIFECYCLE_POLICY);
   const lifecyclePolicies = useLifecyclePolicies(state.step === 'lifecycle' || showPolicyPicker);
+  // What the standard policy is right now: it is editable, so the wizard
+  // shows the fetched values rather than a fixed claim.
+  const standardPolicy = lifecyclePolicies.data?.find((p) => p.name === STANDARD_LIFECYCLE_POLICY);
+  const describeLifecycle = (r: ResolvedLifecycle) =>
+    `${r.registrationGP}-day add, ${r.renewalGP}-day renew and ${r.transferGP}-day transfer grace, ${r.autorenewalGP}-day auto-renew grace, ` +
+    `${r.redemptionGP}-day redemption, ${r.pendingdeleteGP}-day pending delete, ${r.transferLockPeriod === 0 ? 'no transfer lock' : `${r.transferLockPeriod}-day transfer lock`}, ` +
+    `${r.maxHorizon}-year max horizon${r.allowAutorenew ? '' : ', no auto-renew'}.`;
 
   // Overlap/continuity info
   const [overlapWarning, setOverlapWarning] = useState<string | null>(null);
@@ -1191,8 +1199,10 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
             <SystemBubble icon={Settings2}>
               Domain lifecycle — which lifecycle policy does the phase follow?
               <span className="text-muted-foreground block mt-1 text-[11px] leading-relaxed">
-                A named, platform-wide policy: {STANDARD_LIFECYCLE_POLICY} is 5-day add/renew/transfer grace, 45-day auto-renew, 30-day redemption,
-                5-day pending delete, 60-day transfer lock, 10-year max horizon. Policies are managed under Lifecycle Policies.
+                A named, platform-wide policy, managed under Lifecycle Policies.{' '}
+                {standardPolicy
+                  ? `${STANDARD_LIFECYCLE_POLICY} is currently ${describeLifecycle(standardPolicy.resolved)}`
+                  : `${STANDARD_LIFECYCLE_POLICY} is the built-in default; its current values are on its page.`}
               </span>
             </SystemBubble>
           )}

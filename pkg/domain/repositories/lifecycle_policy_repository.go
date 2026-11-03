@@ -27,4 +27,7 @@ type LifecyclePolicyRepository interface {
 	DeletePolicy(ctx context.Context, name string, events func(before *entities.LifecyclePolicy) []entities.DomainEvent) error
 	// PolicyUses lists the phases that name the policy, by TLD and phase.
 	PolicyUses(ctx context.Context, name string) ([]entities.LifecyclePolicyUse, error)
+	// ListPolicyUses lists the phases naming every policy, by policy name,
+	// in one read.
+	ListPolicyUses(ctx context.Context) (map[string][]entities.LifecyclePolicyUse, error)
 }

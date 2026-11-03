@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -190,6 +191,24 @@ func (r *LifecyclePolicyRepository) PolicyUses(ctx context.Context, name string)
 	return policyUsesIn(r.db.WithContext(ctx), name, 0)
 }
 
+// ListPolicyUses implements repositories.LifecyclePolicyRepository.
+func (r *LifecyclePolicyRepository) ListPolicyUses(ctx context.Context) (map[string][]entities.LifecyclePolicyUse, error) {
+	var rows []struct {
+		TLDName             string
+		Name                string
+		LifecyclePolicyName string
+	}
+	err := r.db.WithContext(ctx).Model(&Phase{}).Select("tld_name, name, lifecycle_policy_name").Order("tld_name, name").Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]entities.LifecyclePolicyUse{}
+	for _, row := range rows {
+		out[row.LifecyclePolicyName] = append(out[row.LifecyclePolicyName], entities.LifecyclePolicyUse{TLD: row.TLDName, Phase: row.Name})
+	}
+	return out, nil
+}
+
 func policyUsesIn(tx *gorm.DB, name string, limit int) ([]entities.LifecyclePolicyUse, error) {
 	var rows []struct {
 		TLDName string
@@ -344,7 +363,20 @@ func migratedPolicyName(tld, phase string, taken map[string]bool) string {
 // named policies (see the section comment) and drops the inline columns.
 // Postgres only: the SQLite databases some tests migrate never had them.
 func migrateLifecyclePolicies(db *gorm.DB) error {
-	if db.Dialector.Name() != "postgres" || !db.Migrator().HasTable("phases") || !db.Migrator().HasColumn("phases", "registration_gp") {
+	if db.Dialector.Name() != "postgres" || !db.Migrator().HasTable("phases") {
+		return nil
+	}
+	// The inline columns the database has. A database from before a setting
+	// existed (the restore and transfer settings came later than the rest)
+	// never had its column, and AutoMigrate no longer adds it: such a column
+	// is read as NULL, which the old code read as 0 or the default.
+	var present []string
+	for _, col := range inlineLifecycleColumns {
+		if db.Migrator().HasColumn("phases", col) {
+			present = append(present, col)
+		}
+	}
+	if len(present) == 0 {
 		return nil
 	}
 	return db.Transaction(func(tx *gorm.DB) error {
@@ -352,14 +384,19 @@ func migrateLifecyclePolicies(db *gorm.DB) error {
 			return fmt.Errorf("lock lifecycle policies: %w", err)
 		}
 		// NULL in a column GORM read into an int was 0 to the old code too.
+		col := func(name string) string {
+			if slices.Contains(present, name) {
+				return name
+			}
+			return "NULL AS " + name
+		}
+		query := "SELECT id, tld_name, name"
+		for _, name := range inlineLifecycleColumns {
+			query += ", " + col(name)
+		}
+		query += " FROM phases ORDER BY tld_name, (type <> 'GA'), starts, id"
 		var rows []inlinePhasePolicy
-		err := tx.Raw(`SELECT id, tld_name, name, COALESCE(registration_gp, 0) AS registration_gp, COALESCE(renewal_gp, 0) AS renewal_gp,
-			COALESCE(auto_renewal_gp, 0) AS auto_renewal_gp, COALESCE(transfer_gp, 0) AS transfer_gp,
-			COALESCE(pending_transfer_period, 0) AS pending_transfer_period, COALESCE(redemption_gp, 0) AS redemption_gp,
-			COALESCE(pending_delete_gp, 0) AS pending_delete_gp, COALESCE(pending_restore_period, 0) AS pending_restore_period,
-			restore_report_required, transfer_lock_period, COALESCE(max_horizon, 0) AS max_horizon, allow_auto_renew
-			FROM phases ORDER BY tld_name, (type <> 'GA'), starts, id`).Scan(&rows).Error
-		if err != nil {
+		if err := tx.Raw(query).Scan(&rows).Error; err != nil { // #nosec G202 -- the column names are the compile-time literals above
 			return fmt.Errorf("read the phases' lifecycle settings: %w", err)
 		}
 		standard := entities.DefaultLifecycle()
