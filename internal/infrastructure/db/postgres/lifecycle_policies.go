@@ -244,6 +244,12 @@ func policyUsesIn(tx *gorm.DB, name string, limit int) ([]entities.LifecyclePoli
 //     the assignment is verified; the inline columns are dropped. One
 //     transaction: a failure leaves the columns and nothing assigned.
 //     A rerun finds no inline columns and does nothing.
+//
+// Dropping the columns here makes this release a cutover: the previous
+// release's services fail on them once the migration has run, and a code
+// rollback past it needs the database restored. Accepted pre-v1 by ADR 0023
+// (Consequences), which says how to deploy it; ADR 0010's expand-then-contract
+// resumes after it.
 // ---------------------------------------------------------------------------
 
 // prepareLifecyclePolicies creates lifecycle_policies and seeds the built-in

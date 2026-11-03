@@ -230,6 +230,15 @@ setting is the auto-renew opt-in.
 - `GET /tlds/{tld}/phases/{phase}` changes shape (a policy name and the
   resolved policy, instead of inline fields); the frontend's policy section,
   diff view and lifecycle widget follow. Pre-v1, no compatibility layer.
+- **The release that carries the migration is a cutover, not a rolling
+  deploy** (a documented pre-v1 exception to ADR 0010's expand-then-contract):
+  the migration drops the phases' inline columns in the same step that
+  assigns the policies, so the previous release's services fail on those
+  columns once it has run. Run `migrate` with the previous release's services
+  stopped, then roll the new ones; a code rollback past this release needs
+  the database restored from before the migration. Staging the drop into a
+  later release was rejected: nothing would have written the inline columns
+  in between, and the window would have carried two sources of truth.
 
 **Out of scope here**
 

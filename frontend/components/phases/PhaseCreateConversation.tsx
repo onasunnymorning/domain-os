@@ -38,6 +38,7 @@ import { STANDARD_LIFECYCLE_POLICY } from '@/lib/constants/lifecycleDefaults';
 import { useLifecyclePolicies } from '@/lib/hooks/useLifecyclePolicies';
 import type { ResolvedLifecycle } from '@/lib/types/lifecycle';
 import { setPhaseLifecyclePolicy } from '@/lib/api/lifecycle';
+import { tldsApi } from '@/lib/api/tlds';
 
 // ---------------------------------------------------------------------------
 // State machine
@@ -587,7 +588,8 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
           // Name the lifecycle policy, unless it is the one a new phase gets anyway.
           if (state.policy.lifecyclePolicy !== STANDARD_LIFECYCLE_POLICY) {
             try {
-              await setPhaseLifecyclePolicy(tldName, state.phaseName, state.policy.lifecyclePolicy);
+              const tld = await tldsApi.get(tldName);
+              await setPhaseLifecyclePolicy(tldName, state.phaseName, state.policy.lifecyclePolicy, tld.RyID);
             } catch (err: any) {
               const msg = err?.response?.data?.error || err?.message || 'Unknown error';
               warnings.push(`Lifecycle policy ${state.policy.lifecyclePolicy} not applied (the phase follows ${STANDARD_LIFECYCLE_POLICY}): ${msg}`);

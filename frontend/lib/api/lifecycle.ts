@@ -42,8 +42,16 @@ export async function deleteLifecyclePolicy(name: string): Promise<void> {
   await apiClient.delete(`/lifecycle-policies/${enc(name)}`);
 }
 
-/** Names the lifecycle policy a phase follows: a phase edit, under the operator's tenant. */
-export async function setPhaseLifecyclePolicy(tldName: string, phaseName: string, lifecyclePolicy: string): Promise<Phase> {
-  const { data } = await apiClient.put(`/tlds/${enc(tldName)}/phases/${enc(phaseName)}/lifecycle-policy`, { lifecyclePolicy });
+/**
+ * Names the lifecycle policy a phase follows: a phase edit, confined to the
+ * operator that runs the TLD, so the request names that operator
+ * (X-Tenant-ID, ADR-0006) as a phase delete does.
+ */
+export async function setPhaseLifecyclePolicy(tldName: string, phaseName: string, lifecyclePolicy: string, operatorId: string): Promise<Phase> {
+  const { data } = await apiClient.put(
+    `/tlds/${enc(tldName)}/phases/${enc(phaseName)}/lifecycle-policy`,
+    { lifecyclePolicy },
+    { headers: { 'X-Tenant-ID': operatorId } },
+  );
   return data;
 }

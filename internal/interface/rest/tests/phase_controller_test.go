@@ -43,6 +43,7 @@ func policyReq(method, path string, body interface{}) *httptest.ResponseRecorder
 var _ = Describe("PhaseController", Ordered, func() {
 	const (
 		ryID       = "phsTestRyOp"
+		otherRyID  = "phsOtherRyOp"
 		tldName    = "phstest"
 		plName     = "phsTestPL"
 		launchName = "PhsLnch"
@@ -66,6 +67,8 @@ var _ = Describe("PhaseController", Ordered, func() {
 			Email: "admin@phstest.com",
 		}
 		resp := api.POST("/registry-operators", ryCmd)
+		Expect(resp.Code).To(Equal(http.StatusCreated))
+		resp = api.POST("/registry-operators", &commands.CreateRegistryOperatorCommand{RyID: otherRyID, Name: "Another operator", Email: "other@phstest.com"})
 		Expect(resp.Code).To(Equal(http.StatusCreated))
 
 		// 2. TLD
@@ -298,9 +301,19 @@ var _ = Describe("PhaseController", Ordered, func() {
 		resp = policyReq(http.MethodPut, "/lifecycle-policies/phs-short", &commands.SaveLifecyclePolicyCommand{Description: "short redemption", Settings: entities.LifecycleSettings{RedemptionGP: &three}})
 		Expect(resp.Code).To(Equal(http.StatusOK), resp.Body.String())
 
+		// A phase edit under the TLD's operator (INV-02): without a scope it
+		// is refused, and another operator finds no such TLD.
 		resp = api.PUT(fmt.Sprintf("/tlds/%s/phases/%s/lifecycle-policy", tldName, gaName), &commands.SetPhaseLifecyclePolicyCommand{LifecyclePolicy: "phs-short"})
-		Expect(resp.Code).To(Equal(http.StatusOK), resp.Body.String())
+		Expect(resp.Code).To(Equal(http.StatusBadRequest), resp.Body.String())
+		resp = api.PUTAs(fmt.Sprintf("/tlds/%s/phases/%s/lifecycle-policy", tldName, gaName), otherRyID, &commands.SetPhaseLifecyclePolicyCommand{LifecyclePolicy: "phs-short"})
+		Expect(resp.Code).To(Equal(http.StatusNotFound), resp.Body.String())
+		resp = api.GET(fmt.Sprintf("/tlds/%s/phases/%s", tldName, gaName))
 		var phase entities.Phase
+		Expect(DecodeJSON(resp, &phase)).To(Succeed())
+		Expect(phase.LifecyclePolicyName).To(Equal(entities.LifecyclePolicyStandard), "left as it was")
+
+		resp = api.PUTAs(fmt.Sprintf("/tlds/%s/phases/%s/lifecycle-policy", tldName, gaName), ryID, &commands.SetPhaseLifecyclePolicyCommand{LifecyclePolicy: "phs-short"})
+		Expect(resp.Code).To(Equal(http.StatusOK), resp.Body.String())
 		Expect(DecodeJSON(resp, &phase)).To(Succeed())
 		Expect(phase.LifecyclePolicyName).To(Equal("phs-short"))
 		Expect(phase.Lifecycle().RedemptionDays()).To(Equal(3))
@@ -321,10 +334,10 @@ var _ = Describe("PhaseController", Ordered, func() {
 		resp = policyReq(http.MethodDelete, "/lifecycle-policies/phs-short", nil)
 		Expect(resp.Code).To(Equal(http.StatusConflict), "named by a phase")
 
-		resp = api.PUT(fmt.Sprintf("/tlds/%s/phases/%s/lifecycle-policy", tldName, gaName), &commands.SetPhaseLifecyclePolicyCommand{LifecyclePolicy: "no-such-policy"})
+		resp = api.PUTAs(fmt.Sprintf("/tlds/%s/phases/%s/lifecycle-policy", tldName, gaName), ryID, &commands.SetPhaseLifecyclePolicyCommand{LifecyclePolicy: "no-such-policy"})
 		Expect(resp.Code).To(Equal(http.StatusNotFound))
 
-		resp = api.PUT(fmt.Sprintf("/tlds/%s/phases/%s/lifecycle-policy", tldName, gaName), &commands.SetPhaseLifecyclePolicyCommand{LifecyclePolicy: entities.LifecyclePolicyStandard})
+		resp = api.PUTAs(fmt.Sprintf("/tlds/%s/phases/%s/lifecycle-policy", tldName, gaName), ryID, &commands.SetPhaseLifecyclePolicyCommand{LifecyclePolicy: entities.LifecyclePolicyStandard})
 		Expect(resp.Code).To(Equal(http.StatusOK))
 		resp = policyReq(http.MethodDelete, "/lifecycle-policies/phs-short", nil)
 		Expect(resp.Code).To(Equal(http.StatusNoContent))

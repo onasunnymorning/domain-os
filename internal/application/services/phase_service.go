@@ -37,11 +37,22 @@ func NewPhaseService(
 	}
 }
 
-// SetLifecyclePolicy names the lifecycle policy a phase follows. The policy
-// must exist (entities.ErrLifecyclePolicyNotFound) and the phase must not
-// have ended (entities.ErrUpdateHistoricPhase). The change applies to
-// lifecycle decisions made after it; dates already written to domains stay.
-func (svc *PhaseService) SetLifecyclePolicy(ctx context.Context, cmd *commands.SetPhaseLifecyclePolicyCommand) (*entities.Phase, error) {
+// SetLifecyclePolicy names the lifecycle policy a phase follows, within
+// scope (INV-02): an operator scope reaches only its own TLDs, read with
+// the operator in the query, and another operator's TLD is
+// entities.ErrTLDNotFound. The policy must exist
+// (entities.ErrLifecyclePolicyNotFound) and the phase must not have ended
+// (entities.ErrUpdateHistoricPhase). The change applies to lifecycle
+// decisions made after it; dates already written to domains stay.
+func (svc *PhaseService) SetLifecyclePolicy(ctx context.Context, scope entities.RegistryScope, cmd *commands.SetPhaseLifecyclePolicyCommand) (*entities.Phase, error) {
+	if err := scope.Validate(); err != nil {
+		return nil, err
+	}
+	if !scope.IsPlatform() {
+		if _, err := svc.tldRepo.GetByNameForOperator(ctx, scope.Operator(), cmd.TLDName); err != nil {
+			return nil, err
+		}
+	}
 	phase, err := svc.phaseRepo.GetPhaseByTLDAndName(ctx, cmd.TLDName, cmd.PhaseName)
 	if err != nil {
 		return nil, err

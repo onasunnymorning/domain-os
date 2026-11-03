@@ -7,6 +7,7 @@ import {
   setPhaseLifecyclePolicy,
   type SaveLifecycleOptions,
 } from '@/lib/api/lifecycle';
+import { tldsApi } from '@/lib/api/tlds';
 import type { SaveLifecyclePolicyRequest } from '@/lib/types/lifecycle';
 
 export const lifecycleKeys = {
@@ -48,10 +49,18 @@ export function useDeleteLifecyclePolicy() {
   });
 }
 
+/**
+ * The API confines the edit to the TLD's operator, so its RyID is sent with
+ * the request; it comes from the ['tld', name] query the TLD page already
+ * holds (as useDeletePhase does).
+ */
 export function useSetPhaseLifecyclePolicy(tldName: string, phaseName: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (lifecyclePolicy: string) => setPhaseLifecyclePolicy(tldName, phaseName, lifecyclePolicy),
+    mutationFn: async (lifecyclePolicy: string) => {
+      const tld = await qc.fetchQuery({ queryKey: ['tld', tldName], queryFn: () => tldsApi.get(tldName) });
+      return setPhaseLifecyclePolicy(tldName, phaseName, lifecyclePolicy, tld.RyID);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['phases', tldName] });
       qc.invalidateQueries({ queryKey: ['phase', tldName, phaseName] });

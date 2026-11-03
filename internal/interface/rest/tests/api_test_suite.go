@@ -325,6 +325,20 @@ func (a *TestAPI) DELETEAs(path, tenantID string) *httptest.ResponseRecorder {
 	return toRecorder(resp)
 }
 
+// PUTAs performs a PUT as the given registry operator (X-Tenant-ID), for
+// the phase edits the API confines to the TLD's operator.
+func (a *TestAPI) PUTAs(path, tenantID string, body interface{}) *httptest.ResponseRecorder {
+	payloadBytes, _ := json.Marshal(body)
+	req, _ := http.NewRequest(http.MethodPut, a.Server.URL+path, bytes.NewReader(payloadBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", tenantID)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		panic(fmt.Sprintf("PUT %s failed: %v", path, err))
+	}
+	return toRecorder(resp)
+}
+
 // PATCH performs a PATCH request with a JSON body and returns the response recorder.
 func (a *TestAPI) PATCH(path string, body interface{}) *httptest.ResponseRecorder {
 	payloadBytes, _ := json.Marshal(body)

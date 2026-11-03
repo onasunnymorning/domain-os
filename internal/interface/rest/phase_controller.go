@@ -384,12 +384,13 @@ func (ctrl *PhaseController) UnSetPremiumList(ctx *gin.Context) {
 
 // SetLifecyclePolicy godoc
 // @Summary Name the lifecycle policy a phase follows
-// @Description Names the lifecycle policy (ADR 0023) the phase follows; the policy must exist and the phase must not have ended. The response carries the policy name and the resolved policy. A tenant's phase edit: it needs no policy permission, since it changes no policy.
+// @Description Names the lifecycle policy (ADR 0023) the phase follows; the policy must exist and the phase must not have ended. The response carries the policy name and the resolved policy. A tenant's phase edit: the request names the TLD's operator in X-Tenant-ID (another operator's TLD is 404), or holds registry:platform:admin; it needs no policy permission, since it changes no policy.
 // @Tags TLDs
 // @Accept json
 // @Produce json
 // @Param tldName path string true "TLD name"
 // @Param phaseName path string true "Phase name"
+// @Param X-Tenant-ID header string false "Operator scope (RegistryOperator RyID). Omit only with the registry:platform:admin permission."
 // @Param policy body commands.SetPhaseLifecyclePolicyCommand true "The policy to name"
 // @Success 200 {object} entities.Phase
 // @Failure 400
@@ -407,11 +408,15 @@ func (ctrl *PhaseController) SetLifecyclePolicy(ctx *gin.Context) {
 		return
 	}
 	cmd.TLDName, cmd.PhaseName = ctx.Param("tldName"), ctx.Param("phaseName")
-	phase, err := ctrl.phaseService.SetLifecyclePolicy(ctx.Request.Context(), &cmd)
+	scope, ok := RegistryScopeFromRequest(ctx)
+	if !ok {
+		return
+	}
+	phase, err := ctrl.phaseService.SetLifecyclePolicy(ctx.Request.Context(), scope, &cmd)
 	switch {
 	case err == nil:
 		ctx.JSON(200, phase)
-	case errors.Is(err, entities.ErrPhaseNotFound), errors.Is(err, entities.ErrLifecyclePolicyNotFound):
+	case errors.Is(err, entities.ErrPhaseNotFound), errors.Is(err, entities.ErrLifecyclePolicyNotFound), errors.Is(err, entities.ErrTLDNotFound):
 		ctx.JSON(404, gin.H{"error": err.Error()})
 	case errors.Is(err, entities.ErrUpdateHistoricPhase):
 		ctx.JSON(400, gin.H{"error": err.Error()})

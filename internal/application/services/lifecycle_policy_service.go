@@ -77,7 +77,12 @@ func (s *LifecyclePolicyService) SavePolicy(ctx context.Context, name string, cm
 	if err != nil {
 		return nil, err
 	}
-	return s.GetPolicy(ctx, name)
+	// The policy as this save wrote it, not a later read that another
+	// change could have overtaken; only the phases naming it are read after.
+	if p.UsedBy, err = s.repo.PolicyUses(ctx, name); err != nil {
+		return nil, fmt.Errorf("phases naming lifecycle policy %s: %w", name, err)
+	}
+	return p, nil
 }
 
 // DeletePolicy deletes a policy no phase names. gtld-standard cannot be
