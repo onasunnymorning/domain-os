@@ -68,11 +68,48 @@ func (svc *PhaseService) SetLifecyclePolicy(ctx context.Context, scope entities.
 	return svc.UpdatePhase(ctx, phase)
 }
 
+// SetLaunchSettings replaces a launch phase's launch settings (ADR 0024)
+// within scope, as SetLifecyclePolicy does. The phase decides what may
+// change when (entities.Phase.SetLaunchSettings): nothing on a GA phase or
+// an ended one, the mode only before the phase starts, the model only
+// before it starts or has applications. Applications do not exist yet, so
+// none are counted here; the count arrives with them.
+func (svc *PhaseService) SetLaunchSettings(ctx context.Context, scope entities.RegistryScope, cmd *commands.SetLaunchSettingsCommand) (*entities.Phase, error) {
+	if err := scope.Validate(); err != nil {
+		return nil, err
+	}
+	if !scope.IsPlatform() {
+		if _, err := svc.tldRepo.GetByNameForOperator(ctx, scope.Operator(), cmd.TLDName); err != nil {
+			return nil, err
+		}
+	}
+	phase, err := svc.phaseRepo.GetPhaseByTLDAndName(ctx, cmd.TLDName, cmd.PhaseName)
+	if err != nil {
+		return nil, err
+	}
+	if err := phase.SetLaunchSettings(cmd.LaunchSettings, time.Now().UTC(), false); err != nil {
+		return nil, err
+	}
+	return svc.UpdatePhase(ctx, phase)
+}
+
 // CreatePhase handles the creation of a new phase
 func (svc *PhaseService) CreatePhase(ctx context.Context, cmd *commands.CreatePhaseCommand) (*entities.Phase, error) {
 	newPhase, err := entities.NewPhase(cmd.Name, cmd.Type, cmd.Starts)
 	if err != nil {
 		return nil, errors.Join(entities.ErrInvalidPhase, err)
+	}
+	if cmd.Launch != nil {
+		// A phase being created has no history to protect (nothing has
+		// started under it, no applications exist), so any valid settings
+		// go, on a launch phase.
+		if newPhase.Type != entities.PhaseTypeLaunch {
+			return nil, errors.Join(entities.ErrInvalidPhase, entities.ErrLaunchSettingsOnGA)
+		}
+		if err := cmd.Launch.Validate(); err != nil {
+			return nil, errors.Join(entities.ErrInvalidPhase, err)
+		}
+		newPhase.Launch = *cmd.Launch
 	}
 	// If and End is provided, set it
 	if cmd.Ends != nil {

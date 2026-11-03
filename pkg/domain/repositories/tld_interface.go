@@ -8,6 +8,10 @@ import (
 )
 
 type TLDRepository interface {
+	// A repository is also the cheap reader: a registration path that needs
+	// only the phases and their policies (an availability check) must not
+	// pay for prices, fees and counts.
+	TLDPhaseReader
 	Create(ctx context.Context, tld *entities.TLD) error
 	GetByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error)
 	// GetByNameForOperator returns the TLD only if it is operated by scope; it

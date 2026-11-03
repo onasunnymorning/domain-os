@@ -71,9 +71,15 @@ type Domain struct {
 	CrRr         ClIDType   `json:"CrRr"`
 	UpRr         ClIDType   `json:"UpRr"`
 	TLDName      DomainName `json:"TLDName"`
-	ExpiryDate   time.Time  `json:"ExpiryDate"`
-	DropCatch    bool       `json:"DropCatch"`
-	RenewedYears int        `json:"RenewedYears"`
+	// RegistrationPhaseName names the launch phase the domain was
+	// registered in (ADR 0024); empty for a GA registration, and for every
+	// domain registered or imported before launch phases governed
+	// registrations. Later lifecycle decisions do not read it: the GA phase
+	// in force at the time decides (ADR 0023).
+	RegistrationPhaseName ClIDType  `json:"RegistrationPhaseName,omitempty"`
+	ExpiryDate            time.Time `json:"ExpiryDate"`
+	DropCatch             bool      `json:"DropCatch"`
+	RenewedYears          int       `json:"RenewedYears"`
 	// AuthInfo is the domain's transfer code as a salted hash (RFC 9154),
 	// empty when none is set. It never leaves the registry: JSON carries
 	// AuthInfoSet instead (see MarshalJSON).
@@ -407,6 +413,11 @@ func RegisterDomain(roid, name, clid, authInfo, registrantID, adminID, techID, b
 	// Set the create registrar
 	dom.CrRr = dom.ClID
 
+	// A launch registration remembers its phase; a GA one is the default.
+	if phase.Type == PhaseTypeLaunch {
+		dom.RegistrationPhaseName = phase.Name
+	}
+
 	// Set the RGP statuses
 	dom.RGPStatus.AddPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Lifecycle().RegistrationGraceDays())
 	dom.RGPStatus.TransferLockPeriodEnd = time.Now().UTC().AddDate(0, 0, phase.Lifecycle().TransferLockDays())
@@ -622,28 +633,29 @@ func (d *Domain) DeepCopy() *Domain {
 
 	// Copy all top-level Domain fields.
 	newDomain := &Domain{
-		RoID:           d.RoID,
-		Name:           d.Name,
-		OriginalName:   d.OriginalName,
-		UName:          d.UName,
-		RegistrantID:   d.RegistrantID,
-		AdminID:        d.AdminID,
-		TechID:         d.TechID,
-		BillingID:      d.BillingID,
-		ClID:           d.ClID,
-		CrRr:           d.CrRr,
-		UpRr:           d.UpRr,
-		TLDName:        d.TLDName,
-		ExpiryDate:     d.ExpiryDate,
-		DropCatch:      d.DropCatch,
-		RenewedYears:   d.RenewedYears,
-		AuthInfo:       d.AuthInfo,
-		CreatedAt:      d.CreatedAt,
-		UpdatedAt:      d.UpdatedAt,
-		TransferredAt:  d.TransferredAt,
-		Status:         d.Status,         // Struct copied by value
-		RGPStatus:      d.RGPStatus,      // Struct copied by value
-		GrandFathering: d.GrandFathering, // Struct copied by value
+		RoID:                  d.RoID,
+		Name:                  d.Name,
+		OriginalName:          d.OriginalName,
+		UName:                 d.UName,
+		RegistrantID:          d.RegistrantID,
+		AdminID:               d.AdminID,
+		TechID:                d.TechID,
+		BillingID:             d.BillingID,
+		ClID:                  d.ClID,
+		CrRr:                  d.CrRr,
+		UpRr:                  d.UpRr,
+		TLDName:               d.TLDName,
+		RegistrationPhaseName: d.RegistrationPhaseName,
+		ExpiryDate:            d.ExpiryDate,
+		DropCatch:             d.DropCatch,
+		RenewedYears:          d.RenewedYears,
+		AuthInfo:              d.AuthInfo,
+		CreatedAt:             d.CreatedAt,
+		UpdatedAt:             d.UpdatedAt,
+		TransferredAt:         d.TransferredAt,
+		Status:                d.Status,         // Struct copied by value
+		RGPStatus:             d.RGPStatus,      // Struct copied by value
+		GrandFathering:        d.GrandFathering, // Struct copied by value
 		// Hosts handled below
 	}
 

@@ -84,6 +84,9 @@ func (f *fakeTLDRepo) GetByNameForOperator(_ context.Context, scope entities.Ope
 	t, _ := entities.NewTLD(name, scope.String())
 	return t, nil
 }
+func (f *fakeTLDRepo) GetWithPhases(context.Context, string) (*entities.TLD, error) {
+	return nil, errors.New("not implemented")
+}
 func (f *fakeTLDRepo) Create(context.Context, *entities.TLD) error {
 	return errors.New("not implemented")
 }

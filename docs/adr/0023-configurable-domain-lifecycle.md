@@ -70,7 +70,9 @@ decision loads the TLD with its phases and calls `TLD.GetCurrentGAPhase()` at
 the moment of the event (`domain_service.go`, 14 call sites). The phase in
 force when a domain was registered is irrelevant to its later expiry; the
 phase in force at expiry decides. Launch phases carry a policy too, but the
-lifecycle reads only the GA one.
+lifecycle reads only the GA one; a launch phase governs how a name is
+*obtained*, through `TLD.RegistrationContextAt` ([ADR 0024](0024-launch-phases-and-epp-launch-extension.md)),
+never its later lifecycle.
 
 **Per registrar** there is exactly one knob: `Registrar.Autorenew`. The
 expiry loop auto-renews a domain only when the TLD's policy allows it *and*

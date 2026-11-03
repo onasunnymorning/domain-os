@@ -290,3 +290,39 @@ func (s *PhaseSuite) TestPhaseRepo_ListPhases() {
 	_, err = repo.ListPhasesByTLD(context.Background(), s.TLDName, 25, "NotAnInt64")
 	s.Require().Error(err)
 }
+
+// The launch settings (ADR 0024) round-trip through their typed columns; a
+// GA phase keeps the zero value.
+func (s *PhaseSuite) TestPhaseRepo_LaunchSettingsRoundTrip() {
+	tx := s.db.Begin()
+	defer tx.Rollback()
+	repo := NewGormPhaseRepository(tx)
+
+	launch, err := entities.NewPhase("LaunchRT", "Launch", time.Now().UTC().AddDate(0, 1, 0))
+	s.Require().NoError(err)
+	launch.TLDName = entities.DomainName(s.TLDName)
+	s.Require().NoError(launch.SetLaunchSettings(entities.LaunchSettings{
+		Mode: entities.LaunchModeLandrush, Model: entities.RegistrationModelApplication,
+		AcceptSignedMarks: true, AcceptCodeMarks: true, RetainMarks: true,
+	}, time.Now().UTC(), false))
+	created, err := repo.CreatePhase(context.Background(), launch)
+	s.Require().NoError(err)
+	s.Require().Equal(launch.Launch, created.Launch)
+
+	read, err := repo.GetPhaseByTLDAndName(context.Background(), s.TLDName, "LaunchRT")
+	s.Require().NoError(err)
+	s.Require().Equal(launch.Launch, read.Launch)
+
+	read.Launch.RetainMarks = false
+	updated, err := repo.UpdatePhase(context.Background(), read)
+	s.Require().NoError(err)
+	s.Require().False(updated.Launch.RetainMarks)
+	s.Require().Equal(entities.LaunchModeLandrush, updated.Launch.Mode)
+
+	ga, err := entities.NewPhase("GART", "GA", time.Now().UTC().AddDate(0, 2, 0))
+	s.Require().NoError(err)
+	ga.TLDName = entities.DomainName(s.TLDName)
+	createdGA, err := repo.CreatePhase(context.Background(), ga)
+	s.Require().NoError(err)
+	s.Require().True(createdGA.Launch.IsZero())
+}

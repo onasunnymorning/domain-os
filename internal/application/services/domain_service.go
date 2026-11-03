@@ -1022,8 +1022,8 @@ func (svc *DomainService) CheckDomainIsBlocked(ctx context.Context, domainName s
 // 1. Validates the domain name against the RFCs.
 // 2. Checks if the domain already exists.
 // 3. Checks if the domain is blocked.
-// 4. Retrieves the phase by name if provided, otherwise gets the current GA phase.
-// 5. Checks if the domain label is valid in the current phase.
+// 4. Resolves the phase: the active launch phase named, else the current GA phase (ADR 0024).
+// 5. Checks if the domain label is valid in that phase.
 func (svc *DomainService) CheckDomainAvailability(ctx context.Context, domainName, phaseName string) (*queries.DomainCheckResult, error) {
 	response := &queries.DomainCheckResult{
 		TimeStamp:  time.Now().UTC(),
@@ -1039,34 +1039,27 @@ func (svc *DomainService) CheckDomainAvailability(ctx context.Context, domainNam
 		return response, err
 	}
 
-	// Retrieve the phase by name if provided, otherwise get the current GA phase
-	// This will also error if the TLD does not exist
-	phase := &entities.Phase{}
-	if phaseName != "" {
-		// Check the provided phase
-		phase, err = svc.phaseRepo.GetPhaseByTLDAndName(ctx, dom.ParentDomain(), phaseName)
-		if err != nil {
-			response.PhaseName = phaseName
-			response.Reason = err.Error()
-			return response, err
-		}
-	} else {
-		// Check the current GA phase by retrieving the TLD with preloaded phases
-		tld, err := svc.tldRepo.GetByName(ctx, dom.ParentDomain(), true)
-		if err != nil {
-			response.Reason = err.Error()
-			return response, err
-		}
-		// Get the current GA phase from the tld
-		phase, err = tld.GetCurrentGAPhase()
-		if err != nil {
-			response.Reason = err.Error()
-			return response, err
-		}
-		response.PhaseName = phase.Name.String()
+	// The TLD with its phases and nothing else (no prices, fees or counts:
+	// an availability check must not grow with the TLD). The phase named
+	// must be an active launch phase, else the GA phase in force applies
+	// (ADR 0024), the rule RegisterDomain follows. This also errors if the
+	// TLD does not exist.
+	tld, err := svc.tldRepo.GetWithPhases(ctx, dom.ParentDomain())
+	if err != nil {
+		response.Reason = err.Error()
+		return response, err
 	}
+	rc, err := tld.RegistrationContextAt(entities.PhaseRef{Name: entities.ClIDType(phaseName)}, time.Now().UTC())
+	if err != nil {
+		if phaseName != "" {
+			response.PhaseName = phaseName
+		}
+		response.Reason = err.Error()
+		return response, err
+	}
+	response.PhaseName = rc.Phase.Name.String()
 
-	return svc.availabilityIn(ctx, response, dom, phase)
+	return svc.availabilityIn(ctx, response, dom, rc.Phase)
 }
 
 // availabilityIn is CheckDomainAvailability once the phase is known: the
@@ -1184,17 +1177,28 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	if err != nil {
 		return nil, err
 	}
-	var phase *entities.Phase
-	if cmd.PhaseName == "" {
-		// If no phase is provided we will use the current GA phase
-		phase, err = tld.GetCurrentGAPhase()
-	} else {
-		// If a phase is provided we will use that
-		phase, err = tld.FindPhaseByName(entities.ClIDType(cmd.PhaseName))
-	}
+	// One rule for which phase governs a registration (ADR 0024): the GA
+	// phase in force, or the active launch phase named. Naming a GA phase,
+	// a phase that has ended or one yet to start is refused.
+	rc, err := tld.RegistrationContextAt(entities.PhaseRef{Name: entities.ClIDType(cmd.PhaseName)}, time.Now().UTC())
 	if err != nil {
 		return nil, err
 	}
+	// A phase that collects applications, or needs marks or notices
+	// verified, takes no registrations until those exist: a registration
+	// here would claim a name the phase means to allocate.
+	if err := rc.Phase.Launch.AdmitsRegistration(); err != nil {
+		return nil, fmt.Errorf("%w: %s", err, rc.Phase.Name)
+	}
+	return svc.registerIn(ctx, cmd, domainName, rc.Phase)
+}
+
+// registerIn is RegisterDomain once the phase is known: the availability
+// check, the quote, the domain and its event, all under phase. Allocating
+// a launch application calls it with the application's phase, which may
+// have ended by then; everything else comes through RegisterDomain.
+func (svc *DomainService) registerIn(ctx context.Context, cmd *commands.RegisterDomainCommand, domainName *entities.DomainName, phase *entities.Phase) (*entities.Domain, error) {
+	domName := entities.DomainName(cmd.Name)
 
 	// Check if the domain is available
 	checkResult, err := svc.availabilityIn(ctx, &queries.DomainCheckResult{

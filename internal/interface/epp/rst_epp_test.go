@@ -305,7 +305,7 @@ func TestRST_epp02_ProtocolConformance(t *testing.T) {
 		requireExt(t, "urn:ietf:params:xml:ns:rgp-1.0", "RGP (RFC 3915) is offered: this should not be pending")
 	})
 	t.Run("epp-02/8 launch-1.0 extURI", func(t *testing.T) {
-		requireExt(t, "urn:ietf:params:xml:ns:launch-1.0", "launch phases (RFC 8334) for sunrise and claims; not yet scheduled in docs/epp/ARCHITECTURE.md")
+		requireExt(t, "urn:ietf:params:xml:ns:launch-1.0", "launch phases (RFC 8334): the extension lands with roadmap 8b in docs/epp/ARCHITECTURE.md (ADR 0024)")
 	})
 
 	for _, rec := range []struct{ uri, rfc string }{

@@ -20,4 +20,7 @@ type PhaseService interface {
 	// SetLifecyclePolicy names the lifecycle policy a phase follows (ADR
 	// 0023), within scope: a TLD outside it is entities.ErrTLDNotFound.
 	SetLifecyclePolicy(ctx context.Context, scope entities.RegistryScope, cmd *commands.SetPhaseLifecyclePolicyCommand) (*entities.Phase, error)
+	// SetLaunchSettings replaces a launch phase's launch settings (ADR
+	// 0024), within scope: a TLD outside it is entities.ErrTLDNotFound.
+	SetLaunchSettings(ctx context.Context, scope entities.RegistryScope, cmd *commands.SetLaunchSettingsCommand) (*entities.Phase, error)
 }

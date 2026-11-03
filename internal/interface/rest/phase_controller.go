@@ -30,6 +30,7 @@ func NewPhaseController(e *gin.Engine, phaseService interfaces.PhaseService, han
 		phaseGroup.GET(":phaseName", ctrl.GetPhase)
 		phaseGroup.PUT(":phaseName/policy", ctrl.UpdatePhasePolicy)
 		phaseGroup.PUT(":phaseName/lifecycle-policy", ctrl.SetLifecyclePolicy)
+		phaseGroup.PUT(":phaseName/launch", ctrl.SetLaunchSettings)
 		phaseGroup.DELETE(":phaseName", ctrl.DeletePhase)
 		phaseGroup.PUT(":phaseName/end", ctrl.EndPhase)
 		phaseGroup.POST(":phaseName/premium-list/:premiumListName", ctrl.SetPremiumList)
@@ -419,6 +420,52 @@ func (ctrl *PhaseController) SetLifecyclePolicy(ctx *gin.Context) {
 	case errors.Is(err, entities.ErrPhaseNotFound), errors.Is(err, entities.ErrLifecyclePolicyNotFound), errors.Is(err, entities.ErrTLDNotFound):
 		ctx.JSON(404, gin.H{"error": err.Error()})
 	case errors.Is(err, entities.ErrUpdateHistoricPhase):
+		ctx.JSON(400, gin.H{"error": err.Error()})
+	default:
+		ctx.JSON(500, gin.H{"error": err.Error()})
+	}
+}
+
+// SetLaunchSettings godoc
+// @Summary Set a launch phase's launch settings
+// @Description Replaces the launch settings (ADR 0024) of a launch phase: its mode (open, landrush, custom, sunrise, claims), its registration model (first-come or application) and which trademark evidence a sunrise accepts. A GA phase has none (400). The mode is fixed once the phase has started, the model once it has started or has applications, and nothing changes on an ended phase (400). Sunrise and claims phases are not yet served over EPP. A tenant's phase edit: the request names the TLD's operator in X-Tenant-ID (another operator's TLD is 404), or holds registry:platform:admin.
+// @Tags TLDs
+// @Accept json
+// @Produce json
+// @Param tldName path string true "TLD name"
+// @Param phaseName path string true "Phase name"
+// @Param X-Tenant-ID header string false "Operator scope (RegistryOperator RyID). Omit only with the registry:platform:admin permission."
+// @Param settings body commands.SetLaunchSettingsCommand true "The launch settings"
+// @Success 200 {object} entities.Phase
+// @Failure 400
+// @Failure 404
+// @Failure 500
+// @Router /tlds/{tldName}/phases/{phaseName}/launch [put]
+func (ctrl *PhaseController) SetLaunchSettings(ctx *gin.Context) {
+	var cmd commands.SetLaunchSettingsCommand
+	if err := ctx.ShouldBindJSON(&cmd); err != nil {
+		if err.Error() == "EOF" {
+			ctx.JSON(400, gin.H{"error": "missing request body"})
+			return
+		}
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	cmd.TLDName, cmd.PhaseName = ctx.Param("tldName"), ctx.Param("phaseName")
+	scope, ok := RegistryScopeFromRequest(ctx)
+	if !ok {
+		return
+	}
+	phase, err := ctrl.phaseService.SetLaunchSettings(ctx.Request.Context(), scope, &cmd)
+	switch {
+	case err == nil:
+		ctx.JSON(200, phase)
+	case errors.Is(err, entities.ErrPhaseNotFound), errors.Is(err, entities.ErrTLDNotFound):
+		ctx.JSON(404, gin.H{"error": err.Error()})
+	case errors.Is(err, entities.ErrLaunchSettingsOnGA), errors.Is(err, entities.ErrInvalidLaunchMode),
+		errors.Is(err, entities.ErrInvalidRegistrationModel), errors.Is(err, entities.ErrInvalidLaunchSettings),
+		errors.Is(err, entities.ErrLaunchModeFrozen), errors.Is(err, entities.ErrLaunchModelFrozen),
+		errors.Is(err, entities.ErrUpdateHistoricPhase):
 		ctx.JSON(400, gin.H{"error": err.Error()})
 	default:
 		ctx.JSON(500, gin.H{"error": err.Error()})

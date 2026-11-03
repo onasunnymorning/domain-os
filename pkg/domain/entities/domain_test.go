@@ -1943,12 +1943,15 @@ func TestDomain_DeepCopy(t *testing.T) {
 				CrRr:         "createRegistrar",
 				UpRr:         "updateRegistrar",
 				TLDName:      "com",
-				ExpiryDate:   later,
-				DropCatch:    true,
-				RenewedYears: 2,
-				AuthInfo:     "authInfo123",
-				CreatedAt:    now,
-				UpdatedAt:    now,
+				// Set on a launch registration; a copy must keep it, since
+				// copies are the before-state of lifecycle events.
+				RegistrationPhaseName: "landrush",
+				ExpiryDate:            later,
+				DropCatch:             true,
+				RenewedYears:          2,
+				AuthInfo:              "authInfo123",
+				CreatedAt:             now,
+				UpdatedAt:             now,
 				Status: DomainStatus{
 					OK: true,
 				},
@@ -2223,4 +2226,17 @@ func TestDomain_CanBeTransferredExtensive(t *testing.T) {
 			require.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func TestRegisterDomain_RegistrationPhaseName(t *testing.T) {
+	const authInfo = "Tr4nsf3r-C0de-Xq9#Lm2!"
+	ga := &Phase{Name: "ga-2026", Type: PhaseTypeGA}
+	dom, err := RegisterDomain("1_DOM-APEX", "example.com", "client123", authInfo, "r", "a", "t", "b", ga, 1)
+	assert.NoError(t, err)
+	assert.Empty(t, dom.RegistrationPhaseName, "a GA registration names no phase")
+
+	landrush := &Phase{Name: "landrush", Type: PhaseTypeLaunch, Launch: NewLaunchSettings()}
+	dom, err = RegisterDomain("2_DOM-APEX", "example.com", "client123", authInfo, "r", "a", "t", "b", landrush, 1)
+	assert.NoError(t, err)
+	assert.Equal(t, ClIDType("landrush"), dom.RegistrationPhaseName)
 }
