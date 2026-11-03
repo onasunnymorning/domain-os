@@ -36,7 +36,7 @@ export default function LifecyclePoliciesPage() {
             description="gtld-standard is the built-in default every new phase follows. Changing a policy needs the registry:policy:admin permission; which policy a phase follows is set on the phase."
             action={
               <Button size="sm" asChild>
-                <Link href="/lifecycle-policies/new-policy">New policy</Link>
+                <Link href="/lifecycle-policies/-/new">New policy</Link>
               </Button>
             }
           />

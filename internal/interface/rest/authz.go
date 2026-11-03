@@ -43,8 +43,9 @@ const (
 	ScopeEPPPolicyAdmin = "epp:policy:admin"
 	// ScopeRegistryPolicyAdmin allows changing the lifecycle policies (ADR
 	// 0023): platform-wide records, so tenant membership cannot scope a
-	// change to them. Naming one on a phase is a phase edit under the
-	// operator's tenant and needs no more than that.
+	// change to them. Reading them needs only a valid token, since a phase
+	// editor picks from them; naming one on a phase is a phase edit under
+	// the operator's tenant and needs no more than that.
 	ScopeRegistryPolicyAdmin = "registry:policy:admin"
 	// ScopeRDAPPolicyAdmin allows changing the RDAP publication policies and
 	// their assignment to TLDs (ADR 0021), and from Phase 4 the access

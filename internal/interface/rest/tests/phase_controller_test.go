@@ -312,8 +312,8 @@ var _ = Describe("PhaseController", Ordered, func() {
 		Expect(phase.LifecyclePolicyName).To(Equal("phs-short"))
 		Expect(phase.LifecyclePolicy).NotTo(BeNil())
 
-		resp = policyReq(http.MethodGet, "/lifecycle-policies/phs-short", nil)
-		Expect(resp.Code).To(Equal(http.StatusOK))
+		resp = api.GET("/lifecycle-policies/phs-short")
+		Expect(resp.Code).To(Equal(http.StatusOK), "reading the catalogue needs no permission")
 		var policy entities.LifecyclePolicy
 		Expect(DecodeJSON(resp, &policy)).To(Succeed())
 		Expect(policy.UsedBy).To(ContainElement(entities.LifecyclePolicyUse{TLD: tldName, Phase: gaName}))

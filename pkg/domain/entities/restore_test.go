@@ -184,6 +184,29 @@ func TestRevertRestore(t *testing.T) {
 	require.NoError(t, d.RequestRestore(phase, deadline), "the registrar may ask again within redemption")
 }
 
+// TestCompleteRestore_NoReportZeroWindow: a phase that waives the report
+// with a zero-day window restores on the request alone; the deadline, which
+// is the request's instant, is the report's and does not apply.
+func TestCompleteRestore_NoReportZeroWindow(t *testing.T) {
+	now := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+	phase := &Phase{LifecyclePolicy: &LifecyclePolicy{Settings: LifecycleSettings{PendingRestorePeriod: intPtr(0), RestoreReportRequired: boolPtr(false)}}}
+	d := deletedDomain(t, now, now.AddDate(0, 3, 0))
+	require.NoError(t, d.RequestRestore(phase, now))
+	assert.Equal(t, now, d.RGPStatus.PendingRestoreEnd)
+	years, err := d.CompleteRestore(nil, phase, now)
+	require.NoError(t, err)
+	assert.Equal(t, 1, years)
+	assert.False(t, d.Status.PendingRestore)
+	assert.False(t, d.Status.PendingDelete)
+
+	// A report, though, is held to its deadline.
+	d = deletedDomain(t, now, now.AddDate(0, 3, 0))
+	required := &Phase{LifecyclePolicy: &LifecyclePolicy{Settings: LifecycleSettings{PendingRestorePeriod: intPtr(1)}}}
+	require.NoError(t, d.RequestRestore(required, now))
+	_, err = d.CompleteRestore(goodReport(now), required, now.AddDate(0, 0, 2))
+	assert.ErrorIs(t, err, ErrRestoreNotPending)
+}
+
 func TestRestorePolicy(t *testing.T) {
 	p := StandardLifecyclePolicy()
 	assert.Equal(t, PendingRestorePeriod, p.PendingRestoreDays())

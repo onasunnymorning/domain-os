@@ -12,10 +12,12 @@ import (
 )
 
 // LifecyclePoliciesController manages the lifecycle policies (ADR 0023):
-// the named timing a TLD phase follows. Every endpoint needs the
+// the named timing a TLD phase follows. Changing one needs the
 // registry:policy:admin permission: a policy is platform-wide, so tenant
-// membership cannot scope a change to it. Naming a policy on a phase is a
-// phase edit (PhaseController.SetLifecyclePolicy).
+// membership cannot scope a change to it. Reading the catalogue needs only
+// a valid token: whoever edits a phase picks from it (the phase drawer and
+// the create wizard), and naming a policy on a phase is a phase edit
+// (PhaseController.SetLifecyclePolicy).
 type LifecyclePoliciesController struct {
 	svc interfaces.LifecyclePolicyService
 }
@@ -29,23 +31,22 @@ func NewLifecyclePoliciesController(e *gin.Engine, svc interfaces.LifecyclePolic
 			ctx.Next()
 		}
 	}
-	p := e.Group("/lifecycle-policies", handler, permitted)
+	p := e.Group("/lifecycle-policies", handler)
 	{
 		p.GET("", ctrl.ListPolicies)
 		p.GET(":name", ctrl.GetPolicy)
-		p.PUT(":name", ctrl.SavePolicy)
-		p.DELETE(":name", ctrl.DeletePolicy)
+		p.PUT(":name", permitted, ctrl.SavePolicy)
+		p.DELETE(":name", permitted, ctrl.DeletePolicy)
 	}
 	return ctrl
 }
 
 // ListPolicies godoc
 // @Summary List lifecycle policies
-// @Description Every lifecycle policy, gtld-standard included, each with the phases that name it (usedBy) and its settings resolved.
+// @Description Every lifecycle policy, gtld-standard included, each with the phases that name it (usedBy) and its settings resolved. Any authenticated caller may read the catalogue; changing it needs registry:policy:admin.
 // @Tags Lifecycle policies
 // @Produce json
 // @Success 200 {array} entities.LifecyclePolicy
-// @Failure 403
 // @Router /lifecycle-policies [get]
 func (ctrl *LifecyclePoliciesController) ListPolicies(ctx *gin.Context) {
 	ps, err := ctrl.svc.ListPolicies(ctx.Request.Context())

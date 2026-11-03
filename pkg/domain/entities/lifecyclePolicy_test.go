@@ -36,9 +36,11 @@ func TestLifecycleSettings_Validate(t *testing.T) {
 		"pending restore":       {PendingRestorePeriod: intPtr(31)},
 		"horizon zero":          {MaxHorizon: intPtr(0)},
 		"horizon over 10 years": {MaxHorizon: intPtr(11)},
+		"no window for a report": {PendingRestorePeriod: intPtr(0)},
 	} {
 		t.Run(name, func(t *testing.T) { assert.ErrorIs(t, s.Validate(), ErrInvalidLifecyclePolicy) })
 	}
+	assert.NoError(t, LifecycleSettings{PendingRestorePeriod: intPtr(0), RestoreReportRequired: boolPtr(false)}.Validate(), "a zero window with no report to send")
 	err := LifecycleSettings{RenewalGP: intPtr(-1), MaxHorizon: intPtr(0)}.Validate()
 	assert.ErrorContains(t, err, "renewalGP must be 0 to 365; maxHorizon must be 1 to 10", "every fault, named")
 }

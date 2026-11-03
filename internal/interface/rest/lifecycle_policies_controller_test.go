@@ -32,12 +32,18 @@ func lifecyclePoliciesRouter(t *testing.T, scopes ...string) (*gin.Engine, *mems
 }
 
 func TestLifecyclePoliciesRequirePermission(t *testing.T) {
-	// The EPP policy permission does not reach the lifecycle policies.
+	// Neither the EPP policy nor the platform registry permission reaches a
+	// change to the lifecycle policies; reading them needs no permission,
+	// since whoever edits a phase picks from them.
 	r, _ := lifecyclePoliciesRouter(t, ScopeEPPPolicyAdmin, ScopeRegistryPlatformAdmin)
-	for _, m := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+	for _, m := range []string{http.MethodPut, http.MethodDelete} {
 		w := do(r, m, "/lifecycle-policies/gtld-standard", "{}")
 		assert.Equal(t, http.StatusForbidden, w.Code, m)
 		assert.Contains(t, w.Body.String(), ScopeRegistryPolicyAdmin)
+	}
+	for _, p := range []string{"/lifecycle-policies", "/lifecycle-policies/gtld-standard"} {
+		w := do(r, http.MethodGet, p, "")
+		assert.Equal(t, http.StatusOK, w.Code, p)
 	}
 }
 

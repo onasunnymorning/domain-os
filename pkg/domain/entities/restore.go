@@ -191,7 +191,10 @@ func (d *Domain) CompleteRestore(report *RestoreReport, phase *Phase, now time.T
 		return 0, errors.Join(ErrInvalidRenewal, ErrPhaseNotProvided)
 	case !d.Status.PendingRestore:
 		return 0, fmt.Errorf("%w: request a restore first", ErrRestoreNotPending)
-	case d.RestoreLapsed(now):
+	// The deadline is the report's: a restore completed without one (the
+	// phase waives it) completes with its request, whatever the window,
+	// including a zero-day one.
+	case report != nil && d.RestoreLapsed(now):
 		return 0, fmt.Errorf("%w: the report was due by %s; request a restore again",
 			ErrRestoreNotPending, d.RGPStatus.PendingRestoreEnd.UTC().Format(time.RFC3339))
 	}

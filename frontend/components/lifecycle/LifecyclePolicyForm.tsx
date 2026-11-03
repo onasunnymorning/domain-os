@@ -48,11 +48,17 @@ const settingsSchema = z.object({
     .nullable(),
 });
 
-export const lifecyclePolicySchema = z.object({
-  name: z.string().regex(LIFECYCLE_POLICY_NAME_PATTERN, "1 to 32 lower-case letters, digits and hyphens, starting with a letter"),
-  description: z.string().optional().or(z.literal("")),
-  settings: settingsSchema,
-});
+export const lifecyclePolicySchema = z
+  .object({
+    name: z.string().regex(LIFECYCLE_POLICY_NAME_PATTERN, "1 to 32 lower-case letters, digits and hyphens, starting with a letter"),
+    description: z.string().optional().or(z.literal("")),
+    settings: settingsSchema,
+  })
+  // A report cannot be sent within a zero-day window (the API refuses it too).
+  .refine((v) => !(resolveLifecycle(v.settings).restoreReportRequired && resolveLifecycle(v.settings).pendingRestorePeriod === 0), {
+    message: "A restore report needs a window to be sent in: at least 1 day, or turn the report off",
+    path: ["settings", "pendingRestorePeriod"],
+  });
 
 export type LifecyclePolicyFormValues = z.infer<typeof lifecyclePolicySchema>;
 

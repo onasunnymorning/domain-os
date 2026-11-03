@@ -256,9 +256,14 @@ var inlineLifecycleColumns = []string{
 }
 
 // inlinePhasePolicy is a phase's lifecycle settings as the old columns held
-// them: 0 meant "the default" for every duration but the transfer lock,
-// which was NULL for the default and 0 for no lock; NULL booleans were the
-// default.
+// them, read as the old code read them (so that no phase changes
+// behaviour): registration, renewal, auto-renewal, redemption, pending
+// delete and the horizon were read verbatim, 0 included; the transfer
+// grace, pending transfer and pending restore periods through helpers that
+// took 0 for the default; the transfer lock was NULL for the default and 0
+// for no lock; NULL booleans were the default. A verbatim value the new
+// bounds refuse (a negative period, a zero horizon) fails the migration,
+// naming the phase, rather than being changed silently.
 type inlinePhasePolicy struct {
 	ID                    int64
 	TLDName               string
@@ -287,15 +292,15 @@ func (r inlinePhasePolicy) resolved() entities.ResolvedLifecycle {
 		return v
 	}
 	out := entities.ResolvedLifecycle{
-		RegistrationGP:        orZero(r.RegistrationGP, d.RegistrationGP),
-		RenewalGP:             orZero(r.RenewalGP, d.RenewalGP),
-		AutoRenewalGP:         orZero(r.AutoRenewalGP, d.AutoRenewalGP),
+		RegistrationGP:        r.RegistrationGP,
+		RenewalGP:             r.RenewalGP,
+		AutoRenewalGP:         r.AutoRenewalGP,
 		TransferGP:            orZero(r.TransferGP, d.TransferGP),
 		PendingTransferPeriod: orZero(r.PendingTransferPeriod, d.PendingTransferPeriod),
-		RedemptionGP:          orZero(r.RedemptionGP, d.RedemptionGP),
-		PendingDeleteGP:       orZero(r.PendingDeleteGP, d.PendingDeleteGP),
+		RedemptionGP:          r.RedemptionGP,
+		PendingDeleteGP:       r.PendingDeleteGP,
 		PendingRestorePeriod:  orZero(r.PendingRestorePeriod, d.PendingRestorePeriod),
-		MaxHorizon:            orZero(r.MaxHorizon, d.MaxHorizon),
+		MaxHorizon:            r.MaxHorizon,
 		TransferLockPeriod:    d.TransferLockPeriod,
 		RestoreReportRequired: d.RestoreReportRequired,
 		AllowAutoRenew:        d.AllowAutoRenew,
@@ -346,6 +351,7 @@ func migrateLifecyclePolicies(db *gorm.DB) error {
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", lifecyclePolicyLock).Error; err != nil {
 			return fmt.Errorf("lock lifecycle policies: %w", err)
 		}
+		// NULL in a column GORM read into an int was 0 to the old code too.
 		var rows []inlinePhasePolicy
 		err := tx.Raw(`SELECT id, tld_name, name, COALESCE(registration_gp, 0) AS registration_gp, COALESCE(renewal_gp, 0) AS renewal_gp,
 			COALESCE(auto_renewal_gp, 0) AS auto_renewal_gp, COALESCE(transfer_gp, 0) AS transfer_gp,
@@ -379,7 +385,7 @@ func migrateLifecyclePolicies(db *gorm.DB) error {
 					UpdatedAt:   time.Now().UTC(), UpdatedBy: "migrate",
 				}
 				if err := p.Settings.Validate(); err != nil {
-					return fmt.Errorf("phase %s of %s holds settings no policy may: %w", row.Name, row.TLDName, err)
+					return fmt.Errorf("lifecycle policy migration: phase %s of %s holds settings no policy may, and nothing is changed silently: %w", row.Name, row.TLDName, err)
 				}
 				if err := tx.Create(toLifecycleRecord(p)).Error; err != nil {
 					return fmt.Errorf("create lifecycle policy %s: %w", name, err)

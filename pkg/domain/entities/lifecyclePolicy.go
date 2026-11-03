@@ -217,6 +217,11 @@ func (s LifecycleSettings) Validate() error {
 			bad = append(bad, fmt.Sprintf("%s must be %d to %d", f.name, f.min, f.max))
 		}
 	}
+	// A report cannot be sent within a zero-day window: a policy that
+	// requires one needs a window to send it in.
+	if r := s.Resolve(); r.RestoreReportRequired && r.PendingRestorePeriod == 0 {
+		bad = append(bad, "pendingRestorePeriod must be at least 1 while restoreReportRequired is true")
+	}
 	if len(bad) > 0 {
 		return fmt.Errorf("%w: %s", ErrInvalidLifecyclePolicy, strings.Join(bad, "; "))
 	}

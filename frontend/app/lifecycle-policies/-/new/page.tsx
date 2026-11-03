@@ -2,7 +2,7 @@
 
 import { LifecyclePolicyEditorPage } from "@/components/lifecycle/LifecyclePolicyEditorPage";
 
-/** Its own route, so a policy named "new" stays reachable at /lifecycle-policies/new. */
+/** Under "-", which no policy name may start with, so no policy's own URL (/lifecycle-policies/{name}) can collide with it. */
 export default function NewLifecyclePolicyPage() {
   return <LifecyclePolicyEditorPage creating />;
 }
