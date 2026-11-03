@@ -40,9 +40,10 @@ describe('SessionsTab', () => {
   it('offers End all only with a filter, with the count, and sends the filter', async () => {
     vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams('tab=sessions&clid=acme-rar') as any);
     render(<SessionsTab active />);
-    const btn = await screen.findByRole('button', { name: /end all 1 matching/i });
+    const btn = await screen.findByRole('button', { name: /end all matching/i });
     fireEvent.click(btn);
-    fireEvent.click(screen.getByRole('button', { name: /^end sessions$/i }));
+    expect(screen.getByText(/not only the 1 listed here/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^end all matching$/i }));
     await waitFor(() => expect(endMatching).toHaveBeenCalledWith({ clid: 'acme-rar' }));
   });
 

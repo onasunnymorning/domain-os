@@ -57,7 +57,7 @@ export function RegistrarEPPTab({ clid }: { clid: string }) {
         moreSessions={moreSessions}
         isLoading={access.isLoading}
         onEndAllSessions={() =>
-          setEndTarget({ kind: "matching", filter: { clid }, count: sessionCount ?? 0, label: `of registrar ${clid}` })
+          setEndTarget({ kind: "matching", filter: { clid }, listed: sessionCount ?? 0, label: `of registrar ${clid}` })
         }
       />
 

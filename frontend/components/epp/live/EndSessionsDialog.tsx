@@ -16,7 +16,13 @@ import type { EPPSessionListParams } from "@/lib/types/epp";
 
 export type EndSessionsTarget =
   | { kind: "one"; id: string; label: string }
-  | { kind: "matching"; filter: Pick<EPPSessionListParams, "clid" | "login" | "client_ip" | "credential_id">; count: number; label: string };
+  | {
+      kind: "matching";
+      filter: Pick<EPPSessionListParams, "clid" | "login" | "client_ip" | "credential_id">;
+      /** How many are listed on the current page: a lower bound, never the total. The API ends every match. */
+      listed: number;
+      label: string;
+    };
 
 /**
  * Ends one session, or every session a filter matches. Says what the API
@@ -49,9 +55,14 @@ export function EndSessionsDialog({ target, onOpenChange }: { target: EndSession
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {target?.kind === "one" ? `End session of ${target.label}?` : `End ${target?.count ?? 0}${target?.count === 50 ? "+" : ""} sessions ${target?.label ?? ""}?`}
+            {target?.kind === "one" ? `End session of ${target.label}?` : `End every session ${target?.label ?? ""}?`}
           </AlertDialogTitle>
           <AlertDialogDescription>
+            {target?.kind === "matching" && (
+              <>
+                Every matching session on every node is ended, not only the {target.listed} listed here.{" "}
+              </>
+            )}
             The registrar&apos;s client is disconnected and can log in again at once. The API accepts the request; the
             node holding the session closes it within moments. Nothing else changes: no credential is retired.
           </AlertDialogDescription>
@@ -66,7 +77,7 @@ export function EndSessionsDialog({ target, onOpenChange }: { target: EndSession
             disabled={pending}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            {pending ? "Ending…" : target?.kind === "one" ? "End session" : "End sessions"}
+            {pending ? "Ending…" : target?.kind === "one" ? "End session" : "End all matching"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

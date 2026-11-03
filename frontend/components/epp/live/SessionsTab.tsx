@@ -78,10 +78,9 @@ export function SessionsTab({ active }: { active: boolean }) {
             <Button
               size="sm"
               variant="destructive"
-              onClick={() => setTarget({ kind: "matching", filter, count: rows.length, label: describeFilter(filter) })}
+              onClick={() => setTarget({ kind: "matching", filter, listed: rows.length, label: describeFilter(filter) })}
             >
-              End all {rows.length}
-              {next ? "+" : ""} matching
+              End all matching
             </Button>
           ) : undefined
         }

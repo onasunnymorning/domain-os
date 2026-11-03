@@ -5,6 +5,12 @@ import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRegistrarEPPCreateOutcomes } from "@/lib/hooks/useEPP";
 
+/** The API's day is midnight UTC; label it by its UTC calendar date, whatever the browser's zone. */
+export function utcDayLabel(day: string): string {
+  const d = new Date(day);
+  return format(new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()), "MMM d");
+}
+
 /**
  * Domain creates per UTC day over the last 30 days: created, and refused
  * because the name was taken (the failed-create budget's count). Rendered
@@ -18,7 +24,7 @@ export function CreateOutcomesChart({ clid }: { clid: string }) {
   const data = rows
     .slice()
     .sort((a, b) => a.day.localeCompare(b.day))
-    .map((r) => ({ day: format(new Date(r.day), "MMM d"), Created: r.succeeded, "Refused, name taken": r.failed }));
+    .map((r) => ({ day: utcDayLabel(r.day), Created: r.succeeded, "Refused, name taken": r.failed }));
   return (
     <div className="space-y-2">
       <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Domain creates, last 30 days</div>
@@ -30,8 +36,9 @@ export function CreateOutcomesChart({ clid }: { clid: string }) {
             <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
             <Tooltip />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="Created" stackId="a" fill="hsl(var(--primary))" />
-            <Bar dataKey="Refused, name taken" stackId="a" fill="hsl(var(--muted-foreground))" opacity={0.6} />
+            {/* The theme's variables are complete colours (oklch), used as they are. */}
+            <Bar dataKey="Created" stackId="a" fill="var(--primary)" />
+            <Bar dataKey="Refused, name taken" stackId="a" fill="var(--muted-foreground)" opacity={0.6} />
           </BarChart>
         </ResponsiveContainer>
       </div>
