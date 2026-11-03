@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RetireCredentialDialog, type RetireTarget } from "@/components/epp/RetireCredentialDialog";
+import { EndSessionsDialog, type EndSessionsTarget } from "@/components/epp/live/EndSessionsDialog";
+import { CreateOutcomesChart } from "./CreateOutcomesChart";
 import {
   useEPPAccess,
   useEPPLockouts,
@@ -29,6 +31,7 @@ export function RegistrarEPPTab({ clid }: { clid: string }) {
   const suspensions = useEPPSuspensions(clid);
   const sessions = useEPPSessions({ clid, pagesize: 100 });
   const [retireTarget, setRetireTarget] = useState<RetireTarget | null>(null);
+  const [endTarget, setEndTarget] = useState<EndSessionsTarget | null>(null);
 
   if (access.error) {
     return (
@@ -46,12 +49,16 @@ export function RegistrarEPPTab({ clid }: { clid: string }) {
   return (
     <div className="space-y-6">
       <EPPStatusStrip
+        clid={clid}
         access={access.data}
         lockouts={{ data: lockouts.data, error: lockouts.error, isLoading: lockouts.isLoading }}
         suspensions={{ data: suspensions.data, error: suspensions.error, isLoading: suspensions.isLoading }}
         sessionCount={sessionCount}
         moreSessions={moreSessions}
         isLoading={access.isLoading}
+        onEndAllSessions={() =>
+          setEndTarget({ kind: "matching", filter: { clid }, listed: sessionCount ?? 0, label: `of registrar ${clid}` })
+        }
       />
 
       {access.isLoading || !access.data ? (
@@ -79,9 +86,12 @@ export function RegistrarEPPTab({ clid }: { clid: string }) {
         </>
       )}
 
-      <EPPLimitsSection clid={clid} policy={policy.data} isLoading={policy.isLoading} error={policy.error} />
+      <EPPLimitsSection clid={clid} policy={policy.data} isLoading={policy.isLoading} error={policy.error}>
+        <CreateOutcomesChart clid={clid} />
+      </EPPLimitsSection>
 
       <RetireCredentialDialog clid={clid} target={retireTarget} onOpenChange={(v) => !v && setRetireTarget(null)} />
+      <EndSessionsDialog target={endTarget} onOpenChange={(v) => !v && setEndTarget(null)} />
     </div>
   );
 }

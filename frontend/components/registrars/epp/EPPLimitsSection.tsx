@@ -28,11 +28,14 @@ export function EPPLimitsSection({
   policy,
   isLoading,
   error,
+  children,
 }: {
   clid: string;
   policy?: EPPRegistrarPolicy;
   isLoading: boolean;
   error?: unknown;
+  /** Rendered under the limits, e.g. the create-outcomes chart. */
+  children?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<string>("");
@@ -120,6 +123,7 @@ export function EPPLimitsSection({
             </div>
           </>
         )}
+        {children}
       </CardContent>
 
       <Dialog open={open} onOpenChange={setOpen}>
