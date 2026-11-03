@@ -64,17 +64,8 @@ export function PhasePolicySection({ phase, tldName, onRefetch }: PhasePolicySec
     setEditedPolicy({ ...editedPolicy, [field]: value });
   };
 
-  // Grace period data for visual bars
-  const gracePeriods = [
-    { key: 'registrationGP' as const, label: 'Registration', value: policy.registrationGP },
-    { key: 'renewalGP' as const, label: 'Renewal', value: policy.renewalGP },
-    { key: 'autoRenewalGP' as const, label: 'Auto Renewal', value: policy.autoRenewalGP },
-    { key: 'transferGP' as const, label: 'Transfer', value: policy.transferGP },
-    { key: 'redemptionGP' as const, label: 'Redemption', value: policy.redemptionGP },
-    { key: 'pendingdeleteGP' as const, label: 'Pending Delete', value: policy.pendingdeleteGP },
-  ];
-
-  const maxGP = Math.max(...gracePeriods.map(gp => gp.value || 0), 1);
+  const labelsInvalid =
+    isEditing && !!editedPolicy && (editedPolicy.minLabelLength ?? 1) > (editedPolicy.maxLabelLength ?? 63);
 
   return (
     <div className="space-y-4">
@@ -82,7 +73,7 @@ export function PhasePolicySection({ phase, tldName, onRefetch }: PhasePolicySec
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Settings className="h-4 w-4 text-orange-600" />
-          <span className="text-sm font-semibold">Policy</span>
+          <span className="text-sm font-semibold">Phase settings</span>
         </div>
         {!isEditing ? (
           <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleEdit}>
@@ -90,7 +81,7 @@ export function PhasePolicySection({ phase, tldName, onRefetch }: PhasePolicySec
           </Button>
         ) : (
           <div className="flex gap-1.5">
-            <Button size="sm" className="h-7 text-xs" onClick={handleSave} disabled={isSaving}>
+            <Button size="sm" className="h-7 text-xs" onClick={handleSave} disabled={isSaving || labelsInvalid}>
               {isSaving ? 'Saving...' : 'Save'}
             </Button>
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleCancel} disabled={isSaving}>
@@ -125,143 +116,19 @@ export function PhasePolicySection({ phase, tldName, onRefetch }: PhasePolicySec
             <span className="text-xs text-muted-foreground">chars</span>
           </div>
         )}
-      </div>
-
-      {/* Grace Periods — visual bar chart */}
-      <div className="space-y-2">
-        <div className="text-xs font-medium text-orange-700 dark:text-orange-400">Grace Periods</div>
-        <div className="space-y-1.5">
-          {gracePeriods.map((gp) => {
-            const val = isEditing ? (editedPolicy?.[gp.key] ?? 0) : (gp.value ?? 0);
-            const barWidth = maxGP > 0 ? (val / maxGP) * 100 : 0;
-
-            return (
-              <div key={gp.key} className="flex items-center gap-2">
-                <div className="w-24 text-xs text-muted-foreground truncate">{gp.label}</div>
-                {!isEditing ? (
-                  <>
-                    <div className="flex-1 h-4 bg-muted/40 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-orange-400/70 to-orange-500/70 rounded-full transition-all duration-300"
-                        style={{ width: `${barWidth}%` }}
-                      />
-                    </div>
-                    <div className="w-12 text-xs font-mono text-right tabular-nums">{val}d</div>
-                  </>
-                ) : (
-                  <>
-                    <input
-                      type="number"
-                      min="0"
-                      value={val}
-                      onChange={(e) => handleChange(gp.key, parseInt(e.target.value) || 0)}
-                      className="w-16 px-2 py-1 border rounded text-sm bg-background text-center"
-                    />
-                    <span className="text-xs text-muted-foreground">days</span>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        {labelsInvalid && (
+          <p className="text-[11px] text-red-700 dark:text-red-400 mt-1">The minimum cannot be above the maximum.</p>
+        )}
       </div>
 
       {/* Rules (toggles) */}
       <div className="grid grid-cols-2 gap-3">
-        {/* Transfer Lock */}
-        <div className="rounded-lg bg-muted/30 border border-border/40 p-3 space-y-1">
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Transfer Lock</div>
-          {!isEditing ? (
-            <div className="font-semibold">{policy.transferLockPeriod ?? 0} days</div>
-          ) : (
-            <div className="flex items-center gap-1">
-              <input
-                type="number" min="0"
-                value={editedPolicy?.transferLockPeriod ?? 0}
-                onChange={(e) => handleChange('transferLockPeriod', parseInt(e.target.value) || 0)}
-                className="w-16 px-2 py-1 border rounded text-sm bg-background text-center"
-              />
-              <span className="text-xs text-muted-foreground">days</span>
-            </div>
-          )}
-        </div>
-
-        {/* Pending Transfer */}
-        <div className="rounded-lg bg-muted/30 border border-border/40 p-3 space-y-1">
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Pending Transfer</div>
-          {!isEditing ? (
-            <div className="font-semibold">{policy.pendingTransferPeriod || 5} days</div>
-          ) : (
-            <div className="flex items-center gap-1">
-              <input
-                type="number" min="1"
-                value={editedPolicy?.pendingTransferPeriod || 5}
-                onChange={(e) => handleChange('pendingTransferPeriod', parseInt(e.target.value) || 5)}
-                className="w-16 px-2 py-1 border rounded text-sm bg-background text-center"
-              />
-              <span className="text-xs text-muted-foreground">days</span>
-            </div>
-          )}
-        </div>
-
-        {/* Pending Restore: days to send the restore report (RFC 3915) */}
-        <div className="rounded-lg bg-muted/30 border border-border/40 p-3 space-y-1">
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Pending Restore</div>
-          {!isEditing ? (
-            <div className="font-semibold">{policy.pendingRestorePeriod || 7} days</div>
-          ) : (
-            <div className="flex items-center gap-1">
-              <input
-                type="number" min="1"
-                value={editedPolicy?.pendingRestorePeriod || 7}
-                onChange={(e) => handleChange('pendingRestorePeriod', parseInt(e.target.value) || 7)}
-                className="w-16 px-2 py-1 border rounded text-sm bg-background text-center"
-              />
-              <span className="text-xs text-muted-foreground">days</span>
-            </div>
-          )}
-        </div>
-
-        {/* Max Horizon */}
-        <div className="rounded-lg bg-muted/30 border border-border/40 p-3 space-y-1">
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Max Horizon</div>
-          {!isEditing ? (
-            <div className="font-semibold">{policy.maxHorizon || 0} years</div>
-          ) : (
-            <div className="flex items-center gap-1">
-              <input
-                type="number" min="0"
-                value={editedPolicy?.maxHorizon || 0}
-                onChange={(e) => handleChange('maxHorizon', parseInt(e.target.value) || 0)}
-                className="w-16 px-2 py-1 border rounded text-sm bg-background text-center"
-              />
-              <span className="text-xs text-muted-foreground">years</span>
-            </div>
-          )}
-        </div>
-
-        {/* Allow Autorenew */}
-        <ToggleField
-          label="Allow Autorenew"
-          value={isEditing ? editedPolicy?.allowAutorenew : policy.allowAutorenew}
-          isEditing={isEditing}
-          onChange={(v) => handleChange('allowAutorenew', v)}
-        />
-
         {/* Requires Validation */}
         <ToggleField
           label="Requires Validation"
           value={isEditing ? editedPolicy?.requiresValidation : policy.requiresValidation}
           isEditing={isEditing}
           onChange={(v) => handleChange('requiresValidation', v)}
-        />
-
-        {/* Restore Report Required: unset means required (the .com behaviour) */}
-        <ToggleField
-          label="Restore Report Required"
-          value={(isEditing ? editedPolicy?.restoreReportRequired : policy.restoreReportRequired) ?? true}
-          isEditing={isEditing}
-          onChange={(v) => handleChange('restoreReportRequired', v)}
         />
 
         {/* Base Currency */}

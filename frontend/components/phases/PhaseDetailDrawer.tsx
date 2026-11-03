@@ -24,6 +24,7 @@ import { PhaseDateSection } from './sections/PhaseDateSection';
 import { PhasePricingSection } from './sections/PhasePricingSection';
 import { PhaseFeeSection } from './sections/PhaseFeeSection';
 import { PhasePolicySection } from './sections/PhasePolicySection';
+import { PhaseLifecycleSection } from './sections/PhaseLifecycleSection';
 import { PhaseMetadataSection } from './sections/PhaseMetadataSection';
 import { PhaseConfigDiff } from './PhaseConfigDiff';
 
@@ -142,7 +143,17 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
               {/* Divider */}
               <div className="border-t" />
 
-              {/* Policy Section */}
+              {/* Lifecycle policy: which named policy the phase follows, resolved */}
+              <PhaseLifecycleSection
+                phase={phaseData}
+                tldName={tldName || ''}
+                onRefetch={handleRefetch}
+              />
+
+              {/* Divider */}
+              <div className="border-t" />
+
+              {/* Phase settings: labels, validation, currency, contact data */}
               <PhasePolicySection
                 phase={phaseData}
                 tldName={tldName || ''}

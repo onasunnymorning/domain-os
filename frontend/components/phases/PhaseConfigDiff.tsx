@@ -1,6 +1,8 @@
 'use client';
 
 import { Phase, Price, Fee } from '@/lib/types/phase';
+import type { ResolvedLifecycle } from '@/lib/types/lifecycle';
+import { STANDARD_LIFECYCLE } from '@/lib/constants/lifecycleDefaults';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ArrowRight, Plus, Minus, AlertCircle } from 'lucide-react';
@@ -32,22 +34,26 @@ export function PhaseConfigDiff({ phase, compareWith }: PhaseConfigDiffProps) {
     old: any;
     new: any;
     type: 'added' | 'removed' | 'changed';
-    category: 'policy' | 'pricing' | 'fees';
+    category: 'lifecycle' | 'policy' | 'pricing' | 'fees';
   }> = [];
+
+  // Compare the lifecycle: the policy named, then each resolved setting, so a
+  // roll to another policy shows what actually changes for domains.
+  if (compareWith.lifecyclePolicyName !== phase.lifecyclePolicyName) {
+    changes.push({ field: 'lifecyclePolicy', old: compareWith.lifecyclePolicyName, new: phase.lifecyclePolicyName, type: 'changed', category: 'lifecycle' });
+  }
+  const oldLifecycle: ResolvedLifecycle = compareWith.lifecyclePolicy?.resolved ?? STANDARD_LIFECYCLE;
+  const newLifecycle: ResolvedLifecycle = phase.lifecyclePolicy?.resolved ?? STANDARD_LIFECYCLE;
+  (Object.keys(newLifecycle) as Array<keyof ResolvedLifecycle>).forEach((field) => {
+    if (oldLifecycle[field] !== newLifecycle[field]) {
+      changes.push({ field, old: oldLifecycle[field], new: newLifecycle[field], type: 'changed', category: 'lifecycle' });
+    }
+  });
 
   // Compare policy fields
   const policyFields: Array<keyof typeof phase.policy> = [
     'minLabelLength',
     'maxLabelLength',
-    'registrationGP',
-    'renewalGP',
-    'autoRenewalGP',
-    'transferGP',
-    'redemptionGP',
-    'pendingdeleteGP',
-    'transferLockPeriod',
-    'maxHorizon',
-    'allowAutorenew',
     'requiresValidation',
     'baseCurrency',
   ];
@@ -225,6 +231,7 @@ export function PhaseConfigDiff({ phase, compareWith }: PhaseConfigDiffProps) {
     return value;
   };
 
+  const lifecycleChanges = changes.filter(c => c.category === 'lifecycle');
   const policyChanges = changes.filter(c => c.category === 'policy');
   const pricingChanges = changes.filter(c => c.category === 'pricing');
   const feeChanges = changes.filter(c => c.category === 'fees');
@@ -245,6 +252,31 @@ export function PhaseConfigDiff({ phase, compareWith }: PhaseConfigDiffProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Lifecycle Changes */}
+        {lifecycleChanges.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide">
+              Lifecycle Changes ({lifecycleChanges.length})
+            </div>
+            {lifecycleChanges.map((change, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between text-sm p-2 rounded-lg border"
+              >
+                <div className="flex items-center gap-2">
+                  <ArrowRight className="h-3 w-3 text-orange-600" />
+                  <span className="font-medium">{formatFieldName(change.field)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground line-through">{formatValue(change.old, 'lifecycle')}</span>
+                  <ArrowRight className="h-3 w-3" />
+                  <span className="font-medium">{formatValue(change.new, 'lifecycle')}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Policy Changes */}
         {policyChanges.length > 0 && (
           <div className="space-y-2">

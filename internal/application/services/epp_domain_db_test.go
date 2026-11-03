@@ -92,7 +92,7 @@ func newEPPFixture(t *testing.T) *eppFixture {
 	require.NoError(t, err)
 	_, err = NewTLDService(tldRepo, postgres.NewGormDNSRecordRepository(db)).CreateTLD(ctx, &commands.CreateTLDCommand{Name: tld, RyID: ry})
 	require.NoError(t, err)
-	_, err = NewPhaseService(phaseRepo, tldRepo, events).CreatePhase(ctx, &commands.CreatePhaseCommand{
+	_, err = NewPhaseService(phaseRepo, tldRepo, postgres.NewLifecyclePolicyRepository(db), events).CreatePhase(ctx, &commands.CreatePhaseCommand{
 		Name: "GA1", Type: "GA", Starts: time.Now().UTC().AddDate(0, 0, -1), TLDName: tld})
 	require.NoError(t, err)
 

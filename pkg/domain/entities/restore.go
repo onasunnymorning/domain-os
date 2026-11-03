@@ -45,7 +45,7 @@ import (
 // (ApplyDepositEndOfLife): a pending restore's report is due on this
 // registry.
 //
-// A phase may waive the report (PhasePolicy.RestoreReportRequired false,
+// A phase may waive the report (LifecyclePolicy.RestoreReportRequired false,
 // as registries that do not require one do): the request then restores the
 // domain at once.
 
@@ -169,7 +169,7 @@ func (d *Domain) RequestRestore(phase *Phase, now time.Time) error {
 			ErrDomainRestoreNotAllowed, d.RGPStatus.RedemptionPeriodEnd.UTC().Format(time.RFC3339))
 	}
 	d.Status.PendingRestore = true
-	d.RGPStatus.PendingRestoreEnd = now.AddDate(0, 0, phase.Policy.PendingRestoreDays())
+	d.RGPStatus.PendingRestoreEnd = now.AddDate(0, 0, phase.Lifecycle().PendingRestoreDays())
 	return d.Status.Validate()
 }
 
@@ -249,7 +249,7 @@ func (d *Domain) RevertRestore(now time.Time) error {
 // status; an EPP pendingDelete with none of these RGP statuses counts as
 // redemptionPeriod, the longer reading of what is unknown. Other domains are
 // left as they are.
-func (d *Domain) ApplyDepositEndOfLife(rgpStatuses []string, policy *PhasePolicy, now time.Time) {
+func (d *Domain) ApplyDepositEndOfLife(rgpStatuses []string, policy *LifecyclePolicy, now time.Time) {
 	has := map[string]bool{}
 	for _, s := range rgpStatuses {
 		has[strings.ToLower(strings.TrimSpace(s))] = true
@@ -263,13 +263,13 @@ func (d *Domain) ApplyDepositEndOfLife(rgpStatuses []string, policy *PhasePolicy
 		d.Status.PendingRestore = true
 		fallthrough
 	case redemption || (d.Status.PendingDelete && !pastRedemption):
-		d.RGPStatus.RedemptionPeriodEnd = now.AddDate(0, 0, policy.RedemptionGP)
+		d.RGPStatus.RedemptionPeriodEnd = now.AddDate(0, 0, policy.RedemptionDays())
 	case pastRedemption:
 		d.RGPStatus.RedemptionPeriodEnd = now
 	default:
 		return
 	}
 	d.Status.PendingDelete = true
-	d.RGPStatus.PurgeDate = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, policy.PendingDeleteGP)
+	d.RGPStatus.PurgeDate = d.RGPStatus.RedemptionPeriodEnd.AddDate(0, 0, policy.PendingDeleteDays())
 	d.UnSetOKStatusIfNeeded()
 }

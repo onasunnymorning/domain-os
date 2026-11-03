@@ -12,6 +12,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"gorm.io/gorm"
 )
 
 // TestEPPDomainTransferOverPostgres runs a transfer through DomainService
@@ -34,7 +35,7 @@ func TestEPPDomainTransferOverPostgres(t *testing.T) {
 	require.NoError(t, NewAccreditationService(postgres.NewAccreditationRepository(db), postgres.NewGormRegistrarRepository(db), f.tldRepo, f.events).
 		CreateAccreditation(ctx, tld, rar2))
 	// No transfer lock, as for an RST TLD: the domain is transferable at once.
-	require.NoError(t, db.Exec("UPDATE phases SET transfer_lock_period = 0 WHERE tld_name = ?", tld).Error)
+	noLock(t, db, tld)
 
 	const code = "Tr4nsf3r-C0de-Xq9#Lm2!" // #nosec G101 -- a test fixture's authInfo, not a credential
 	name, other := "move."+tld, "other."+tld
@@ -205,7 +206,7 @@ func TestTransferAutoApprovalOverPostgres(t *testing.T) {
 	polls := NewEPPPollService(transfers)
 	require.NoError(t, NewAccreditationService(postgres.NewAccreditationRepository(db), postgres.NewGormRegistrarRepository(db), f.tldRepo, f.events).
 		CreateAccreditation(ctx, tld, rar2))
-	require.NoError(t, db.Exec("UPDATE phases SET transfer_lock_period = 0 WHERE tld_name = ?", tld).Error)
+	noLock(t, db, tld)
 
 	const code = "Tr4nsf3r-C0de-Xq9#Lm2!" // #nosec G101 -- a test fixture's authInfo, not a credential
 	due, notDue, gone := "due."+tld, "later."+tld, "gone."+tld
@@ -311,4 +312,16 @@ func dueNames(due []DueTransfer) []string {
 		out[i] = d.DomainName
 	}
 	return out
+}
+
+// noLock gives tld's phases a lifecycle policy without a transfer lock, so
+// a domain just created can be transferred at once.
+func noLock(t *testing.T, db *gorm.DB, tld string) {
+	t.Helper()
+	zero := 0
+	policy, err := entities.NewLifecyclePolicy("nolock-"+tld, "", entities.LifecycleSettings{TransferLockPeriod: &zero})
+	require.NoError(t, err)
+	policy.UpdatedAt = time.Now().UTC()
+	require.NoError(t, postgres.NewLifecyclePolicyRepository(db).SavePolicy(context.Background(), policy, func(*entities.LifecyclePolicy) ([]entities.DomainEvent, error) { return nil, nil }))
+	require.NoError(t, db.Exec("UPDATE phases SET lifecycle_policy_name = ? WHERE tld_name = ?", policy.Name, tld).Error)
 }

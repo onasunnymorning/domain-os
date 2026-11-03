@@ -1450,7 +1450,7 @@ func (svc *DomainService) CanAutoRenew(ctx context.Context, domainName string) (
 	}
 
 	// Check if the current GA (General Availability) phase policy allows auto-renewal.
-	if phase.Policy.AllowAutoRenew != nil && !*phase.Policy.AllowAutoRenew {
+	if !phase.Lifecycle().AutoRenewAllowed() {
 		return false, nil
 	}
 
@@ -1495,7 +1495,7 @@ func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, year
 	if err != nil {
 		return nil, err
 	}
-	if phase.Policy.AllowAutoRenew != nil && !*phase.Policy.AllowAutoRenew {
+	if !phase.Lifecycle().AutoRenewAllowed() {
 		return nil, ErrAutoRenewNotEnabledTLD
 	}
 
@@ -2365,7 +2365,7 @@ func (svc *DomainService) BatchAutoRenewDomains(ctx context.Context, names []str
 		}
 
 		// Check if phase allows auto-renew
-		if phase.Policy.AllowAutoRenew != nil && !*phase.Policy.AllowAutoRenew {
+		if !phase.Lifecycle().AutoRenewAllowed() {
 			for _, n := range tldNames {
 				result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: ErrAutoRenewNotEnabledTLD.Error()})
 			}
@@ -2656,7 +2656,7 @@ func (svc *DomainService) PartitionExpiredDomains(ctx context.Context, names []s
 		}
 
 		// Phase policy must allow auto-renew
-		if pl.phase.Policy.AllowAutoRenew != nil && !*pl.phase.Policy.AllowAutoRenew {
+		if !pl.phase.Lifecycle().AutoRenewAllowed() {
 			result.EligibleForExpiry = append(result.EligibleForExpiry, name)
 			continue
 		}

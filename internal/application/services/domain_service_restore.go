@@ -84,7 +84,7 @@ func (s *DomainService) RequestRestoreAsRead(ctx context.Context, dom *entities.
 	if err := dom.RequestRestore(phase, now); err != nil {
 		return nil, err
 	}
-	if !phase.Policy.RequiresRestoreReport() {
+	if !phase.Lifecycle().RequiresRestoreReport() {
 		return s.completeRestore(ctx, before, dom, nil, phase, actor, now, true)
 	}
 	// A restore the registry cannot price is refused now, not at the

@@ -20,7 +20,11 @@ func AutoMigrate(db *gorm.DB) error {
 	if err := migrateContactDisclose(db); err != nil {
 		return err
 	}
+	if err := prepareLifecyclePolicies(db); err != nil {
+		return err
+	}
 	err := db.AutoMigrate(
+		&LifecyclePolicyRecord{},
 		&IANARegistrar{},
 		&Spec5Label{},
 		&RegistryOperator{},
@@ -80,6 +84,9 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 	if err := migrateLegacyPendingRestores(db); err != nil {
+		return err
+	}
+	if err := migrateLifecyclePolicies(db); err != nil {
 		return err
 	}
 	if err := seedEPPPolicies(db); err != nil {

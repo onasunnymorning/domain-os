@@ -377,6 +377,7 @@ func deriveDomainRGPPhase(dom *entities.Domain) (phase, endDate string) {
 // mapPhaseToOutput converts a domain Phase entity to a PhaseOutput struct.
 // This mirrors the MCP server's mapPhase function.
 func mapPhaseToOutput(p *entities.Phase) mcp.PhaseOutput {
+	lc := p.Lifecycle().Resolved()
 	out := mcp.PhaseOutput{
 		Name:   p.Name.String(),
 		Type:   string(p.Type),
@@ -384,18 +385,19 @@ func mapPhaseToOutput(p *entities.Phase) mcp.PhaseOutput {
 		Policy: mcp.PolicyOutput{
 			MinLabelLength:        p.Policy.MinLabelLength,
 			MaxLabelLength:        p.Policy.MaxLabelLength,
-			RegistrationGP:        p.Policy.RegistrationGP,
-			RenewalGP:             p.Policy.RenewalGP,
-			AutoRenewalGP:         p.Policy.AutoRenewalGP,
-			TransferGP:            p.Policy.TransferGraceDays(),
-			RedemptionGP:          p.Policy.RedemptionGP,
-			PendingDeleteGP:       p.Policy.PendingDeleteGP,
-			PendingTransferPeriod: p.Policy.PendingTransferDays(),
-			TransferLockPeriod:    p.Policy.TransferLockDays(),
-			PendingRestorePeriod:  p.Policy.PendingRestoreDays(),
-			RestoreReportRequired: p.Policy.RequiresRestoreReport(),
-			MaxHorizon:            p.Policy.MaxHorizon,
-			AllowAutoRenew:        p.Policy.AllowAutoRenew,
+			LifecyclePolicy:       p.LifecyclePolicyName,
+			RegistrationGP:        lc.RegistrationGP,
+			RenewalGP:             lc.RenewalGP,
+			AutoRenewalGP:         lc.AutoRenewalGP,
+			TransferGP:            lc.TransferGP,
+			RedemptionGP:          lc.RedemptionGP,
+			PendingDeleteGP:       lc.PendingDeleteGP,
+			PendingTransferPeriod: lc.PendingTransferPeriod,
+			TransferLockPeriod:    lc.TransferLockPeriod,
+			PendingRestorePeriod:  lc.PendingRestorePeriod,
+			RestoreReportRequired: lc.RestoreReportRequired,
+			MaxHorizon:            lc.MaxHorizon,
+			AllowAutoRenew:        &lc.AllowAutoRenew,
 			BaseCurrency:          p.Policy.BaseCurrency,
 		},
 	}

@@ -7,21 +7,10 @@ import (
 )
 
 func TestNewPhasePolicy(t *testing.T) {
-	ar := true
 	rv := false
 	phasePolicy := NewPhasePolicy()
 	assert.Equal(t, MinLabelLength, phasePolicy.MinLabelLength)
 	assert.Equal(t, MaxLabelLength, phasePolicy.MaxLabelLength)
-	assert.Equal(t, RegistrationGP, phasePolicy.RegistrationGP)
-	assert.Equal(t, RenewalGP, phasePolicy.RenewalGP)
-	assert.Equal(t, AutoRenewalGP, phasePolicy.AutoRenewalGP)
-	assert.Equal(t, RedemptionGP, phasePolicy.RedemptionGP)
-	assert.Equal(t, PendingDeleteGP, phasePolicy.PendingDeleteGP)
-	assert.Equal(t, TransferGP, phasePolicy.TransferGP)
-	assert.Equal(t, PendingTransferPeriod, phasePolicy.PendingTransferDays())
-	assert.Equal(t, TransferLockPeriod, phasePolicy.TransferLockDays())
-	assert.Equal(t, MaxHorizon, phasePolicy.MaxHorizon)
-	assert.Equal(t, &ar, phasePolicy.AllowAutoRenew)
 	assert.Equal(t, &rv, phasePolicy.RequiresValidation)
 	assert.Equal(t, BaseCurrency, phasePolicy.BaseCurrency)
 	assert.NotNil(t, phasePolicy.ContactDataPolicy)
@@ -64,7 +53,6 @@ func TestPhasePolicy_UpdatePolicy(t *testing.T) {
 	phasePolicy := NewPhasePolicy()
 
 	// Test case: update all fields
-	ar := false
 	rv := true
 	ContactDataPolicy := ContactDataPolicy{
 		RegistrantContactDataPolicy: ContactDataPolicyTypeMandatory,
@@ -73,94 +61,40 @@ func TestPhasePolicy_UpdatePolicy(t *testing.T) {
 		BillingContactDataPolicy:    ContactDataPolicyTypeOptional,
 	}
 	newPolicy := &PhasePolicy{
-		MinLabelLength:        2,
-		MaxLabelLength:        64,
-		RegistrationGP:        6,
-		RenewalGP:             6,
-		AutoRenewalGP:         46,
-		TransferGP:            6,
-		RedemptionGP:          31,
-		PendingDeleteGP:       6,
-		TransferLockPeriod:    intPtr(61),
-		PendingTransferPeriod: 4,
-		MaxHorizon:            11,
-		AllowAutoRenew:        &ar,
-		RequiresValidation:    &rv,
-		BaseCurrency:          "EUR",
-		ContactDataPolicy:     ContactDataPolicy,
+		MinLabelLength:     2,
+		MaxLabelLength:     64,
+		RequiresValidation: &rv,
+		BaseCurrency:       "EUR",
+		ContactDataPolicy:  ContactDataPolicy,
 	}
 	phasePolicy.UpdatePolicy(newPolicy)
 	assert.Equal(t, newPolicy.MinLabelLength, phasePolicy.MinLabelLength)
 	assert.Equal(t, newPolicy.MaxLabelLength, phasePolicy.MaxLabelLength)
-	assert.Equal(t, newPolicy.RegistrationGP, phasePolicy.RegistrationGP)
-	assert.Equal(t, newPolicy.RenewalGP, phasePolicy.RenewalGP)
-	assert.Equal(t, newPolicy.AutoRenewalGP, phasePolicy.AutoRenewalGP)
-	assert.Equal(t, newPolicy.TransferGP, phasePolicy.TransferGP)
-	assert.Equal(t, newPolicy.RedemptionGP, phasePolicy.RedemptionGP)
-	assert.Equal(t, newPolicy.PendingDeleteGP, phasePolicy.PendingDeleteGP)
-	assert.Equal(t, 61, phasePolicy.TransferLockDays())
-	assert.Equal(t, 4, phasePolicy.PendingTransferDays())
-	assert.Equal(t, newPolicy.MaxHorizon, phasePolicy.MaxHorizon)
-	assert.Equal(t, newPolicy.AllowAutoRenew, phasePolicy.AllowAutoRenew)
 	assert.Equal(t, newPolicy.RequiresValidation, phasePolicy.RequiresValidation)
 	assert.Equal(t, newPolicy.BaseCurrency, phasePolicy.BaseCurrency)
-	assert.Equal(t, newPolicy.ContactDataPolicy.RegistrantContactDataPolicy, phasePolicy.ContactDataPolicy.RegistrantContactDataPolicy)
-	assert.Equal(t, newPolicy.ContactDataPolicy.TechContactDataPolicy, phasePolicy.ContactDataPolicy.TechContactDataPolicy)
-	assert.Equal(t, newPolicy.ContactDataPolicy.AdminContactDataPolicy, phasePolicy.ContactDataPolicy.AdminContactDataPolicy)
-	assert.Equal(t, newPolicy.ContactDataPolicy.BillingContactDataPolicy, phasePolicy.ContactDataPolicy.BillingContactDataPolicy)
+	assert.Equal(t, newPolicy.ContactDataPolicy, phasePolicy.ContactDataPolicy)
 
 	// Test case: update some fields
 	phasePolicy = NewPhasePolicy()
-	newPolicy = &PhasePolicy{
-		MinLabelLength: 3,
-		MaxLabelLength: 65,
-		RegistrationGP: 7,
-	}
+	newPolicy = &PhasePolicy{MinLabelLength: 3}
 	phasePolicy.UpdatePolicy(newPolicy)
-	assert.Equal(t, newPolicy.MinLabelLength, phasePolicy.MinLabelLength)
-	assert.Equal(t, newPolicy.MaxLabelLength, phasePolicy.MaxLabelLength)
-	assert.Equal(t, newPolicy.RegistrationGP, phasePolicy.RegistrationGP)
-	assert.Equal(t, phasePolicy.RenewalGP, phasePolicy.RenewalGP)
-	assert.Equal(t, phasePolicy.AutoRenewalGP, phasePolicy.AutoRenewalGP)
-	assert.Equal(t, phasePolicy.TransferGP, phasePolicy.TransferGP)
-	assert.Equal(t, phasePolicy.RedemptionGP, phasePolicy.RedemptionGP)
-	assert.Equal(t, phasePolicy.PendingDeleteGP, phasePolicy.PendingDeleteGP)
-	assert.Equal(t, phasePolicy.TransferLockPeriod, phasePolicy.TransferLockPeriod)
-	assert.Equal(t, phasePolicy.MaxHorizon, phasePolicy.MaxHorizon)
-	assert.Equal(t, phasePolicy.AllowAutoRenew, phasePolicy.AllowAutoRenew)
-	assert.Equal(t, phasePolicy.RequiresValidation, phasePolicy.RequiresValidation)
-	assert.Equal(t, phasePolicy.BaseCurrency, phasePolicy.BaseCurrency)
+	assert.Equal(t, 3, phasePolicy.MinLabelLength)
+	assert.Equal(t, MaxLabelLength, phasePolicy.MaxLabelLength)
+	assert.Equal(t, BaseCurrency, phasePolicy.BaseCurrency)
 
 	// Test case: update no fields
 	phasePolicy = NewPhasePolicy()
-	newPolicy = &PhasePolicy{}
-	phasePolicy.UpdatePolicy(newPolicy)
-	assert.Equal(t, phasePolicy.MinLabelLength, phasePolicy.MinLabelLength)
-	assert.Equal(t, phasePolicy.MaxLabelLength, phasePolicy.MaxLabelLength)
-	assert.Equal(t, phasePolicy.RegistrationGP, phasePolicy.RegistrationGP)
-	assert.Equal(t, phasePolicy.RenewalGP, phasePolicy.RenewalGP)
-	assert.Equal(t, phasePolicy.AutoRenewalGP, phasePolicy.AutoRenewalGP)
-	assert.Equal(t, phasePolicy.TransferGP, phasePolicy.TransferGP)
-	assert.Equal(t, phasePolicy.RedemptionGP, phasePolicy.RedemptionGP)
-	assert.Equal(t, phasePolicy.PendingDeleteGP, phasePolicy.PendingDeleteGP)
-	assert.Equal(t, phasePolicy.TransferLockPeriod, phasePolicy.TransferLockPeriod)
-	assert.Equal(t, phasePolicy.MaxHorizon, phasePolicy.MaxHorizon)
-	assert.Equal(t, phasePolicy.AllowAutoRenew, phasePolicy.AllowAutoRenew)
-	assert.Equal(t, phasePolicy.RequiresValidation, phasePolicy.RequiresValidation)
-	assert.Equal(t, phasePolicy.BaseCurrency, phasePolicy.BaseCurrency)
+	phasePolicy.UpdatePolicy(&PhasePolicy{})
+	assert.Equal(t, NewPhasePolicy(), phasePolicy)
 }
 
-func intPtr(v int) *int { return &v }
-
-// TestPhasePolicy_TransferLockCanBeZero: a lock of 0 days is a setting (no
-// lock, for an RST or OT&E TLD), not "not given".
-func TestPhasePolicy_TransferLockCanBeZero(t *testing.T) {
+func TestPhasePolicy_Validate(t *testing.T) {
 	p := NewPhasePolicy()
-	p.UpdatePolicy(&PhasePolicy{TransferLockPeriod: intPtr(0)})
-	assert.Equal(t, 0, p.TransferLockDays())
-	p.UpdatePolicy(&PhasePolicy{MaxHorizon: 5})
-	assert.Equal(t, 0, p.TransferLockDays(), "a policy update that does not give it leaves it")
-	assert.Equal(t, TransferLockPeriod, (&PhasePolicy{}).TransferLockDays(), "unset: the default")
-	assert.Equal(t, PendingTransferPeriod, (&PhasePolicy{}).PendingTransferDays(), "unset: the default")
-	assert.Equal(t, TransferGP, (&PhasePolicy{}).TransferGraceDays(), "unset (a phase stored before the default existed): the default")
+	assert.NoError(t, p.Validate())
+	p.MinLabelLength, p.MaxLabelLength = 10, 5
+	assert.ErrorIs(t, p.Validate(), ErrInvalidPhasePolicy, "min above max")
+	p.MinLabelLength, p.MaxLabelLength = 0, 5
+	assert.ErrorIs(t, p.Validate(), ErrInvalidPhasePolicy, "min below 1")
+	p.MinLabelLength, p.MaxLabelLength = 1, 64
+	assert.ErrorIs(t, p.Validate(), ErrInvalidPhasePolicy, "max above 63")
 }

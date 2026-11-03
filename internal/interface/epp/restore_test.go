@@ -156,8 +156,10 @@ func TestDomainRestore(t *testing.T) {
 	t.Run("a phase without the report: the request restores", func(t *testing.T) {
 		deleteRestorable(t, c, reg, "quick.test")
 		no := false
-		reg.SetPolicy("test", func(p *entities.PhasePolicy) { p.RestoreReportRequired = &no })
-		t.Cleanup(func() { reg.SetPolicy("test", func(p *entities.PhasePolicy) { p.RestoreReportRequired = nil }) })
+		reg.SetLifecycle("test", func(s *entities.LifecycleSettings) { s.RestoreReportRequired = &no })
+		t.Cleanup(func() {
+			reg.SetLifecycle("test", func(s *entities.LifecycleSettings) { s.RestoreReportRequired = nil })
+		})
 		resp := c.roundTrip(restoreRequestXML("quick.test", "<domain:chg/>"))
 		requireCode(t, resp, "1000")
 		assert.Nil(t, resp.FindElement("//extension"))

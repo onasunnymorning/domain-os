@@ -1,9 +1,14 @@
 package tests
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"time"
+
+	"github.com/onasunnymorning/domain-os/internal/interface/rest"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/request"
@@ -18,6 +23,23 @@ import (
 // Story: manage TLD phases through their full lifecycle
 //
 //	create → list → get → set premium list → update policy → end → delete
+//
+// policyReq performs a lifecycle policy request with the registry:policy:admin
+// permission granted (TestAuthScopesHeader).
+func policyReq(method, path string, body interface{}) *httptest.ResponseRecorder {
+	var payload []byte
+	if body != nil {
+		payload, _ = json.Marshal(body)
+	}
+	req, err := http.NewRequest(method, api.Server.URL+path, bytes.NewReader(payload))
+	Expect(err).NotTo(HaveOccurred())
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(TestAuthScopesHeader, rest.ScopeRegistryPolicyAdmin)
+	resp, err := http.DefaultClient.Do(req)
+	Expect(err).NotTo(HaveOccurred())
+	return toRecorder(resp)
+}
+
 var _ = Describe("PhaseController", Ordered, func() {
 	const (
 		ryID       = "phsTestRyOp"
@@ -254,6 +276,58 @@ var _ = Describe("PhaseController", Ordered, func() {
 		var phase entities.Phase
 		Expect(DecodeJSON(resp, &phase)).To(Succeed())
 		Expect(phase.Policy.MinLabelLength).To(Equal(newMinLabel))
+		Expect(phase.LifecyclePolicyName).To(Equal(entities.LifecyclePolicyStandard), "the phase still names the standard lifecycle")
+		Expect(phase.LifecyclePolicy).NotTo(BeNil(), "resolved in the response")
+	})
+
+	It("should refuse a phase policy whose label lengths are inconsistent", func() {
+		policyCmd := &commands.UpdatePhasePolicyCommand{Policy: &entities.PhasePolicy{MinLabelLength: 10, MaxLabelLength: 5}}
+		resp := api.PUT(fmt.Sprintf("/tlds/%s/phases/%s/policy", tldName, gaName), policyCmd)
+		Expect(resp.Code).To(Equal(http.StatusBadRequest))
+	})
+
+	// ================================================================== //
+	//  Lifecycle policy (ADR 0023)                                        //
+	// ================================================================== //
+
+	It("should name a lifecycle policy on the phase and resolve it", func() {
+		three := 3
+		// Policies are platform-wide: the registry:policy:admin permission, not a tenant.
+		resp := api.PUT("/lifecycle-policies/phs-short", &commands.SaveLifecyclePolicyCommand{Description: "short redemption", Settings: entities.LifecycleSettings{RedemptionGP: &three}})
+		Expect(resp.Code).To(Equal(http.StatusForbidden), "without the permission")
+		resp = policyReq(http.MethodPut, "/lifecycle-policies/phs-short", &commands.SaveLifecyclePolicyCommand{Description: "short redemption", Settings: entities.LifecycleSettings{RedemptionGP: &three}})
+		Expect(resp.Code).To(Equal(http.StatusOK), resp.Body.String())
+
+		resp = api.PUT(fmt.Sprintf("/tlds/%s/phases/%s/lifecycle-policy", tldName, gaName), &commands.SetPhaseLifecyclePolicyCommand{LifecyclePolicy: "phs-short"})
+		Expect(resp.Code).To(Equal(http.StatusOK), resp.Body.String())
+		var phase entities.Phase
+		Expect(DecodeJSON(resp, &phase)).To(Succeed())
+		Expect(phase.LifecyclePolicyName).To(Equal("phs-short"))
+		Expect(phase.Lifecycle().RedemptionDays()).To(Equal(3))
+		Expect(phase.Lifecycle().PendingDeleteDays()).To(Equal(entities.PendingDeleteGP))
+
+		resp = api.GET(fmt.Sprintf("/tlds/%s/phases/%s", tldName, gaName))
+		Expect(resp.Code).To(Equal(http.StatusOK))
+		Expect(DecodeJSON(resp, &phase)).To(Succeed())
+		Expect(phase.LifecyclePolicyName).To(Equal("phs-short"))
+		Expect(phase.LifecyclePolicy).NotTo(BeNil())
+
+		resp = policyReq(http.MethodGet, "/lifecycle-policies/phs-short", nil)
+		Expect(resp.Code).To(Equal(http.StatusOK))
+		var policy entities.LifecyclePolicy
+		Expect(DecodeJSON(resp, &policy)).To(Succeed())
+		Expect(policy.UsedBy).To(ContainElement(entities.LifecyclePolicyUse{TLD: tldName, Phase: gaName}))
+
+		resp = policyReq(http.MethodDelete, "/lifecycle-policies/phs-short", nil)
+		Expect(resp.Code).To(Equal(http.StatusConflict), "named by a phase")
+
+		resp = api.PUT(fmt.Sprintf("/tlds/%s/phases/%s/lifecycle-policy", tldName, gaName), &commands.SetPhaseLifecyclePolicyCommand{LifecyclePolicy: "no-such-policy"})
+		Expect(resp.Code).To(Equal(http.StatusNotFound))
+
+		resp = api.PUT(fmt.Sprintf("/tlds/%s/phases/%s/lifecycle-policy", tldName, gaName), &commands.SetPhaseLifecyclePolicyCommand{LifecyclePolicy: entities.LifecyclePolicyStandard})
+		Expect(resp.Code).To(Equal(http.StatusOK))
+		resp = policyReq(http.MethodDelete, "/lifecycle-policies/phs-short", nil)
+		Expect(resp.Code).To(Equal(http.StatusNoContent))
 	})
 
 	// ================================================================== //

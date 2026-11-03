@@ -34,6 +34,9 @@ import {
   Settings2,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { STANDARD_LIFECYCLE_POLICY } from '@/lib/constants/lifecycleDefaults';
+import { useLifecyclePolicies } from '@/lib/hooks/useLifecyclePolicies';
+import { setPhaseLifecyclePolicy } from '@/lib/api/lifecycle';
 
 // ---------------------------------------------------------------------------
 // State machine
@@ -87,16 +90,8 @@ interface PolicyState {
   techPolicy: ContactPolicyValue;
   adminPolicy: ContactPolicyValue;
   billingPolicy: ContactPolicyValue;
-  useDefaultLifecycle: boolean;
-  registrationGP: number;
-  renewalGP: number;
-  autoRenewalGP: number;
-  transferGP: number;
-  redemptionGP: number;
-  pendingDeleteGP: number;
-  transferLockPeriod: number;
-  maxHorizon: number;
-  allowAutoRenew: boolean;
+  // The lifecycle policy the phase names (ADR 0023); gtld-standard unless chosen.
+  lifecyclePolicy: string;
 }
 
 const DEFAULT_POLICY: PolicyState = {
@@ -105,16 +100,7 @@ const DEFAULT_POLICY: PolicyState = {
   techPolicy: 'optional',
   adminPolicy: 'optional',
   billingPolicy: 'optional',
-  useDefaultLifecycle: true,
-  registrationGP: 5,
-  renewalGP: 5,
-  autoRenewalGP: 45,
-  transferGP: 5,
-  redemptionGP: 30,
-  pendingDeleteGP: 5,
-  transferLockPeriod: 60,
-  maxHorizon: 10,
-  allowAutoRenew: true,
+  lifecyclePolicy: STANDARD_LIFECYCLE_POLICY,
 };
 
 interface WizardState {
@@ -151,7 +137,7 @@ type WizardAction =
   | { type: 'CONTINUE_TO_VALIDATION' }
   | { type: 'SET_VALIDATION'; requires: boolean }
   | { type: 'SET_DATA_POLICY'; registrant: ContactPolicyValue; tech: ContactPolicyValue; admin: ContactPolicyValue; billing: ContactPolicyValue }
-  | { type: 'SET_LIFECYCLE'; policy: Partial<PolicyState> }
+  | { type: 'SET_LIFECYCLE'; lifecyclePolicy: string }
   | { type: 'SUBMIT' }
   | { type: 'SUBMIT_SUCCESS'; name: string; pricingWarning?: string }
   | { type: 'SUBMIT_ERROR'; error: string }
@@ -208,7 +194,7 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
     case 'SET_DATA_POLICY':
       return { ...state, step: 'lifecycle', policy: { ...state.policy, registrantPolicy: action.registrant, techPolicy: action.tech, adminPolicy: action.admin, billingPolicy: action.billing }, error: null };
     case 'SET_LIFECYCLE':
-      return { ...state, step: 'review', policy: { ...state.policy, ...action.policy }, error: null };
+      return { ...state, step: 'review', policy: { ...state.policy, lifecyclePolicy: action.lifecyclePolicy }, error: null };
     case 'SUBMIT':
       return { ...state, step: 'submitting', error: null };
     case 'SUBMIT_SUCCESS':
@@ -319,19 +305,10 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
     customBilling: 'optional' as ContactPolicyValue,
   });
 
-  // Lifecycle inputs (custom lifecycle)
-  const [showCustomLifecycle, setShowCustomLifecycle] = useState(false);
-  const [customLifecycle, setCustomLifecycle] = useState({
-    registrationGP: DEFAULT_POLICY.registrationGP,
-    renewalGP: DEFAULT_POLICY.renewalGP,
-    autoRenewalGP: DEFAULT_POLICY.autoRenewalGP,
-    transferGP: DEFAULT_POLICY.transferGP,
-    redemptionGP: DEFAULT_POLICY.redemptionGP,
-    pendingDeleteGP: DEFAULT_POLICY.pendingDeleteGP,
-    transferLockPeriod: DEFAULT_POLICY.transferLockPeriod,
-    maxHorizon: DEFAULT_POLICY.maxHorizon,
-    allowAutoRenew: DEFAULT_POLICY.allowAutoRenew,
-  });
+  // Lifecycle: the named policies to choose from (ADR 0023).
+  const [showPolicyPicker, setShowPolicyPicker] = useState(false);
+  const [pickedPolicy, setPickedPolicy] = useState(STANDARD_LIFECYCLE_POLICY);
+  const lifecyclePolicies = useLifecyclePolicies(state.step === 'lifecycle' || showPolicyPicker);
 
   // Overlap/continuity info
   const [overlapWarning, setOverlapWarning] = useState<string | null>(null);
@@ -377,18 +354,8 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
         customAdmin: 'optional',
         customBilling: 'optional',
       });
-      setShowCustomLifecycle(false);
-      setCustomLifecycle({
-        registrationGP: DEFAULT_POLICY.registrationGP,
-        renewalGP: DEFAULT_POLICY.renewalGP,
-        autoRenewalGP: DEFAULT_POLICY.autoRenewalGP,
-        transferGP: DEFAULT_POLICY.transferGP,
-        redemptionGP: DEFAULT_POLICY.redemptionGP,
-        pendingDeleteGP: DEFAULT_POLICY.pendingDeleteGP,
-        transferLockPeriod: DEFAULT_POLICY.transferLockPeriod,
-        maxHorizon: DEFAULT_POLICY.maxHorizon,
-        allowAutoRenew: DEFAULT_POLICY.allowAutoRenew,
-      });
+      setShowPolicyPicker(false);
+      setPickedPolicy(STANDARD_LIFECYCLE_POLICY);
     }
   }, [open]);
 
@@ -599,17 +566,6 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
             policyPayload.techContactDataPolicy = p.techPolicy;
             policyPayload.adminContactDataPolicy = p.adminPolicy;
             policyPayload.billingContactDataPolicy = p.billingPolicy;
-            if (!p.useDefaultLifecycle) {
-              policyPayload.registrationGP = p.registrationGP;
-              policyPayload.renewalGP = p.renewalGP;
-              policyPayload.autorenewalGP = p.autoRenewalGP;
-              policyPayload.transferGP = p.transferGP;
-              policyPayload.redemptionGP = p.redemptionGP;
-              policyPayload.pendingdeleteGP = p.pendingDeleteGP;
-              policyPayload.transferLockPeriod = p.transferLockPeriod;
-              policyPayload.maxHorizon = p.maxHorizon;
-              policyPayload.allowAutorenew = p.allowAutoRenew;
-            }
 
             if (Object.keys(policyPayload).length > 0) {
               await phasesApiUpdatePolicy(tldName, state.phaseName, policyPayload);
@@ -618,6 +574,17 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
             const msg = err?.response?.data?.error || err?.message || 'Unknown error';
             warnings.push(`Policy update failed: ${msg}`);
             console.error('Failed to update policy:', err);
+          }
+
+          // Name the lifecycle policy, unless it is the one a new phase gets anyway.
+          if (state.policy.lifecyclePolicy !== STANDARD_LIFECYCLE_POLICY) {
+            try {
+              await setPhaseLifecyclePolicy(tldName, state.phaseName, state.policy.lifecyclePolicy);
+            } catch (err: any) {
+              const msg = err?.response?.data?.error || err?.message || 'Unknown error';
+              warnings.push(`Lifecycle policy ${state.policy.lifecyclePolicy} not applied (the phase follows ${STANDARD_LIFECYCLE_POLICY}): ${msg}`);
+              console.error('Failed to set the lifecycle policy:', err);
+            }
           }
 
           dispatch({
@@ -1222,9 +1189,10 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
           {/* ── Step: Lifecycle ──────────────────────────────────────── */}
           {currentIndex >= stepOrder.indexOf('lifecycle') && (
             <SystemBubble icon={Settings2}>
-              Domain lifecycle — use the standard gTLD defaults?
+              Domain lifecycle — which lifecycle policy does the phase follow?
               <span className="text-muted-foreground block mt-1 text-[11px] leading-relaxed">
-                5-day add/renew/transfer grace, 45-day auto-renew, 30-day redemption, 5-day pending delete, 60-day transfer lock, 10-year max horizon.
+                A named, platform-wide policy: {STANDARD_LIFECYCLE_POLICY} is 5-day add/renew/transfer grace, 45-day auto-renew, 30-day redemption,
+                5-day pending delete, 60-day transfer lock, 10-year max horizon. Policies are managed under Lifecycle Policies.
               </span>
             </SystemBubble>
           )}
@@ -1232,57 +1200,41 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
           {state.step === 'lifecycle' && (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 ml-10 space-y-3">
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => dispatch({ type: 'SET_LIFECYCLE', policy: { useDefaultLifecycle: true } })} className="gap-1.5">
+                <Button size="sm" onClick={() => dispatch({ type: 'SET_LIFECYCLE', lifecyclePolicy: STANDARD_LIFECYCLE_POLICY })} className="gap-1.5">
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  Use defaults
+                  Use {STANDARD_LIFECYCLE_POLICY}
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => setShowCustomLifecycle(true)} className="gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => setShowPolicyPicker(true)} className="gap-1.5">
                   <Settings2 className="h-3.5 w-3.5" />
-                  Customize
+                  Choose another policy
                 </Button>
               </div>
 
-              {showCustomLifecycle && (
+              {showPolicyPicker && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-200 rounded-lg border bg-muted/30 p-3 space-y-2.5">
-                  <div className="grid grid-cols-2 gap-2">
-                    {([
-                      { label: 'Add GP', key: 'registrationGP' as const, unit: 'days' },
-                      { label: 'Renew GP', key: 'renewalGP' as const, unit: 'days' },
-                      { label: 'Auto-renew GP', key: 'autoRenewalGP' as const, unit: 'days' },
-                      { label: 'Transfer GP', key: 'transferGP' as const, unit: 'days' },
-                      { label: 'Redemption GP', key: 'redemptionGP' as const, unit: 'days' },
-                      { label: 'Pending delete', key: 'pendingDeleteGP' as const, unit: 'days' },
-                      { label: 'Transfer lock', key: 'transferLockPeriod' as const, unit: 'days' },
-                      { label: 'Max horizon', key: 'maxHorizon' as const, unit: 'years' },
-                    ]).map(({ label, key, unit }) => (
-                      <div key={key} className="space-y-0.5">
-                        <Label className="text-[10px] text-muted-foreground">{label} ({unit})</Label>
-                        <Input
-                          type="number"
-                          value={customLifecycle[key]}
-                          onChange={(e) => setCustomLifecycle(prev => ({ ...prev, [key]: parseInt(e.target.value, 10) || 0 }))}
-                          className="text-sm h-8"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <Switch
-                      id="allowAutoRenew"
-                      checked={customLifecycle.allowAutoRenew}
-                      onCheckedChange={(v) => setCustomLifecycle(prev => ({ ...prev, allowAutoRenew: v }))}
-                    />
-                    <Label htmlFor="allowAutoRenew" className="text-xs">Allow auto-renewal</Label>
-                  </div>
+                  <Label className="text-[10px] text-muted-foreground">Lifecycle policy</Label>
+                  <Select value={pickedPolicy} onValueChange={setPickedPolicy}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(lifecyclePolicies.data ?? []).map((p) => (
+                        <SelectItem key={p.name} value={p.name}>
+                          {p.name}{p.description ? ` — ${p.description}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {lifecyclePolicies.error && (
+                    <p className="text-[11px] text-red-700 dark:text-red-400">Could not read the lifecycle policies; {STANDARD_LIFECYCLE_POLICY} applies.</p>
+                  )}
                   <Button
                     size="sm"
                     className="w-full mt-1 gap-1.5"
                     onClick={() => {
-                      dispatch({ type: 'SET_LIFECYCLE', policy: { ...customLifecycle, useDefaultLifecycle: false } });
-                      setShowCustomLifecycle(false);
+                      dispatch({ type: 'SET_LIFECYCLE', lifecyclePolicy: pickedPolicy });
+                      setShowPolicyPicker(false);
                     }}
                   >
-                    <ArrowRight className="h-3.5 w-3.5" /> Confirm lifecycle
+                    <ArrowRight className="h-3.5 w-3.5" /> Confirm lifecycle policy
                   </Button>
                 </div>
               )}
@@ -1291,7 +1243,7 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
 
           {pastStep('lifecycle') && (
             <UserBubble>
-              {state.policy.useDefaultLifecycle ? 'Standard gTLD lifecycle' : 'Custom lifecycle configured'}
+              Lifecycle policy: {state.policy.lifecyclePolicy}
             </UserBubble>
           )}
 
@@ -1362,7 +1314,7 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span>Lifecycle</span>
-                      <span>{state.policy.useDefaultLifecycle ? 'Standard gTLD' : 'Custom'}</span>
+                      <span className="font-mono">{state.policy.lifecyclePolicy}</span>
                     </div>
                   </div>
                 </div>

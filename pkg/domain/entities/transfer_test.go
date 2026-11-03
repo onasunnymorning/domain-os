@@ -159,8 +159,7 @@ func TestDomain_CompleteTransfer(t *testing.T) {
 
 	t.Run("a zero lock leaves the domain transferable at once", func(t *testing.T) {
 		p := transferTestPhase()
-		zero := 0
-		p.Policy.TransferLockPeriod = &zero
+		p.LifecyclePolicy = &LifecyclePolicy{Settings: LifecycleSettings{TransferLockPeriod: intPtr(0)}}
 		d := transferTestDomain(t, now)
 		tr, err := d.RequestTransfer("gaining", transferTestCode, 1, p, now)
 		require.NoError(t, err)

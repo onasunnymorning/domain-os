@@ -88,6 +88,7 @@ type PriceOutput struct {
 
 // PolicyOutput represents the registration policy for a TLD phase.
 type PolicyOutput struct {
+	LifecyclePolicy       string `json:"lifecyclePolicy,omitempty" jsonschema:"The named lifecycle policy the phase follows (ADR 0023); the timing fields below are its resolved settings."`
 	MinLabelLength        int    `json:"minLabelLength,omitempty" jsonschema:"Minimum domain label length in characters."`
 	MaxLabelLength        int    `json:"maxLabelLength,omitempty" jsonschema:"Maximum domain label length in characters."`
 	RegistrationGP        int    `json:"registrationGP,omitempty" jsonschema:"Registration grace period in days."`
@@ -313,6 +314,7 @@ func (s *Server) GetTLD(ctx context.Context, req *mcp.CallToolRequest, in GetTLD
 
 // mapPhase converts a domain Phase entity to a PhaseOutput struct.
 func mapPhase(p *entities.Phase) PhaseOutput {
+	lc := p.Lifecycle().Resolved()
 	out := PhaseOutput{
 		Name:   p.Name.String(),
 		Type:   string(p.Type),
@@ -320,18 +322,19 @@ func mapPhase(p *entities.Phase) PhaseOutput {
 		Policy: PolicyOutput{
 			MinLabelLength:        p.Policy.MinLabelLength,
 			MaxLabelLength:        p.Policy.MaxLabelLength,
-			RegistrationGP:        p.Policy.RegistrationGP,
-			RenewalGP:             p.Policy.RenewalGP,
-			AutoRenewalGP:         p.Policy.AutoRenewalGP,
-			TransferGP:            p.Policy.TransferGraceDays(),
-			RedemptionGP:          p.Policy.RedemptionGP,
-			PendingDeleteGP:       p.Policy.PendingDeleteGP,
-			PendingTransferPeriod: p.Policy.PendingTransferDays(),
-			TransferLockPeriod:    p.Policy.TransferLockDays(),
-			PendingRestorePeriod:  p.Policy.PendingRestoreDays(),
-			RestoreReportRequired: p.Policy.RequiresRestoreReport(),
-			MaxHorizon:            p.Policy.MaxHorizon,
-			AllowAutoRenew:        p.Policy.AllowAutoRenew,
+			LifecyclePolicy:       p.LifecyclePolicyName,
+			RegistrationGP:        lc.RegistrationGP,
+			RenewalGP:             lc.RenewalGP,
+			AutoRenewalGP:         lc.AutoRenewalGP,
+			TransferGP:            lc.TransferGP,
+			RedemptionGP:          lc.RedemptionGP,
+			PendingDeleteGP:       lc.PendingDeleteGP,
+			PendingTransferPeriod: lc.PendingTransferPeriod,
+			TransferLockPeriod:    lc.TransferLockPeriod,
+			PendingRestorePeriod:  lc.PendingRestorePeriod,
+			RestoreReportRequired: lc.RestoreReportRequired,
+			MaxHorizon:            lc.MaxHorizon,
+			AllowAutoRenew:        &lc.AllowAutoRenew,
 			BaseCurrency:          p.Policy.BaseCurrency,
 		},
 	}

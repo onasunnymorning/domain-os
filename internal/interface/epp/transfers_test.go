@@ -42,7 +42,7 @@ func transferServer(t *testing.T) (*testCredentials, *client, *client) {
 	t.Helper()
 	creds, ts, c := domainServer(t)
 	zero := 0
-	creds.domains.registry.SetPolicy("test", func(p *entities.PhasePolicy) { p.TransferLockPeriod = &zero })
+	creds.domains.registry.SetLifecycle("test", func(s *entities.LifecycleSettings) { s.TransferLockPeriod = &zero })
 	return creds, c, registrar2Full(t, ts)
 }
 
@@ -84,11 +84,11 @@ func TestDomainTransferRequest(t *testing.T) {
 
 	t.Run("in the transfer lock: 2106", func(t *testing.T) {
 		lock := 60
-		creds.domains.registry.SetPolicy("test", func(p *entities.PhasePolicy) { p.TransferLockPeriod = &lock })
+		creds.domains.registry.SetLifecycle("test", func(s *entities.LifecycleSettings) { s.TransferLockPeriod = &lock })
 		requireCode(t, losing.roundTrip(createXML("locked.test", createOpts{pw: testTransferCode})), "1000")
 		requireCode(t, gaining.roundTrip(transferXML("request", "locked.test", pwXML(testTransferCode))), "2106")
 		zero := 0
-		creds.domains.registry.SetPolicy("test", func(p *entities.PhasePolicy) { p.TransferLockPeriod = &zero })
+		creds.domains.registry.SetLifecycle("test", func(s *entities.LifecycleSettings) { s.TransferLockPeriod = &zero })
 	})
 
 	var exDate string

@@ -145,7 +145,7 @@ func runSeed(cfg *config.AdminApiConfig, repositoryID entities.RepositoryID, log
 	tldService := services.NewTLDService(tldRepo, dnsRecRepo,
 		services.WithOperatorRegistrarDeps(registrarRepo, accreditationRepo, registryOperatorRepo, eventPublisher),
 	)
-	phaseService := services.NewPhaseService(phaseRepo, tldRepo, eventPublisher)
+	phaseService := services.NewPhaseService(phaseRepo, tldRepo, postgres.NewLifecyclePolicyRepository(gormDB), eventPublisher)
 	registrarService := services.NewRegistrarService(registrarRepo, eventPublisher)
 	accreditationService := services.NewAccreditationService(accreditationRepo, registrarRepo, tldRepo, eventPublisher)
 	contactService := services.NewContactService(contactRepo, *roidService, eventPublisher)

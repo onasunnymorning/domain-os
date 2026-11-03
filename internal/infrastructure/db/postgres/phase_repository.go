@@ -24,17 +24,31 @@ func NewGormPhaseRepository(db *gorm.DB) *PhaseRepository {
 func (r *PhaseRepository) CreatePhase(ctx context.Context, phase *entities.Phase) (*entities.Phase, error) {
 	gormPhase := &Phase{}
 	gormPhase.FromEntity(phase)
-	err := dbFrom(ctx, r.db).Create(gormPhase).Error
+	err := dbFrom(ctx, r.db).Omit("LifecyclePolicy").Create(gormPhase).Error
 	if err != nil {
+		return nil, err
+	}
+	if err := r.loadLifecyclePolicy(ctx, gormPhase); err != nil {
 		return nil, err
 	}
 	return gormPhase.ToEntity(), nil
 }
 
+// loadLifecyclePolicy attaches the policy p names, so a phase written is
+// answered as one read: with its lifecycle policy resolved.
+func (r *PhaseRepository) loadLifecyclePolicy(ctx context.Context, p *Phase) error {
+	var rec LifecyclePolicyRecord
+	if err := dbFrom(ctx, r.db).Where("name = ?", p.LifecyclePolicyName).Take(&rec).Error; err != nil {
+		return err
+	}
+	p.LifecyclePolicy = &rec
+	return nil
+}
+
 // GetPhaseByTLDAndName gets a phase by its name
 func (r *PhaseRepository) GetPhaseByTLDAndName(ctx context.Context, tld, name string) (*entities.Phase, error) {
 	var phase Phase
-	err := dbFrom(ctx, r.db).Preload("Fees").Preload("Prices").Where("name = ? AND tld_name = ?", name, tld).First(&phase).Error
+	err := dbFrom(ctx, r.db).Preload("Fees").Preload("Prices").Preload("LifecyclePolicy").Where("name = ? AND tld_name = ?", name, tld).First(&phase).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, entities.ErrPhaseNotFound
@@ -68,13 +82,16 @@ func (r *PhaseRepository) UpdatePhase(ctx context.Context, phase *entities.Phase
 		Model(&Phase{}).
 		Where("id = ? AND tld_name = ?", gormPhase.ID, gormPhase.TLDName).
 		Select("*").
-		Omit("Prices", "Fees").
+		Omit("Prices", "Fees", "LifecyclePolicy").
 		Updates(gormPhase)
 	if res.Error != nil {
 		return nil, res.Error
 	}
 	if res.RowsAffected == 0 {
 		return nil, entities.ErrPhaseNotFound
+	}
+	if err := r.loadLifecyclePolicy(ctx, gormPhase); err != nil {
+		return nil, err
 	}
 	return gormPhase.ToEntity(), nil
 }
@@ -92,7 +109,7 @@ func (r *PhaseRepository) ListPhasesByTLD(ctx context.Context, tld string, pageS
 			return nil, err
 		}
 	}
-	err = dbFrom(ctx, r.db).Where("tld_name = ?", tld).Order("id ASC").Limit(pageSize).Find(&gormPhases, "id > ?", pageCursorInt64).Error
+	err = dbFrom(ctx, r.db).Preload("LifecyclePolicy").Where("tld_name = ?", tld).Order("id ASC").Limit(pageSize).Find(&gormPhases, "id > ?", pageCursorInt64).Error
 	if err != nil {
 		return nil, err // this is hard to test
 	}
@@ -116,7 +133,7 @@ func (r *PhaseRepository) ListActiveGAPhases(ctx context.Context, pageSize int, 
 		}
 	}
 
-	err = dbFrom(ctx, r.db).Where("type = ?", "GA").Order("id ASC").Limit(pageSize).Find(&gormPhases, "id > ?", pageCursorInt64).Error
+	err = dbFrom(ctx, r.db).Preload("LifecyclePolicy").Where("type = ?", "GA").Order("id ASC").Limit(pageSize).Find(&gormPhases, "id > ?", pageCursorInt64).Error
 	if err != nil {
 		return nil, err
 	}
