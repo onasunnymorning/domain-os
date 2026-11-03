@@ -8,6 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ExpiringCertificatesCard } from "@/components/epp/ExpiringCertificatesCard";
 import { PoliciesTab } from "@/components/epp/policies/PoliciesTab";
 import { FamiliesTab } from "@/components/epp/families/FamiliesTab";
+import { LockoutsCard, OpenSessionsCard, SuspensionsCard } from "@/components/epp/live/NowCards";
+import { SessionsTab } from "@/components/epp/live/SessionsTab";
 
 const TABS = ["now", "sessions", "policies", "families"] as const;
 type Tab = (typeof TABS)[number];
@@ -48,14 +50,16 @@ function EPPPageInner() {
         </TabsList>
 
         <TabsContent value="now" className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-3">
+            <OpenSessionsCard active={tab === "now"} />
+            <LockoutsCard active={tab === "now"} />
+            <SuspensionsCard active={tab === "now"} />
+          </div>
           <ExpiringCertificatesCard />
         </TabsContent>
 
         <TabsContent value="sessions">
-          <div className="rounded-md border p-6 text-sm text-muted-foreground">
-            Live sessions, lockouts and suspensions arrive in the next part of the EPP admin UI. Until then the admin
-            API answers <code className="font-mono">GET /epp/sessions</code>.
-          </div>
+          <SessionsTab active={tab === "sessions"} />
         </TabsContent>
 
         <TabsContent value="policies">
