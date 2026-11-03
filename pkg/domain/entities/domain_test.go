@@ -1943,12 +1943,15 @@ func TestDomain_DeepCopy(t *testing.T) {
 				CrRr:         "createRegistrar",
 				UpRr:         "updateRegistrar",
 				TLDName:      "com",
-				ExpiryDate:   later,
-				DropCatch:    true,
-				RenewedYears: 2,
-				AuthInfo:     "authInfo123",
-				CreatedAt:    now,
-				UpdatedAt:    now,
+				// Set on a launch registration; a copy must keep it, since
+				// copies are the before-state of lifecycle events.
+				RegistrationPhaseName: "landrush",
+				ExpiryDate:            later,
+				DropCatch:             true,
+				RenewedYears:          2,
+				AuthInfo:              "authInfo123",
+				CreatedAt:             now,
+				UpdatedAt:             now,
 				Status: DomainStatus{
 					OK: true,
 				},

@@ -80,7 +80,20 @@ func registerTestService(t *testing.T) (*DomainService, *entities.TLD, *reposito
 	landrush.TLDName = "com"
 	require.NoError(t, tld.AddPhase(landrush))
 
+	applications, err := entities.NewPhase("auction", string(entities.PhaseTypeLaunch), time.Now().UTC().AddDate(0, 0, -1))
+	require.NoError(t, err)
+	applications.Launch = entities.LaunchSettings{Mode: entities.LaunchModeLandrush, Model: entities.RegistrationModelApplication, AcceptSignedMarks: true}
+	applications.TLDName = "com"
+	require.NoError(t, tld.AddPhase(applications))
+
+	sunrise, err := entities.NewPhase("sunrise-fc", string(entities.PhaseTypeLaunch), time.Now().UTC().AddDate(0, 0, -1))
+	require.NoError(t, err)
+	sunrise.Launch = entities.LaunchSettings{Mode: entities.LaunchModeSunrise, Model: entities.RegistrationModelFirstCome, AcceptSignedMarks: true}
+	sunrise.TLDName = "com"
+	require.NoError(t, tld.AddPhase(sunrise))
+
 	tldRepo.On("GetByName", mock.Anything, "com", true).Return(tld, nil)
+	tldRepo.On("GetWithPhases", mock.Anything, "com").Return(tld, nil)
 	rarRepo.On("IsRegistrarAccreditedForTLD", mock.Anything, "com", "rar-on").Return(true, nil)
 	eventPub.On("Publish", mock.Anything, mock.Anything).Return(nil)
 	return svc, tld, domRepo
@@ -98,6 +111,10 @@ func TestRegisterDomainRefusesPhasesItCannotRegisterIn(t *testing.T) {
 		{"sunrise", entities.ErrPhaseNotActive},
 		{"GA-phase", entities.ErrPhaseNotLaunch},
 		{"nope", entities.ErrPhaseNotFound},
+		// Active, but the phase collects applications, or needs verification
+		// that does not exist yet: a registration would claim the name.
+		{"auction", entities.ErrLaunchApplicationsUnavailable},
+		{"sunrise-fc", entities.ErrLaunchModeUnsupported},
 	} {
 		_, err := svc.RegisterDomain(context.Background(), &commands.RegisterDomainCommand{
 			Name: "late.com", ClID: "rar-on", Years: 1, PhaseName: tc.phase, RegistrantID: "reg-1", AdminID: "adm-1", TechID: "tec-1"})
@@ -138,9 +155,12 @@ func TestRegisterDomainInLaunchPhase(t *testing.T) {
 }
 
 // Availability follows the same rule as registration: the phase named must
-// be an active launch phase, else the GA phase in force applies.
+// be an active launch phase, else the GA phase in force applies. It reads
+// the TLD with its phases only, never the priced form with its counts.
 func TestCheckDomainAvailabilityResolvesThePhaseAsRegistrationDoes(t *testing.T) {
 	svc, _, domRepo := registerTestService(t)
+	tldRepo := svc.tldRepo.(*mockTLDRepository)
+	defer tldRepo.AssertNotCalled(t, "GetByName", mock.Anything, mock.Anything, mock.Anything)
 	nndn := svc.nndnRepo.(*mockNNDNRepository)
 	nndn.On("GetNNDN", mock.Anything, mock.Anything).Return(nil, entities.ErrNNDNNotFound)
 	domRepo.On("GetDomainByName", mock.Anything, mock.Anything, false).Return((*entities.Domain)(nil), entities.ErrDomainNotFound)

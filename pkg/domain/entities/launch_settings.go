@@ -14,6 +14,13 @@ var (
 	ErrLaunchSettingsOnGA       = errors.New("launch settings apply to launch phases only")
 	ErrLaunchModeFrozen         = errors.New("the launch mode cannot change once the phase has started")
 	ErrLaunchModelFrozen        = errors.New("the registration model cannot change once the phase has started or has applications")
+	// ErrLaunchModeUnsupported: the phase needs trademark evidence verified
+	// (sunrise, claims), and no verifier exists yet (roadmap 9a-9c).
+	ErrLaunchModeUnsupported = errors.New("registrations in sunrise and claims phases are not yet supported")
+	// ErrLaunchApplicationsUnavailable: the phase collects applications, and
+	// application filing does not exist yet (roadmap 8c); a registration
+	// here would claim a name the phase means to allocate later.
+	ErrLaunchApplicationsUnavailable = errors.New("this phase collects applications, which are not yet supported; it accepts no registrations")
 )
 
 // LaunchMode is what kind of launch phase a phase is, in the terms of RFC
@@ -114,6 +121,21 @@ func (s LaunchSettings) Validate() error {
 	}
 	if s.Mode == LaunchModeSunrise && !s.AcceptSignedMarks && !s.AcceptCodeMarks {
 		return fmt.Errorf("%w: a sunrise must accept signed marks or code marks", ErrInvalidLaunchSettings)
+	}
+	return nil
+}
+
+// AdmitsRegistration reports whether a registration (a domain created at
+// once) may be made under these settings today: not in a phase needing
+// verification (ErrLaunchModeUnsupported) and not in an application phase
+// (ErrLaunchApplicationsUnavailable). The zero value, a GA phase's, admits.
+// Both refusals go when the EPP series lands what they wait for.
+func (s LaunchSettings) AdmitsRegistration() error {
+	switch {
+	case s.RequiresVerification():
+		return ErrLaunchModeUnsupported
+	case s.Model == RegistrationModelApplication:
+		return ErrLaunchApplicationsUnavailable
 	}
 	return nil
 }

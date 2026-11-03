@@ -57,6 +57,32 @@ func TestLaunchSettings_RequiresVerification(t *testing.T) {
 	}
 }
 
+func TestLaunchSettings_AdmitsRegistration(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings LaunchSettings
+		err      error
+	}{
+		{"GA phase (zero value)", LaunchSettings{}, nil},
+		{"open first-come", LaunchSettings{Mode: LaunchModeOpen, Model: RegistrationModelFirstCome}, nil},
+		{"landrush first-come", LaunchSettings{Mode: LaunchModeLandrush, Model: RegistrationModelFirstCome}, nil},
+		{"landrush by application", LaunchSettings{Mode: LaunchModeLandrush, Model: RegistrationModelApplication}, ErrLaunchApplicationsUnavailable},
+		{"sunrise first-come", LaunchSettings{Mode: LaunchModeSunrise, Model: RegistrationModelFirstCome, AcceptSignedMarks: true}, ErrLaunchModeUnsupported},
+		{"sunrise by application: verification first", LaunchSettings{Mode: LaunchModeSunrise, Model: RegistrationModelApplication, AcceptSignedMarks: true}, ErrLaunchModeUnsupported},
+		{"claims", LaunchSettings{Mode: LaunchModeClaims, Model: RegistrationModelFirstCome}, ErrLaunchModeUnsupported},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.settings.AdmitsRegistration()
+			if tt.err == nil {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorIs(t, err, tt.err)
+		})
+	}
+}
+
 func TestLaunchMode_IsValid(t *testing.T) {
 	assert.True(t, LaunchModeOpen.IsValid())
 	assert.False(t, LaunchMode("").IsValid())

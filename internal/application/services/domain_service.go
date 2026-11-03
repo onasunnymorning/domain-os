@@ -1039,10 +1039,12 @@ func (svc *DomainService) CheckDomainAvailability(ctx context.Context, domainNam
 		return response, err
 	}
 
-	// The TLD with its phases: the phase named must be an active launch
-	// phase, else the GA phase in force applies (ADR 0024), the rule
-	// RegisterDomain follows. This also errors if the TLD does not exist.
-	tld, err := svc.tldRepo.GetByName(ctx, dom.ParentDomain(), true)
+	// The TLD with its phases and nothing else (no prices, fees or counts:
+	// an availability check must not grow with the TLD). The phase named
+	// must be an active launch phase, else the GA phase in force applies
+	// (ADR 0024), the rule RegisterDomain follows. This also errors if the
+	// TLD does not exist.
+	tld, err := svc.tldRepo.GetWithPhases(ctx, dom.ParentDomain())
 	if err != nil {
 		response.Reason = err.Error()
 		return response, err
@@ -1181,6 +1183,12 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	rc, err := tld.RegistrationContextAt(entities.PhaseRef{Name: entities.ClIDType(cmd.PhaseName)}, time.Now().UTC())
 	if err != nil {
 		return nil, err
+	}
+	// A phase that collects applications, or needs marks or notices
+	// verified, takes no registrations until those exist: a registration
+	// here would claim a name the phase means to allocate.
+	if err := rc.Phase.Launch.AdmitsRegistration(); err != nil {
+		return nil, fmt.Errorf("%w: %s", err, rc.Phase.Name)
 	}
 	return svc.registerIn(ctx, cmd, domainName, rc.Phase)
 }

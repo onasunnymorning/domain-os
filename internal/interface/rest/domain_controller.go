@@ -535,7 +535,9 @@ func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
 			errors.Is(err, entities.ErrPhaseNotFound) ||
 			errors.Is(err, entities.ErrPhaseNotLaunch) ||
 			errors.Is(err, entities.ErrPhaseNotActive) ||
-			errors.Is(err, entities.ErrNoActivePhase) {
+			errors.Is(err, entities.ErrNoActivePhase) ||
+			errors.Is(err, entities.ErrLaunchModeUnsupported) ||
+			errors.Is(err, entities.ErrLaunchApplicationsUnavailable) {
 
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return

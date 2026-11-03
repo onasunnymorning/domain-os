@@ -540,6 +540,16 @@ func TestTLDService_CreateTLD_NoDepsSkipsProvisioning(t *testing.T) {
 	// No panic, no error — silently skips
 }
 
+// GetWithPhases returns the TLD as stored, phases included.
+func (repo *MocktldRepository) GetWithPhases(ctx context.Context, name string) (*entities.TLD, error) {
+	for _, tld := range repo.Tlds {
+		if tld.Name.String() == name {
+			return tld, nil
+		}
+	}
+	return nil, entities.ErrTLDNotFound
+}
+
 // GetByNameForOperator returns a TLD by name only if its RyID matches the scope.
 func (repo *MocktldRepository) GetByNameForOperator(ctx context.Context, scope entities.OperatorID, name string) (*entities.TLD, error) {
 	for _, tld := range repo.Tlds {

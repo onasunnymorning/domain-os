@@ -21,6 +21,14 @@ func (m *mockTLDRepository) Create(ctx context.Context, tld *entities.TLD) error
 	return m.Called(ctx, tld).Error(0)
 }
 
+func (m *mockTLDRepository) GetWithPhases(ctx context.Context, name string) (*entities.TLD, error) {
+	args := m.Called(ctx, name)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*entities.TLD), args.Error(1)
+}
+
 func (m *mockTLDRepository) GetByName(ctx context.Context, name string, preloadAll bool) (*entities.TLD, error) {
 	args := m.Called(ctx, name, preloadAll)
 	if args.Get(0) == nil {

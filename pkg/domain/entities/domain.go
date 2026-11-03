@@ -633,28 +633,29 @@ func (d *Domain) DeepCopy() *Domain {
 
 	// Copy all top-level Domain fields.
 	newDomain := &Domain{
-		RoID:           d.RoID,
-		Name:           d.Name,
-		OriginalName:   d.OriginalName,
-		UName:          d.UName,
-		RegistrantID:   d.RegistrantID,
-		AdminID:        d.AdminID,
-		TechID:         d.TechID,
-		BillingID:      d.BillingID,
-		ClID:           d.ClID,
-		CrRr:           d.CrRr,
-		UpRr:           d.UpRr,
-		TLDName:        d.TLDName,
-		ExpiryDate:     d.ExpiryDate,
-		DropCatch:      d.DropCatch,
-		RenewedYears:   d.RenewedYears,
-		AuthInfo:       d.AuthInfo,
-		CreatedAt:      d.CreatedAt,
-		UpdatedAt:      d.UpdatedAt,
-		TransferredAt:  d.TransferredAt,
-		Status:         d.Status,         // Struct copied by value
-		RGPStatus:      d.RGPStatus,      // Struct copied by value
-		GrandFathering: d.GrandFathering, // Struct copied by value
+		RoID:                  d.RoID,
+		Name:                  d.Name,
+		OriginalName:          d.OriginalName,
+		UName:                 d.UName,
+		RegistrantID:          d.RegistrantID,
+		AdminID:               d.AdminID,
+		TechID:                d.TechID,
+		BillingID:             d.BillingID,
+		ClID:                  d.ClID,
+		CrRr:                  d.CrRr,
+		UpRr:                  d.UpRr,
+		TLDName:               d.TLDName,
+		RegistrationPhaseName: d.RegistrationPhaseName,
+		ExpiryDate:            d.ExpiryDate,
+		DropCatch:             d.DropCatch,
+		RenewedYears:          d.RenewedYears,
+		AuthInfo:              d.AuthInfo,
+		CreatedAt:             d.CreatedAt,
+		UpdatedAt:             d.UpdatedAt,
+		TransferredAt:         d.TransferredAt,
+		Status:                d.Status,         // Struct copied by value
+		RGPStatus:             d.RGPStatus,      // Struct copied by value
+		GrandFathering:        d.GrandFathering, // Struct copied by value
 		// Hosts handled below
 	}
 
