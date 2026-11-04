@@ -8,9 +8,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { phasesApi } from '@/lib/api/phases';
 import { tldsApi, type TLD } from '@/lib/api/tlds';
-import { useDeletePhase } from '../usePhases';
+import { useDeletePhase, useSetLaunchSettings } from '../usePhases';
+import type { Phase } from '@/lib/types/phase';
 
-vi.mock('@/lib/api/phases', () => ({ phasesApi: { delete: vi.fn() } }));
+vi.mock('@/lib/api/phases', () => ({ phasesApi: { delete: vi.fn(), setLaunchSettings: vi.fn() } }));
 vi.mock('@/lib/api/tlds', () => ({ tldsApi: { get: vi.fn() } }));
 
 function wrapper(client: QueryClient) {
@@ -46,5 +47,22 @@ describe('useDeletePhase', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(tldsApi.get).toHaveBeenCalledWith('gza');
     expect(phasesApi.delete).toHaveBeenCalledWith('gza', 'Sunrise', 'GzaRy');
+  });
+});
+
+describe('useSetLaunchSettings', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("replaces the launch settings as the TLD's operator", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(['tld', 'paco'], { Name: 'paco', RyID: 'PacoRy' } as TLD);
+    vi.mocked(phasesApi.setLaunchSettings).mockResolvedValue({ name: 'landrush' } as Phase);
+    const settings = { mode: 'landrush' as const, model: 'application' as const, acceptSignedMarks: true, acceptCodeMarks: false, retainMarks: false };
+
+    const { result } = renderHook(() => useSetLaunchSettings('paco', 'landrush'), { wrapper: wrapper(client) });
+    result.current.mutate(settings);
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(phasesApi.setLaunchSettings).toHaveBeenCalledWith('paco', 'landrush', settings, 'PacoRy');
   });
 });

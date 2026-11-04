@@ -1,4 +1,4 @@
-import { Phase } from '@/lib/types/phase';
+import { Phase, LaunchSettings } from '@/lib/types/phase';
 import { apiClient } from './client';
 
 export const phasesApi = {
@@ -16,7 +16,7 @@ export const phasesApi = {
 
   // Get a specific phase
   getPhase: async (tldName: string, phaseName: string): Promise<Phase> => {
-    const response = await apiClient.get(`/tlds/${tldName}/phases/${phaseName}`);
+    const response = await apiClient.get(`/tlds/${tldName}/phases/${encodeURIComponent(phaseName)}`);
     return response.data;
   },
 
@@ -26,6 +26,9 @@ export const phasesApi = {
     type: 'GA' | 'Launch';
     starts: string;
     ends?: string | null;
+    // A launch phase's launch settings at creation (ADR 0024); omitted, it
+    // starts open and first come. Refused on a GA phase.
+    launch?: LaunchSettings;
   }): Promise<Phase> => {
     const response = await apiClient.post(`/tlds/${tldName}/phases`, data);
     return response.data;
@@ -35,20 +38,29 @@ export const phasesApi = {
   // the request names the operator that runs this TLD (X-Tenant-ID, ADR-0006);
   // the API refuses a delete that names none.
   delete: async (tldName: string, phaseName: string, operatorId: string): Promise<void> => {
-    await apiClient.delete(`/tlds/${tldName}/phases/${phaseName}`, {
+    await apiClient.delete(`/tlds/${tldName}/phases/${encodeURIComponent(phaseName)}`, {
       headers: { 'X-Tenant-ID': operatorId },
     });
   },
 
   // End a phase (set end date)
   endPhase: async (tldName: string, phaseName: string, endDate: string): Promise<Phase> => {
-    const response = await apiClient.put(`/tlds/${tldName}/phases/${phaseName}/end`, { ends: endDate });
+    const response = await apiClient.put(`/tlds/${tldName}/phases/${encodeURIComponent(phaseName)}/end`, { ends: endDate });
+    return response.data;
+  },
+
+  // Replace a launch phase's launch settings (ADR 0024). A phase edit confined
+  // to the TLD's operator, so the request names it (X-Tenant-ID, ADR-0006).
+  setLaunchSettings: async (tldName: string, phaseName: string, settings: LaunchSettings, operatorId: string): Promise<Phase> => {
+    const response = await apiClient.put(`/tlds/${tldName}/phases/${encodeURIComponent(phaseName)}/launch`, settings, {
+      headers: { 'X-Tenant-ID': operatorId },
+    });
     return response.data;
   },
 
   // Update phase policy
   updatePolicy: async (tldName: string, phaseName: string, policy: Phase['policy']): Promise<Phase> => {
-    const response = await apiClient.put(`/tlds/${tldName}/phases/${phaseName}/policy`, { Policy: policy });
+    const response = await apiClient.put(`/tlds/${tldName}/phases/${encodeURIComponent(phaseName)}/policy`, { Policy: policy });
     return response.data;
   },
 
@@ -60,13 +72,13 @@ export const phasesApi = {
     transferAmount: number;
     restoreAmount: number;
   }): Promise<Phase['prices'][0]> => {
-    const response = await apiClient.post(`/tlds/${tldName}/phases/${phaseName}/prices`, price);
+    const response = await apiClient.post(`/tlds/${tldName}/phases/${encodeURIComponent(phaseName)}/prices`, price);
     return response.data;
   },
 
   // Delete a price from a phase
   deletePrice: async (tldName: string, phaseName: string, currency: string): Promise<void> => {
-    await apiClient.delete(`/tlds/${tldName}/phases/${phaseName}/prices/${currency}`);
+    await apiClient.delete(`/tlds/${tldName}/phases/${encodeURIComponent(phaseName)}/prices/${currency}`);
   },
 
   // Add a fee to a phase
@@ -76,13 +88,13 @@ export const phasesApi = {
     amount: number;
     refundable: boolean;
   }): Promise<Phase['fees'][0]> => {
-    const response = await apiClient.post(`/tlds/${tldName}/phases/${phaseName}/fees`, fee);
+    const response = await apiClient.post(`/tlds/${tldName}/phases/${encodeURIComponent(phaseName)}/fees`, fee);
     return response.data;
   },
 
   // Delete a fee from a phase
   deleteFee: async (tldName: string, phaseName: string, feeName: string, currency: string): Promise<void> => {
-    await apiClient.delete(`/tlds/${tldName}/phases/${phaseName}/fees/${feeName}/${currency}`);
+    await apiClient.delete(`/tlds/${tldName}/phases/${encodeURIComponent(phaseName)}/fees/${feeName}/${currency}`);
   },
 };
 

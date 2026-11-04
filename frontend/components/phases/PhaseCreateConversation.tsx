@@ -32,11 +32,13 @@ import {
   Shield,
   ScrollText,
   Settings2,
+  Rocket,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { STANDARD_LIFECYCLE_POLICY } from '@/lib/constants/lifecycleDefaults';
 import { useLifecyclePolicies } from '@/lib/hooks/useLifecyclePolicies';
 import type { ResolvedLifecycle } from '@/lib/types/lifecycle';
+import { LAUNCH_MODES, REGISTRATION_MODELS, type LaunchMode, type RegistrationModel } from '@/lib/types/phase';
 import { setPhaseLifecyclePolicy } from '@/lib/api/lifecycle';
 import { tldsApi } from '@/lib/api/tlds';
 
@@ -47,6 +49,7 @@ import { tldsApi } from '@/lib/api/tlds';
 type Step =
   | 'import-check'
   | 'type'
+  | 'launch'
   | 'name'
   | 'start-date'
   | 'end-date'
@@ -108,6 +111,8 @@ const DEFAULT_POLICY: PolicyState = {
 interface WizardState {
   step: Step;
   phaseType: 'GA' | 'Launch' | null;
+  // A launch phase's mode and registration model (ADR 0024).
+  launch: { mode: LaunchMode; model: RegistrationModel };
   phaseName: string;
   starts: Date | null;
   startIsNow: boolean;
@@ -126,6 +131,7 @@ interface WizardState {
 type WizardAction =
   | { type: 'CONTINUE_IMPORT' }
   | { type: 'SET_PHASE_TYPE'; phaseType: 'GA' | 'Launch' }
+  | { type: 'SET_LAUNCH'; mode: LaunchMode; model: RegistrationModel }
   | { type: 'SET_NAME'; name: string }
   | { type: 'SET_START_DATE'; date: Date; hours: string; minutes: string; isNow?: boolean }
   | { type: 'SET_END_DATE'; date: Date | null; hours: string; minutes: string; openEnded: boolean }
@@ -148,6 +154,7 @@ type WizardAction =
 const initialState: WizardState = {
   step: 'import-check',
   phaseType: null,
+  launch: { mode: 'open', model: 'first-come' },
   phaseName: '',
   starts: null,
   startIsNow: false,
@@ -168,7 +175,10 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
     case 'CONTINUE_IMPORT':
       return { ...state, step: 'type', error: null };
     case 'SET_PHASE_TYPE':
-      return { ...state, step: 'name', phaseType: action.phaseType, error: null };
+      // A launch phase says what kind it is first; a GA phase goes straight to its name.
+      return { ...state, step: action.phaseType === 'Launch' ? 'launch' : 'name', phaseType: action.phaseType, error: null };
+    case 'SET_LAUNCH':
+      return { ...state, step: 'name', launch: { mode: action.mode, model: action.model }, error: null };
     case 'SET_NAME':
       return { ...state, step: 'start-date', phaseName: action.name, error: null };
     case 'SET_START_DATE':
@@ -310,6 +320,8 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
   // Lifecycle: the named policies to choose from (ADR 0023).
   const [showPolicyPicker, setShowPolicyPicker] = useState(false);
   const [pickedPolicy, setPickedPolicy] = useState(STANDARD_LIFECYCLE_POLICY);
+  const [launchMode, setLaunchMode] = useState<LaunchMode>('open');
+  const [launchModel, setLaunchModel] = useState<RegistrationModel>('first-come');
   const lifecyclePolicies = useLifecyclePolicies(state.step === 'lifecycle' || showPolicyPicker);
   // What the standard policy is right now: it is editable, so the wizard
   // shows the fetched values rather than a fixed claim.
@@ -365,6 +377,8 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
       });
       setShowPolicyPicker(false);
       setPickedPolicy(STANDARD_LIFECYCLE_POLICY);
+      setLaunchMode('open');
+      setLaunchModel('first-come');
     }
   }, [open]);
 
@@ -537,7 +551,12 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
     const endsISO = state.ends ? state.ends.toISOString() : undefined;
 
     createPhase(
-      { name: state.phaseName, type: state.phaseType!, starts: startsISO, ends: endsISO },
+      {
+        name: state.phaseName, type: state.phaseType!, starts: startsISO, ends: endsISO,
+        ...(state.phaseType === 'Launch'
+          ? { launch: { mode: state.launch.mode, model: state.launch.model, acceptSignedMarks: true, acceptCodeMarks: false, retainMarks: false } }
+          : {}),
+      },
       {
         onSuccess: async () => {
           const warnings: string[] = [];
@@ -631,7 +650,7 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
   // Progress
   // ---------------------------------------------------------------------------
 
-  const stepOrder: Step[] = ['import-check', 'type', 'name', 'start-date', 'end-date', 'pricing-offer', 'pricing', 'fee-offer', 'fee-entry', 'validation', 'data-policy', 'lifecycle', 'review', 'submitting', 'done'];
+  const stepOrder: Step[] = ['import-check', 'type', 'launch', 'name', 'start-date', 'end-date', 'pricing-offer', 'pricing', 'fee-offer', 'fee-entry', 'validation', 'data-policy', 'lifecycle', 'review', 'submitting', 'done'];
   const currentIndex = stepOrder.indexOf(state.step);
   const pastStep = (s: Step) => stepOrder.indexOf(s) < currentIndex;
   const progressIndex = PROGRESS_STEPS.indexOf(
@@ -748,6 +767,59 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
               <Badge variant={state.phaseType === 'GA' ? 'default' : 'secondary'} className="text-xs">
                 {state.phaseType === 'GA' ? 'General Availability' : 'Launch Phase'}
               </Badge>
+            </UserBubble>
+          )}
+
+          {/* ── Step: Launch (launch phases only) ─────────────────── */}
+          {state.phaseType === 'Launch' && currentIndex >= stepOrder.indexOf('launch') && (
+            <SystemBubble icon={Rocket}>
+              What kind of launch phase is it, and how does it register?
+              <span className="text-muted-foreground block mt-1 text-[11px] leading-relaxed">
+                The mode is fixed once the phase starts; the model once it starts or has applications. Sunrise and claims phases are not yet served over EPP.
+              </span>
+            </SystemBubble>
+          )}
+
+          {state.step === 'launch' && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 ml-10 space-y-3">
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <Label className="text-xs">Mode</Label>
+                  <Select value={launchMode} onValueChange={(v) => setLaunchMode(v as LaunchMode)}>
+                    <SelectTrigger className="h-8 w-56 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {LAUNCH_MODES.map((m) => (
+                        <SelectItem key={m.value} value={m.value} className="text-xs">
+                          {m.label}{m.servedOverEPP ? '' : ' (not yet over EPP)'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <Label className="text-xs">Registration model</Label>
+                  <Select value={launchModel} onValueChange={(v) => setLaunchModel(v as RegistrationModel)}>
+                    <SelectTrigger className="h-8 w-56 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {REGISTRATION_MODELS.map((m) => (
+                        <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {REGISTRATION_MODELS.find((m) => m.value === launchModel)?.hint}
+                </p>
+                <Button size="sm" className="w-full mt-1 gap-1.5" onClick={() => dispatch({ type: 'SET_LAUNCH', mode: launchMode, model: launchModel })}>
+                  <ArrowRight className="h-3.5 w-3.5" /> Confirm launch settings
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {state.phaseType === 'Launch' && pastStep('launch') && (
+            <UserBubble>
+              {LAUNCH_MODES.find((m) => m.value === state.launch.mode)?.label ?? state.launch.mode}, {REGISTRATION_MODELS.find((m) => m.value === state.launch.model)?.label ?? state.launch.model}
             </UserBubble>
           )}
 
@@ -1282,6 +1354,14 @@ export function PhaseCreateConversation({ tldName, open, onClose, existingPhases
                       {state.phaseType}
                     </Badge>
                   </div>
+                  {state.phaseType === 'Launch' && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Launch</span>
+                      <span className="text-xs">
+                        {LAUNCH_MODES.find((m) => m.value === state.launch.mode)?.label}, {REGISTRATION_MODELS.find((m) => m.value === state.launch.model)?.label}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Starts</span>
                     <span className="text-xs">{state.startIsNow ? 'Now (on save)' : state.starts && `${format(state.starts, 'PPP HH:mm')} UTC`}</span>
