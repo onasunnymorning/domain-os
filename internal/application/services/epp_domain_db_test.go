@@ -92,7 +92,7 @@ func newEPPFixture(t *testing.T) *eppFixture {
 	require.NoError(t, err)
 	_, err = NewTLDService(tldRepo, postgres.NewGormDNSRecordRepository(db)).CreateTLD(ctx, &commands.CreateTLDCommand{Name: tld, RyID: ry})
 	require.NoError(t, err)
-	_, err = NewPhaseService(phaseRepo, tldRepo, postgres.NewLifecyclePolicyRepository(db), events).CreatePhase(ctx, &commands.CreatePhaseCommand{
+	_, err = NewPhaseService(phaseRepo, tldRepo, postgres.NewLifecyclePolicyRepository(db), nil, events).CreatePhase(ctx, &commands.CreatePhaseCommand{
 		Name: "GA1", Type: "GA", Starts: time.Now().UTC().AddDate(0, 0, -1), TLDName: tld})
 	require.NoError(t, err)
 
@@ -161,7 +161,9 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 	})
 
 	// The EPP adapter marks the context with the session's login, as here.
-	dom, err := svc.Create(appcontext.WithUserID(ctx, "epp:"+rar1), scope1, create)
+	res, err := svc.Create(appcontext.WithUserID(ctx, "epp:"+rar1), scope1, create)
+	require.NoError(t, err)
+	dom := res.Domain
 	require.NoError(t, err)
 	assert.Equal(t, entities.ClIDType(rar1), dom.ClID)
 	assert.Regexp(t, `^\d+_DOM-EPPTEST$`, dom.RoID.String(), "minted with the configured repository ID")
@@ -220,4 +222,77 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 		require.NoError(t, db.Table("domain_events").Where("subject = ? AND type = ?", create.Name, "domain.registered").Pluck("actor", &actors).Error)
 		assert.Equal(t, []string{"epp:" + rar1}, actors)
 	})
+}
+
+// TestEPPLaunchApplicationOverPostgres files, reads, changes and withdraws
+// an application through the Postgres repositories, as cmd/epp wires them,
+// in a landrush phase that collects applications, priced through the
+// registration path's quote.
+func TestEPPLaunchApplicationOverPostgres(t *testing.T) {
+	f := newEPPFixture(t)
+	db, ctx, tld, rar1 := f.db, context.Background(), f.tld, f.rar1
+	scope := entities.RegistrarClID(rar1)
+	phases := postgres.NewGormPhaseRepository(db)
+	applications := postgres.NewLaunchApplicationRepository(db, "EPPTEST")
+	phaseService := NewPhaseService(phases, f.tldRepo, postgres.NewLifecyclePolicyRepository(db), applications, f.events)
+	_, err := phaseService.CreatePhase(ctx, &commands.CreatePhaseCommand{
+		Name: "auction", Type: "Launch", Starts: time.Now().UTC().AddDate(0, 0, -1), TLDName: tld,
+		Launch: &entities.LaunchSettings{Mode: entities.LaunchModeLandrush, Model: entities.RegistrationModelApplication, AcceptSignedMarks: true},
+	})
+	require.NoError(t, err)
+	price, err := entities.NewPrice("USD", 2500, 1000, 1000, 1000)
+	require.NoError(t, err)
+	_, err = NewPriceService(phases, postgres.NewGormPriceRepository(db)).CreatePrice(ctx, &commands.CreatePriceCommand{
+		TLDName: tld, PhaseName: "auction", Currency: price.Currency,
+		RegistrationAmount: price.RegistrationAmount, RenewalAmount: price.RenewalAmount, TransferAmount: price.TransferAmount, RestoreAmount: price.RestoreAmount,
+	})
+	require.NoError(t, err)
+
+	svc := NewEPPDomainService(EPPDomainServiceDeps{
+		Domains: f.domainRepo, NNDNs: postgres.NewGormNNDNRepository(db), TLDs: f.tldRepo, Phases: phases,
+		Contacts: postgres.NewContactRepository(db, "EPPTEST"), Hosts: f.hostRepo, Registrars: postgres.NewGormRegistrarRepository(db),
+		Register: f.registry, Applications: applications, Roids: f.roids,
+	})
+	create := commands.EPPCreateDomainCommand{
+		Name: "bid." + tld, Period: 2, PeriodUnit: "y", RegistrantID: "c" + rar1,
+		Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar1}}, HostNames: []string{"ns1." + rar1 + ".net"},
+		AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
+		Launch:   &commands.EPPLaunchCreate{Phase: commands.EPPLaunchPhase{Value: "landrush"}, Type: "application"},
+	}
+	res, err := svc.Create(ctx, scope, create)
+	require.NoError(t, err)
+	require.NotNil(t, res.Application)
+	app := res.Application
+	assert.Equal(t, "EPPTEST", app.ID.SystemIdentifier())
+	assert.Equal(t, entities.ApplicationStatusPendingAllocation, app.Status)
+	assert.Equal(t, entities.ApplicationQuote{Currency: "USD", Amount: 5000, Class: "standard"}, app.Quote, "two years at the phase's price")
+	_, err = f.domainRepo.GetDomainByName(ctx, "bid."+tld, false)
+	assert.ErrorIs(t, err, entities.ErrDomainNotFound, "nothing is registered")
+
+	_, err = svc.Create(ctx, scope, create)
+	assert.ErrorIs(t, err, entities.ErrApplicationExists)
+
+	ref := commands.EPPLaunchRef{Phase: commands.EPPLaunchPhase{Value: "landrush"}, ApplicationID: app.ID.String()}
+	got, err := svc.InfoApplication(ctx, scope, "bid."+tld, ref)
+	require.NoError(t, err)
+	assert.Equal(t, app.HostNames, got.HostNames)
+
+	updated, err := svc.UpdateApplication(ctx, scope, commands.EPPUpdateDomainCommand{
+		Name: "bid." + tld, Launch: &ref, RemoveHostNames: []string{"ns1." + rar1 + ".net"},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, updated.HostNames)
+
+	n, err := applications.CountApplicationsByPhase(ctx, tld, "auction")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+	_, err = phaseService.SetLaunchSettings(ctx, testPlatformScope, &commands.SetLaunchSettingsCommand{
+		LaunchSettings: entities.LaunchSettings{Mode: entities.LaunchModeLandrush, Model: entities.RegistrationModelFirstCome, AcceptSignedMarks: true},
+		TLDName:        tld, PhaseName: "auction",
+	})
+	assert.ErrorIs(t, err, entities.ErrLaunchModelFrozen, "a phase with applications keeps its model")
+
+	require.NoError(t, svc.DeleteApplication(ctx, scope, "bid."+tld, ref))
+	_, err = svc.InfoApplication(ctx, scope, "bid."+tld, ref)
+	assert.ErrorIs(t, err, entities.ErrApplicationNotFound)
 }

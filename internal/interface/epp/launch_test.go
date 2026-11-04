@@ -124,7 +124,7 @@ func TestLaunchCreateRefusals(t *testing.T) {
 		{"a mode with no phase open", launchCreateXML("claims", "", "", ""), "2306", "no claims phase is open"},
 		{"a mode with two phases open", launchCreateXML("open", "", "", ""), "2306", "name the phase"},
 		{"a name whose mode is not the value", launchCreateXML("open", "landrush", "", ""), "2306", "not of the mode"},
-		{"a phase that collects applications", launchCreateXML("custom", "auction", "", ""), "2306", "applications"},
+		{"type=registration in a phase that collects applications", launchCreateXML("custom", "auction", "registration", ""), "2306", "collects applications"},
 		{"a sunrise phase", launchCreateXML("sunrise", "sunrise-open", "", ""), "2306", "not yet supported"},
 		{"type=application in a first-come phase", launchCreateXML("landrush", "", "application", ""), "2306", "registers at once"},
 		{"a claims notice", launchCreateXML("landrush", "", "registration", notice), "2306", "not yet verified"},
@@ -141,9 +141,9 @@ func TestLaunchCreateRefusals(t *testing.T) {
 	}
 	assert.Empty(t, creds.domains.registry.Registered, "none of them registered anything")
 
-	t.Run("applications do not exist yet: info, update and delete", func(t *testing.T) {
+	t.Run("info, update and delete with a launch extension are about an application, never the domain", func(t *testing.T) {
 		requireCode(t, c.roundTrip(createXML("mine.test", createOpts{})), "1000")
-		id := `<launch:phase>landrush</launch:phase><launch:applicationID>abc-1</launch:applicationID>`
+		id := `<launch:phase>landrush</launch:phase><launch:applicationID>1_APP-EPPTEST</launch:applicationID>`
 		for _, tc := range []struct{ name, frame string }{
 			{"info", cmdXML(`<info><domain:info xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"><domain:name>mine.test</domain:name></domain:info></info>
 <extension><launch:info xmlns:launch="`+nsLaunch+`">`+id+`</launch:info></extension>`, "LI-1")},
@@ -153,11 +153,11 @@ func TestLaunchCreateRefusals(t *testing.T) {
 <extension><launch:delete xmlns:launch="`+nsLaunch+`">`+id+`</launch:delete></extension>`, "LD-1")},
 		} {
 			resp := c.roundTrip(tc.frame)
-			requireCode(t, resp, "2306")
-			assert.Contains(t, msg(resp), "applications", tc.name)
+			requireCode(t, resp, "2303")
+			assert.Contains(t, msg(resp), "application", tc.name)
 		}
 		d := creds.domains.registry.Domain("mine.test")
-		assert.False(t, d.Status.PendingDelete, "the delete with <launch:delete> did nothing")
+		assert.False(t, d.Status.PendingDelete, "the delete with <launch:delete> did nothing to the domain")
 	})
 
 	t.Run("the extension must be negotiated at login", func(t *testing.T) {
@@ -282,5 +282,125 @@ func TestLaunchCheckAvailability(t *testing.T) {
 			requireCode(t, resp, "2102")
 			assert.Contains(t, msg(resp), "avail")
 		}
+	})
+}
+
+// Applications (RFC 8334 §3.3-3.5, ADR 0024 §3) in the "auction" phase of
+// launchRegistry, a custom phase that collects applications.
+func TestLaunchApplications(t *testing.T) {
+	creds := newTestCredentials(t)
+	rstRegistrar2(t, creds)
+	launchRegistry(t, creds)
+	reg := creds.domains.registry
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
+	c := dial(t, ts.addr)
+	requireCode(t, c.roundTrip(loginWithServices([]string{nsDomain}, []string{nsLaunch, nsSecDNS})), "1000")
+
+	launchRef := func(tag, phase, id string) string {
+		return `<launch:` + tag + ` xmlns:launch="` + nsLaunch + `">` + phase + `<launch:applicationID>` + id + `</launch:applicationID></launch:` + tag + `>`
+	}
+	infoXML := func(name, ext string) string {
+		return cmdXML(`<info><domain:info xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"><domain:name>`+name+`</domain:name></domain:info></info><extension>`+ext+`</extension>`, "AI-1")
+	}
+	deleteXML := func(name, ext string) string {
+		return cmdXML(`<delete><domain:delete xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"><domain:name>`+name+`</domain:name></domain:delete></delete><extension>`+ext+`</extension>`, "AD-1")
+	}
+
+	var id string
+	t.Run("create files an application: 1001 with <launch:creData>", func(t *testing.T) {
+		resp := c.roundTrip(createXML("bid.test", createOpts{ext: launchCreateXML("custom", "auction", "application", "")}))
+		requireCode(t, resp, "1001")
+		assert.Equal(t, "bid.test", text(resp, "//creData/name"))
+		assert.NotEmpty(t, text(resp, "//creData/crDate"))
+		assert.Nil(t, resp.FindElement("//creData/exDate"), "no expiry until allocation")
+		id = text(resp, "//response/extension/creData/applicationID")
+		require.NotEmpty(t, id)
+		phase := resp.FindElement("//response/extension/creData/phase")
+		require.NotNil(t, phase)
+		assert.Equal(t, "custom", phase.Text())
+		assert.Equal(t, "auction", phase.SelectAttrValue("name", ""))
+		assert.Empty(t, reg.Registered, "nothing is registered")
+		app := reg.Application(id)
+		require.NotNil(t, app)
+		assert.Equal(t, entities.ApplicationStatusPendingAllocation, app.Status)
+		assert.Equal(t, entities.ClIDType(testRegistrar), app.ClID)
+	})
+	t.Run("the type may be left out; type=registration is a mismatch", func(t *testing.T) {
+		requireCode(t, c.roundTrip(createXML("second.test", createOpts{ext: launchCreateXML("custom", "auction", "", "")})), "1001")
+		resp := c.roundTrip(createXML("third.test", createOpts{ext: launchCreateXML("custom", "auction", "registration", "")}))
+		requireCode(t, resp, "2306")
+		assert.Contains(t, msg(resp), "collects applications")
+	})
+	t.Run("one open application per registrar, name and phase", func(t *testing.T) {
+		requireCode(t, c.roundTrip(createXML("bid.test", createOpts{ext: launchCreateXML("custom", "auction", "application", "")})), "2302")
+	})
+	t.Run("info by ID", func(t *testing.T) {
+		resp := c.roundTrip(infoXML("bid.test", launchRef("info", launchPhaseXML("custom", "auction"), id)))
+		requireCode(t, resp, "1000")
+		assert.Equal(t, "bid.test", text(resp, "//infData/name"))
+		assert.Equal(t, id, text(resp, "//infData/roid"), "the application ID stands as the ROID")
+		assert.Equal(t, "pendingCreate", resp.FindElement("//resData/infData/status").SelectAttrValue("s", ""))
+		assert.Equal(t, testRegistrar+"-c1", text(resp, "//infData/registrant"))
+		assert.Equal(t, testRegistrar, text(resp, "//infData/clID"))
+		assert.NotNil(t, resp.FindElement("//infData/authInfo/pw"), "a code is set")
+		assert.Nil(t, resp.FindElement("//infData/exDate"))
+		launch := resp.FindElement("//response/extension/infData")
+		require.NotNil(t, launch)
+		assert.Equal(t, id, launch.SelectElement("applicationID").Text())
+		assert.Equal(t, "pendingAllocation", launch.SelectElement("status").SelectAttrValue("s", ""))
+		assert.Equal(t, "custom", launch.SelectElement("phase").Text())
+	})
+	t.Run("info refusals", func(t *testing.T) {
+		for _, tc := range []struct{ name, frame, code, msgPart string }{
+			{"no application named", infoXML("bid.test", `<launch:info xmlns:launch="`+nsLaunch+`">`+launchPhaseXML("custom", "auction")+`</launch:info>`), "2306", "applicationID"},
+			{"an unknown application", infoXML("bid.test", launchRef("info", launchPhaseXML("custom", "auction"), "9_APP-EPPTEST")), "2303", "application"},
+			{"another name", infoXML("other.test", launchRef("info", launchPhaseXML("custom", "auction"), id)), "2306", "is for bid.test"},
+			{"another phase, by mode", infoXML("bid.test", launchRef("info", launchPhaseXML("landrush", ""), id)), "2306", "a custom phase"},
+			{"another phase, by name", infoXML("bid.test", launchRef("info", launchPhaseXML("custom", "later"), id)), "2306", "is in auction"},
+		} {
+			resp := c.roundTrip(tc.frame)
+			requireCode(t, resp, tc.code)
+			assert.Contains(t, msg(resp), tc.msgPart, tc.name)
+		}
+	})
+	t.Run("another registrar sees nothing", func(t *testing.T) {
+		c2 := dial(t, ts.addr)
+		requireCode(t, c2.roundTrip(cmdXML(`<login><clID>registrar2</clID><pw>secret-pw-02</pw>
+<options><version>1.0</version><lang>en</lang></options>
+<svcs><objURI>`+nsDomain+`</objURI><svcExtension><extURI>`+nsLaunch+`</extURI></svcExtension></svcs></login>`, "R2-LOGIN")), "1000")
+		requireCode(t, c2.roundTrip(infoXML("bid.test", launchRef("info", launchPhaseXML("custom", "auction"), id))), "2201")
+		requireCode(t, c2.roundTrip(deleteXML("bid.test", launchRef("delete", launchPhaseXML("custom", "auction"), id))), "2201")
+		assert.NotNil(t, reg.Application(id))
+	})
+	t.Run("update changes the application", func(t *testing.T) {
+		resp := c.roundTrip(domainUpdateXML("bid.test",
+			`<domain:add><domain:ns><domain:hostObj>ns2.`+testRegistrar+`.net</domain:hostObj></domain:ns></domain:add><domain:chg><domain:registrant>`+testRegistrar+`-c2</domain:registrant></domain:chg>`,
+			launchRef("update", launchPhaseXML("custom", "auction"), id)))
+		requireCode(t, resp, "1000")
+		app := reg.Application(id)
+		assert.Equal(t, []string{"ns2." + testRegistrar + ".net"}, app.HostNames, "the create named no nameserver")
+		assert.Equal(t, entities.ClIDType(testRegistrar+"-c2"), app.RegistrantID)
+		resp = c.roundTrip(domainUpdateXML("bid.test", `<domain:add><domain:status s="clientHold"/></domain:add>`, launchRef("update", launchPhaseXML("custom", "auction"), id)))
+		requireCode(t, resp, "2306")
+		assert.Contains(t, msg(resp), "statuses")
+		resp = c.roundTrip(domainUpdateXML("bid.test", "", launchRef("update", launchPhaseXML("custom", "auction"), id)))
+		requireCode(t, resp, "2003")
+	})
+	t.Run("a final application cannot change", func(t *testing.T) {
+		reg.SetApplication(id, func(a *entities.LaunchApplication) { a.Status = entities.ApplicationStatusRejected })
+		defer reg.SetApplication(id, func(a *entities.LaunchApplication) { a.Status = entities.ApplicationStatusPendingAllocation })
+		requireCode(t, c.roundTrip(domainUpdateXML("bid.test", `<domain:chg><domain:registrant>`+testRegistrar+`-c1</domain:registrant></domain:chg>`, launchRef("update", launchPhaseXML("custom", "auction"), id))), "2304")
+		requireCode(t, c.roundTrip(deleteXML("bid.test", launchRef("delete", launchPhaseXML("custom", "auction"), id))), "2304")
+		resp := c.roundTrip(infoXML("bid.test", launchRef("info", launchPhaseXML("custom", "auction"), id)))
+		requireCode(t, resp, "1000")
+		assert.Nil(t, resp.FindElement("//resData/infData/status"), "no pendingCreate once final")
+		assert.Equal(t, "rejected", resp.FindElement("//response/extension/infData/status").SelectAttrValue("s", ""))
+	})
+	t.Run("delete withdraws it", func(t *testing.T) {
+		requireCode(t, c.roundTrip(deleteXML("bid.test", launchRef("delete", launchPhaseXML("custom", "auction"), id))), "1000")
+		assert.Nil(t, reg.Application(id))
+		requireCode(t, c.roundTrip(infoXML("bid.test", launchRef("info", launchPhaseXML("custom", "auction"), id))), "2303")
+		assert.Nil(t, reg.Domain("bid.test"), "there never was a domain")
+		requireCode(t, c.roundTrip(createXML("bid.test", createOpts{ext: launchCreateXML("custom", "auction", "application", "")})), "1001")
 	})
 }

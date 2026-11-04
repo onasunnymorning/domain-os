@@ -49,7 +49,15 @@ var refusals = []struct {
 	{entities.ErrLaunchPhaseAmbiguous, epplib.StatusParameterPolicyError},
 	{entities.ErrLaunchPhaseModeMismatch, epplib.StatusParameterPolicyError},
 	{entities.ErrLaunchModeUnsupported, epplib.StatusParameterPolicyError},
-	{entities.ErrLaunchApplicationsUnavailable, epplib.StatusParameterPolicyError},
+	{entities.ErrPhaseCollectsApplications, epplib.StatusParameterPolicyError},
+	{entities.ErrPhaseRegistersAtOnce, epplib.StatusParameterPolicyError},
+	// Applications (RFC 8334 §3.3-3.5, ADR 0024 §3).
+	{entities.ErrApplicationNotFound, epplib.StatusObjectDoesNotExist},
+	{entities.ErrApplicationExists, epplib.StatusObjectExists},
+	{entities.ErrApplicationFinal, epplib.StatusObjectStatusProhibitsOperation},
+	{entities.ErrApplicationIDRequired, epplib.StatusParameterPolicyError},
+	{entities.ErrApplicationMismatch, epplib.StatusParameterPolicyError},
+	{entities.ErrApplicationUpdateUnsupported, epplib.StatusParameterPolicyError},
 	{entities.ErrLaunchCreateTypeMismatch, epplib.StatusParameterPolicyError},
 	{entities.ErrLaunchEvidenceUnsupported, epplib.StatusParameterPolicyError},
 	{entities.ErrLaunchCheckFormUnsupported, epplib.StatusUnimplementedOption},
@@ -208,14 +216,19 @@ func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 		v := schema.NormalizedStringValue(schema.Text(pw))
 		authInfo = &v
 	}
-	// <launch:info> asks about an application (RFC 8334 §3.1.2), which
-	// does not exist yet.
-	if launchExtension(cmd.doc, "info") != nil {
-		s.refuse(cmd, entities.ErrLaunchApplicationsUnavailable)
-		return
-	}
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
+	// <launch:info> asks about an application (RFC 8334 §3.1.2): the
+	// registrar's own, by its ID; the code, if any, plays no part.
+	if li := launchExtension(cmd.doc, "info"); li != nil {
+		app, err := s.domains.InfoApplication(ctx, scope, cmd.objects[0], readLaunchRef(li))
+		if err != nil {
+			s.refuse(cmd, err)
+			return
+		}
+		cmd.respond(epplib.StatusSuccess, "", applicationInfoData(app), launchInfData(app))
+		return
+	}
 	info, err := s.domains.Info(ctx, scope, cmd.objects[0], authInfo)
 	if err != nil {
 		s.refuse(cmd, err)
@@ -282,11 +295,18 @@ func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 
 	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
 	defer cancel()
-	dom, err := s.domains.Create(ctx, scope, c)
+	res, err := s.domains.Create(ctx, scope, c)
 	if err != nil {
 		s.refuse(cmd, err)
 		return
 	}
+	if app := res.Application; app != nil {
+		// RFC 8334 §3.3.1: an application is pending (1001), answered with
+		// its ID in <launch:creData>.
+		cmd.respond(epplib.StatusActionPending, "", applicationCreateData(app), launchCreData(app))
+		return
+	}
+	dom := res.Domain
 	code := epplib.StatusSuccess
 	if dom.Status.PendingCreate {
 		code = epplib.StatusActionPending
@@ -297,7 +317,9 @@ func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 // domainUpdate answers <domain:update> (RFC 5731 §3.2.5), with a
 // <secDNS:update> (RFC 5910 §5.2.5) if the session logged in with
 // secDNS-1.1, or an <rgp:update> (RFC 3915 §4.2.5), a restore, if it
-// logged in with RGP. A restore is answered with the domain's RGP statuses
+// logged in with RGP; or, with a <launch:update> (RFC 8334 §3.4), the
+// same changes made to the registrar's application named instead of a
+// domain. A restore is answered with the domain's RGP statuses
 // in <rgp:upData>, when it has any: pendingRestore after a request.
 func (s *Server) domainUpdate(ctx context.Context, cmd *command) {
 	scope, err := registrarScope(cmd)
@@ -306,12 +328,6 @@ func (s *Server) domainUpdate(ctx context.Context, cmd *command) {
 		return
 	}
 	update := cmd.doc.FindElement("/epp/command/update/*")
-	// <launch:update> changes an application (RFC 8334 §3.4), which does
-	// not exist yet.
-	if launchExtension(cmd.doc, "update") != nil {
-		s.refuse(cmd, entities.ErrLaunchApplicationsUnavailable)
-		return
-	}
 	add, rem, chg := update.SelectElement("add"), update.SelectElement("rem"), update.SelectElement("chg")
 	secDNS := secDNSUpdate(cmd.doc)
 	restore, err := rgpRestore(cmd.doc)
@@ -352,6 +368,18 @@ func (s *Server) domainUpdate(ctx context.Context, cmd *command) {
 	}
 	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
 	defer cancel()
+	// <launch:update> changes the registrar's application instead (RFC
+	// 8334 §3.4): 1000, with no data.
+	if lu := launchExtension(cmd.doc, "update"); lu != nil {
+		ref := readLaunchRef(lu)
+		c.Launch = &ref
+		if _, err := s.domains.UpdateApplication(ctx, scope, c); err != nil {
+			s.refuse(cmd, err)
+			return
+		}
+		cmd.respond(epplib.StatusSuccess, "", nil)
+		return
+	}
 	dom, err := s.domains.Update(ctx, scope, c)
 	if err != nil {
 		s.refuse(cmd, err)
@@ -555,14 +583,18 @@ func (s *Server) domainDelete(ctx context.Context, cmd *command) {
 		s.refuse(cmd, err)
 		return
 	}
-	// <launch:delete> withdraws an application (RFC 8334 §3.5), which does
-	// not exist yet.
-	if launchExtension(cmd.doc, "delete") != nil {
-		s.refuse(cmd, entities.ErrLaunchApplicationsUnavailable)
-		return
-	}
 	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
 	defer cancel()
+	// <launch:delete> withdraws the registrar's application (RFC 8334
+	// §3.5): 1000, the application gone.
+	if ld := launchExtension(cmd.doc, "delete"); ld != nil {
+		if err := s.domains.DeleteApplication(ctx, scope, cmd.objects[0], readLaunchRef(ld)); err != nil {
+			s.refuse(cmd, err)
+			return
+		}
+		cmd.respond(epplib.StatusSuccess, "", nil)
+		return
+	}
 	if _, err := s.domains.Delete(ctx, scope, cmd.objects[0]); err != nil {
 		s.refuse(cmd, err)
 		return
@@ -594,6 +626,16 @@ func readLaunchPhase(el *etree.Element) commands.EPPLaunchPhase {
 		return commands.EPPLaunchPhase{}
 	}
 	return commands.EPPLaunchPhase{Value: schema.TokenValue(schema.Text(el)), Name: schema.TokenValue(el.SelectAttrValue("name", ""))}
+}
+
+// readLaunchRef reads a <launch:info>, <launch:update> or <launch:delete>
+// (RFC 8334 §3.1.2, §3.4, §3.5): the phase and the application named.
+func readLaunchRef(el *etree.Element) commands.EPPLaunchRef {
+	ref := commands.EPPLaunchRef{Phase: readLaunchPhase(el.SelectElement("phase"))}
+	if id := el.SelectElement("applicationID"); id != nil {
+		ref.ApplicationID = schema.TokenValue(schema.Text(id))
+	}
+	return ref
 }
 
 // readLaunchCreate reads a <launch:create> extension (RFC 8334 §3.3) into

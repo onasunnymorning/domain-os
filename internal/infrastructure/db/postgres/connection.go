@@ -62,6 +62,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&EPPTransactionRecord{},
 		&DomainTransferRecord{},
 		&PollMessageRecord{},
+		&LaunchApplicationRecord{},
+		&LaunchApplicationHost{},
+		&LaunchApplicationDSRecord{},
 		&EPPPolicyRecord{},
 		&EPPPolicyAssignmentRecord{},
 		&RegistrarFamilyRecord{},
@@ -147,6 +150,10 @@ func AutoMigrate(db *gorm.DB) error {
 		"CREATE INDEX IF NOT EXISTS idx_escrow_sanitization_runs_tenant_tld_started ON escrow_sanitization_runs (tenant_id, tld, started_at DESC)",
 	}
 	manualIndexes = append(manualIndexes, escrowKeyManualIndexes...)
+	// launch_applications: one open application per registrar, name and
+	// phase (ADR 0024 §3); partial, so a registrar may apply again once an
+	// earlier application is final or withdrawn.
+	manualIndexes = append(manualIndexes, launchApplicationOpenIndex)
 	for _, idx := range manualIndexes {
 		if err := db.Exec(idx).Error; err != nil {
 			log.Printf("Warning: failed to create index: %s — %v", idx, err)

@@ -40,6 +40,7 @@ func objectRegistry(t *testing.T) (*EPPDomainService, *memstore.Registry, *entit
 	svc := NewEPPDomainService(EPPDomainServiceDeps{
 		Domains: reg.Domains(), NNDNs: reg.NNDNs(), TLDs: reg.TLDs(), Phases: reg.Phases(),
 		Contacts: reg.Contacts(), Hosts: reg.Hosts(), Registrars: reg.Registrars(), Register: reg,
+		Applications: reg.Applications(), Roids: NewRoidService(reg, "TEST"),
 	})
 	return svc, reg, phase
 }
@@ -62,8 +63,9 @@ func TestEPPDomainCreate(t *testing.T) {
 	svc, reg, _ := objectRegistry(t)
 	cmd := validCreate("new.test")
 	cmd.DSData = []commands.EPPDSData{ds(13, 2, strings.ToLower(digest256)), ds(15, 4, strings.Repeat("ab", 48))}
-	dom, err := svc.Create(context.Background(), rar1, cmd)
+	res, err := svc.Create(context.Background(), rar1, cmd)
 	require.NoError(t, err)
+	dom := res.Domain
 	assert.Equal(t, []entities.DSRecord{
 		{KeyTag: 2371, Algorithm: 13, DigestType: 2, Digest: digest256},
 		{KeyTag: 2371, Algorithm: 15, DigestType: 4, Digest: strings.Repeat("AB", 48)},
@@ -256,18 +258,18 @@ func TestEPPDomainCreateInLaunchPhase(t *testing.T) {
 
 	cmd := validCreate("rushed.test")
 	cmd.Launch = &commands.EPPLaunchCreate{Phase: commands.EPPLaunchPhase{Value: "landrush"}, Type: "registration"}
-	dom, err := svc.Create(context.Background(), rar1, cmd)
+	res, err := svc.Create(context.Background(), rar1, cmd)
 	require.NoError(t, err)
-	assert.Equal(t, entities.ClIDType("landrush"), dom.RegistrationPhaseName)
+	assert.Equal(t, entities.ClIDType("landrush"), res.Domain.RegistrationPhaseName)
 
 	short := validCreate("ab.test")
 	short.Launch = &commands.EPPLaunchCreate{Phase: commands.EPPLaunchPhase{Value: "landrush", Name: "landrush"}}
 	_, err = svc.Create(context.Background(), rar1, short)
 	require.ErrorIs(t, err, entities.ErrLabelNotValidInPhase, "the launch phase's label rules, not GA's")
 
-	dom, err = svc.Create(context.Background(), rar1, validCreate("ab.test"))
+	res, err = svc.Create(context.Background(), rar1, validCreate("ab.test"))
 	require.NoError(t, err)
-	assert.Empty(t, dom.RegistrationPhaseName, "a GA registration names no phase")
+	assert.Empty(t, res.Domain.RegistrationPhaseName, "a GA registration names no phase")
 	assert.Equal(t, []string{"rushed.test", "ab.test"}, reg.Registered)
 }
 
@@ -300,7 +302,7 @@ func TestEPPDomainCreateLaunchRefusals(t *testing.T) {
 		{"no phase of the mode", launch("claims", "", "", 0, 0), entities.ErrPhaseNotActive},
 		{"two phases of the mode", launch("open", "", "", 0, 0), entities.ErrLaunchPhaseAmbiguous},
 		{"mode does not match the name", launch("open", "landrush", "", 0, 0), entities.ErrLaunchPhaseModeMismatch},
-		{"application phase", launch("custom", "auction", "", 0, 0), entities.ErrLaunchApplicationsUnavailable},
+		{"type=registration in an application phase", launch("custom", "auction", "registration", 0, 0), entities.ErrLaunchCreateTypeMismatch},
 		{"sunrise phase", launch("sunrise", "sunrise-open", "", 0, 0), entities.ErrLaunchModeUnsupported},
 		{"sunrise before evidence", launch("sunrise", "", "", 1, 0), entities.ErrLaunchModeUnsupported},
 		{"type=application in a first-come phase", launch("landrush", "", "application", 0, 0), entities.ErrLaunchCreateTypeMismatch},

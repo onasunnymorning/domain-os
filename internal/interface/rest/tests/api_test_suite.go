@@ -141,7 +141,7 @@ func NewTestAPI() (*TestAPI, error) {
 	registrarService := services.NewRegistrarService(registrarRepo, eventPublisher)
 	contactService := services.NewContactService(contactRepo, *roidService, eventPublisher)
 	lifecyclePolicyRepo := postgres.NewLifecyclePolicyRepository(db)
-	phaseService := services.NewPhaseService(phaseRepo, tldRepo, lifecyclePolicyRepo, eventPublisher)
+	phaseService := services.NewPhaseService(phaseRepo, tldRepo, lifecyclePolicyRepo, nil, eventPublisher)
 	ianaRegistrarService := services.NewIANARegistrarService(ianaRegistrarRepo)
 	accreditationService := services.NewAccreditationService(accreditationRepo, registrarRepo, tldRepo, eventPublisher)
 	feeService := services.NewFeeService(phaseRepo, feeRepo)

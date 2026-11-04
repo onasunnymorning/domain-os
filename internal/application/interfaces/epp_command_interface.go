@@ -23,8 +23,21 @@ type EPPDomainService interface {
 	// registrar that gives the domain's transfer code (authInfo, nil if none
 	// was given), its limited view (RFC 9154 §5.3).
 	Info(ctx context.Context, scope entities.RegistrarClID, name string, authInfo *string) (*queries.EPPDomainInfo, error)
-	// Create registers a domain for the registrar.
-	Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) (*entities.Domain, error)
+	// Create registers a domain for the registrar, or, in a launch phase
+	// that collects applications, files its application for the name
+	// (RFC 8334 §3.3); the result says which.
+	Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) (*queries.EPPDomainCreated, error)
+	// InfoApplication returns the registrar's application that ref names
+	// for name (RFC 8334 §3.1.2); another registrar's is
+	// entities.ErrEPPNotSponsor.
+	InfoApplication(ctx context.Context, scope entities.RegistrarClID, name string, ref commands.EPPLaunchRef) (*entities.LaunchApplication, error)
+	// UpdateApplication changes the registrar's application cmd.Launch
+	// names (RFC 8334 §3.4): its contacts, nameservers, DS records or
+	// code, while it is not final.
+	UpdateApplication(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPUpdateDomainCommand) (*entities.LaunchApplication, error)
+	// DeleteApplication withdraws the registrar's application ref names
+	// for name (RFC 8334 §3.5), while it is not final.
+	DeleteApplication(ctx context.Context, scope entities.RegistrarClID, name string, ref commands.EPPLaunchRef) error
 	// Update changes a domain the registrar sponsors.
 	Update(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPUpdateDomainCommand) (*entities.Domain, error)
 	// Renew renews a domain the registrar sponsors.

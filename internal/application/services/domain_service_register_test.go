@@ -113,7 +113,7 @@ func TestRegisterDomainRefusesPhasesItCannotRegisterIn(t *testing.T) {
 		{"nope", entities.ErrPhaseNotFound},
 		// Active, but the phase collects applications, or needs verification
 		// that does not exist yet: a registration would claim the name.
-		{"auction", entities.ErrLaunchApplicationsUnavailable},
+		{"auction", entities.ErrPhaseCollectsApplications},
 		{"sunrise-fc", entities.ErrLaunchModeUnsupported},
 	} {
 		_, err := svc.RegisterDomain(context.Background(), &commands.RegisterDomainCommand{

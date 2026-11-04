@@ -1870,6 +1870,21 @@ func (s *DomainService) GetQuote(ctx context.Context, q *queries.QuoteRequest) (
 	return s.quoteIn(ctx, q, phase, domain)
 }
 
+// QuoteRegistration implements EPPDomainRegistrar: the price of registering
+// name, unregistered, by clid for years in phase, in the phase's base
+// currency. An application keeps it to be billed at allocation (ADR 0024
+// §3).
+func (s *DomainService) QuoteRegistration(ctx context.Context, name, clid string, years int, phase *entities.Phase) (*entities.Quote, error) {
+	dn, err := entities.NewDomainName(name)
+	if err != nil {
+		return nil, err
+	}
+	return s.quoteIn(ctx, &queries.QuoteRequest{
+		DomainName: dn.String(), ClID: clid, TransactionType: entities.TransactionTypeRegistration,
+		Currency: phase.Policy.BaseCurrency, Years: years, PhaseName: phase.Name.String(),
+	}, phase, &entities.Domain{Name: *dn})
+}
+
 // quoteIn is GetQuote once the phase and the domain are known: the premium
 // labels and the FX rate are read, and the price engine runs. RegisterDomain
 // calls it with the phase it has already loaded and the unregistered name,

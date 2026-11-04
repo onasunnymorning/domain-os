@@ -28,15 +28,20 @@ const (
 	CONTACT_ROID_ID = "CONT"
 	HOST_ROID_ID    = "HOST"
 	DOMAIN_ROID_ID  = "DOM"
+	// APPLICATION_ROID_ID marks a launch application's ID (RFC 8334
+	// applicationID, ADR 0024): roidType-valid, so a registrar can echo it
+	// where a ROID goes.
+	APPLICATION_ROID_ID = "APP"
 
-	RoidTypeContact = "contact"
-	RoidTypeHost    = "host"
-	RoidTypeDomain  = "domain"
+	RoidTypeContact     = "contact"
+	RoidTypeHost        = "host"
+	RoidTypeDomain      = "domain"
+	RoidTypeApplication = "application"
 )
 
 var (
 	ErrInvalidRoid             = errors.New("invalid roid")
-	ErrInvalidObjectIdentifier = errors.New("invalid object identifier: accepts ('contact', 'host', 'domain') only")
+	ErrInvalidObjectIdentifier = errors.New("invalid object identifier: accepts ('contact', 'host', 'domain', 'application') only")
 	ErrInvalidRepositoryID     = errors.New("invalid repository ID: 1 to 8 ASCII letters or digits")
 	// ErrRepositoryIDChanged is a configured repository ID that differs from
 	// the one the installation's ROIDs were issued with. Only the number of a
@@ -94,6 +99,8 @@ func NewRoidType(uniqueID int64, objectIdentifier string, repository RepositoryI
 		object = HOST_ROID_ID
 	case RoidTypeDomain:
 		object = DOMAIN_ROID_ID
+	case RoidTypeApplication:
+		object = APPLICATION_ROID_ID
 	default:
 		return RoidType(""), ErrInvalidObjectIdentifier
 	}
@@ -132,7 +139,7 @@ func (r RoidType) IsIssuedHere() bool {
 		return false
 	}
 	switch r.ObjectIdentifier() {
-	case CONTACT_ROID_ID, HOST_ROID_ID, DOMAIN_ROID_ID:
+	case CONTACT_ROID_ID, HOST_ROID_ID, DOMAIN_ROID_ID, APPLICATION_ROID_ID:
 		return true
 	default:
 		return false

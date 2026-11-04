@@ -45,6 +45,8 @@ type Registry struct {
 	transfers map[entities.RoidType][]*entities.DomainTransfer
 	// messages are the poll queues, in the order queued.
 	messages []*entities.PollMessage
+	// applications are the launch applications filed, by ID.
+	applications map[string]*entities.LaunchApplication
 }
 
 // hostKey identifies a host object: each registrar has its own host object
@@ -58,7 +60,8 @@ func NewRegistry(repository entities.RepositoryID) *Registry {
 		now: time.Now, repository: repository, phases: map[string][]*entities.Phase{}, accredited: map[string]map[string]bool{},
 		domains: map[string]*entities.Domain{}, contacts: map[string]*entities.Contact{},
 		hosts: map[hostKey]*entities.Host{}, reserved: map[string]bool{}, knownTLDs: map[string]bool{},
-		transfers: map[entities.RoidType][]*entities.DomainTransfer{},
+		transfers:    map[entities.RoidType][]*entities.DomainTransfer{},
+		applications: map[string]*entities.LaunchApplication{},
 	}
 }
 

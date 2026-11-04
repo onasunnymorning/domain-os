@@ -17,10 +17,13 @@ var (
 	// ErrLaunchModeUnsupported: the phase needs trademark evidence verified
 	// (sunrise, claims), and no verifier exists yet (roadmap 9a-9c).
 	ErrLaunchModeUnsupported = errors.New("registrations in sunrise and claims phases are not yet supported")
-	// ErrLaunchApplicationsUnavailable: the phase collects applications, and
-	// application filing does not exist yet (roadmap 8c); a registration
-	// here would claim a name the phase means to allocate later.
-	ErrLaunchApplicationsUnavailable = errors.New("this phase collects applications, which are not yet supported; it accepts no registrations")
+	// ErrPhaseCollectsApplications: the phase collects applications, so a
+	// name in it is claimed by filing one and won by allocation, never by a
+	// registration made at once.
+	ErrPhaseCollectsApplications = errors.New("this phase collects applications; it accepts no registrations")
+	// ErrPhaseRegistersAtOnce: the phase registers at once (first come), so
+	// no application can be filed in it.
+	ErrPhaseRegistersAtOnce = errors.New("this phase registers at once; it collects no applications")
 	// ErrLaunchCreateTypeMismatch: a <launch:create type="application">
 	// in a first-come phase, or type="registration" in an application
 	// phase (RFC 8334 §3.3).
@@ -137,16 +140,29 @@ func (s LaunchSettings) Validate() error {
 }
 
 // AdmitsRegistration reports whether a registration (a domain created at
-// once) may be made under these settings today: not in a phase needing
-// verification (ErrLaunchModeUnsupported) and not in an application phase
-// (ErrLaunchApplicationsUnavailable). The zero value, a GA phase's, admits.
-// Both refusals go when the EPP series lands what they wait for.
+// once) may be made under these settings: not in a phase needing
+// verification (ErrLaunchModeUnsupported, until roadmap 9a-9c) and not in
+// an application phase (ErrPhaseCollectsApplications: its names are won by
+// allocation, LaunchApplication). The zero value, a GA phase's, admits.
 func (s LaunchSettings) AdmitsRegistration() error {
 	switch {
 	case s.RequiresVerification():
 		return ErrLaunchModeUnsupported
 	case s.Model == RegistrationModelApplication:
-		return ErrLaunchApplicationsUnavailable
+		return ErrPhaseCollectsApplications
+	}
+	return nil
+}
+
+// AdmitsApplication reports whether an application may be filed under
+// these settings: in an application phase that needs no verification.
+// A first-come phase is ErrPhaseRegistersAtOnce.
+func (s LaunchSettings) AdmitsApplication() error {
+	switch {
+	case s.RequiresVerification():
+		return ErrLaunchModeUnsupported
+	case s.Model != RegistrationModelApplication:
+		return ErrPhaseRegistersAtOnce
 	}
 	return nil
 }

@@ -66,7 +66,7 @@ func TestLaunchSettings_AdmitsRegistration(t *testing.T) {
 		{"GA phase (zero value)", LaunchSettings{}, nil},
 		{"open first-come", LaunchSettings{Mode: LaunchModeOpen, Model: RegistrationModelFirstCome}, nil},
 		{"landrush first-come", LaunchSettings{Mode: LaunchModeLandrush, Model: RegistrationModelFirstCome}, nil},
-		{"landrush by application", LaunchSettings{Mode: LaunchModeLandrush, Model: RegistrationModelApplication}, ErrLaunchApplicationsUnavailable},
+		{"landrush by application", LaunchSettings{Mode: LaunchModeLandrush, Model: RegistrationModelApplication}, ErrPhaseCollectsApplications},
 		{"sunrise first-come", LaunchSettings{Mode: LaunchModeSunrise, Model: RegistrationModelFirstCome, AcceptSignedMarks: true}, ErrLaunchModeUnsupported},
 		{"sunrise by application: verification first", LaunchSettings{Mode: LaunchModeSunrise, Model: RegistrationModelApplication, AcceptSignedMarks: true}, ErrLaunchModeUnsupported},
 		{"claims", LaunchSettings{Mode: LaunchModeClaims, Model: RegistrationModelFirstCome}, ErrLaunchModeUnsupported},

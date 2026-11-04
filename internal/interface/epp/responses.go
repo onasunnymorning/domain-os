@@ -269,3 +269,89 @@ func renewData(d *entities.Domain) *etree.Element {
 	ren.CreateElement("domain:exDate").SetText(eppTime(d.ExpiryDate))
 	return ren
 }
+
+// applicationCreateData builds the <domain:creData> of a create that filed
+// an application (RFC 8334 §3.3.1): the name and when it was filed. There
+// is no expiry yet: the domain does not exist until allocation.
+func applicationCreateData(a *entities.LaunchApplication) *etree.Element {
+	cre := etree.NewElement("domain:creData")
+	cre.CreateAttr("xmlns:domain", nsDomain)
+	cre.CreateElement("domain:name").SetText(a.Name.String())
+	cre.CreateElement("domain:crDate").SetText(eppTime(a.CreatedAt))
+	return cre
+}
+
+// launchPhaseElement builds the <launch:phase> of an application's phase:
+// its mode as the value, its name as the attribute, so a registrar can
+// name it back whichever way it sends phases.
+func launchPhaseElement(parent *etree.Element, a *entities.LaunchApplication) {
+	ph := parent.CreateElement("launch:phase")
+	ph.CreateAttr("name", a.PhaseName.String())
+	ph.SetText(string(a.PhaseMode))
+}
+
+// launchCreData builds <launch:creData> (RFC 8334 §3.3.1): the phase and
+// the application's ID.
+func launchCreData(a *entities.LaunchApplication) *etree.Element {
+	cre := etree.NewElement("launch:creData")
+	cre.CreateAttr("xmlns:launch", nsLaunch)
+	launchPhaseElement(cre, a)
+	cre.CreateElement("launch:applicationID").SetText(a.ID.String())
+	return cre
+}
+
+// launchInfData builds <launch:infData> (RFC 8334 §3.1.2): the phase, the
+// application's ID and its status. No mark is included: none is kept
+// until sunrise lands.
+func launchInfData(a *entities.LaunchApplication) *etree.Element {
+	inf := etree.NewElement("launch:infData")
+	inf.CreateAttr("xmlns:launch", nsLaunch)
+	launchPhaseElement(inf, a)
+	inf.CreateElement("launch:applicationID").SetText(a.ID.String())
+	inf.CreateElement("launch:status").CreateAttr("s", string(a.Status))
+	return inf
+}
+
+// applicationInfoData builds the <domain:infData> of an application (RFC
+// 8334 §3.1.2): what the domain would carry, with the application's ID as
+// the ROID and pendingCreate as its status while it is not final. There is
+// no expiry yet, and no subordinate hosts.
+func applicationInfoData(a *entities.LaunchApplication) *etree.Element {
+	inf := etree.NewElement("domain:infData")
+	inf.CreateAttr("xmlns:domain", nsDomain)
+	inf.CreateElement("domain:name").SetText(a.Name.String())
+	inf.CreateElement("domain:roid").SetText(a.ID.String())
+	if !a.Status.IsFinal() {
+		inf.CreateElement("domain:status").CreateAttr("s", entities.DomainStatusPendingCreate)
+	}
+	if a.RegistrantID != "" {
+		inf.CreateElement("domain:registrant").SetText(a.RegistrantID.String())
+	}
+	for _, c := range []struct {
+		kind string
+		id   entities.ClIDType
+	}{{"admin", a.AdminID}, {"billing", a.BillingID}, {"tech", a.TechID}} {
+		if c.id != "" {
+			el := inf.CreateElement("domain:contact")
+			el.CreateAttr("type", c.kind)
+			el.SetText(c.id.String())
+		}
+	}
+	if len(a.HostNames) > 0 {
+		ns := inf.CreateElement("domain:ns")
+		for _, h := range a.HostNames {
+			ns.CreateElement("domain:hostObj").SetText(h)
+		}
+	}
+	inf.CreateElement("domain:clID").SetText(a.ClID.String())
+	inf.CreateElement("domain:crID").SetText(a.ClID.String())
+	inf.CreateElement("domain:crDate").SetText(eppTime(a.CreatedAt))
+	if !a.UpdatedAt.Equal(a.CreatedAt) {
+		inf.CreateElement("domain:upID").SetText(a.ClID.String())
+		inf.CreateElement("domain:upDate").SetText(eppTime(a.UpdatedAt))
+	}
+	if a.AuthInfo.IsSet() {
+		inf.CreateElement("domain:authInfo").CreateElement("domain:pw")
+	}
+	return inf
+}
