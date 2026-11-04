@@ -83,7 +83,7 @@ registrations (the domain starts `pendingCreate`) and gains one for
 applications: an application starts `pendingValidation` when it is set, else
 `pendingAllocation`.
 
-## 2. RFC 8334 over EPP (first-come phases and applications implemented; allocation next)
+## 2. RFC 8334 over EPP
 
 The server offers `urn:ietf:params:xml:ns:launch-1.0` in the greeting and
 accepts it at login; a command carrying the extension on a session that did
@@ -126,7 +126,7 @@ not used. A refusal's result code is in
 [`docs/epp/POLICY_REFERENCE.md`](../epp/POLICY_REFERENCE.md) as each command
 lands.
 
-## 3. Applications and allocation (applications implemented; allocation next)
+## 3. Applications and allocation
 
 An application (`entities.LaunchApplication`, the `launch_applications`
 table) holds what a create holds (contacts, nameservers by name, DS records,
@@ -147,13 +147,19 @@ code), never statuses, and is refused once the application is final. A
 phase with applications filed can no longer change its registration model.
 
 An operator **allocates one application per name through the admin API**
-(`validate`, `allocate`, `reject`; next PR); allocation registers the domain
-in the application's phase, which may have ended, rejects the other
-applications for the name in the same transaction, and sends each applicant
-a poll message carrying `<launch:infData>`. The `domain.registered` event,
-with the stored quote, is published at allocation. There is no allocation
-workflow: the decision (auction, lottery, manual) is the operator's, and a
-loop cannot take it.
+(`POST /launch-applications/{id}/validate|allocate|reject`, listing them at
+`GET /tlds/{tld}/phases/{phase}/applications`); deciding needs the
+`registry:launch:admin` permission within the TLD's tenant, reading only the
+tenant. Allocation registers the domain in the application's phase, which may
+have ended, through the registration path (`DomainService.RegisterApplication`),
+with the applicant's hashed code and **the quote from filing**, so the
+`domain.registered` event bills what the applicant was quoted; it rejects the
+other open applications for the name and queues each applicant a poll message
+carrying `<launch:infData>` with the application's new status, all in one
+transaction. Validation (`pendingValidation` → `pendingAllocation`, or
+`invalid` with a reason) and rejection queue a message too. There is no
+allocation workflow: the decision (auction, lottery, manual) is the
+operator's, and a loop cannot take it.
 
 ## 4. Deferred: sunrise, claims and TMCH (roadmap 9a–9c)
 

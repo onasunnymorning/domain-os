@@ -29,6 +29,10 @@ type PollMessage struct {
 	// message was queued: its <domain:trnData>. Nil for a message about
 	// something else, such as a lapsed restore, which is its text alone.
 	Transfer *DomainTransfer
+	// Application is the launch application the message is about, as it
+	// stood when the message was queued: its <launch:infData> (RFC 8334
+	// §3.1.2; ADR 0024 §3). Nil for a message about something else.
+	Application *LaunchApplication
 }
 
 // Poll message texts, by what the transfer has become.
@@ -99,4 +103,37 @@ func NewRestoreLapsedPollMessage(d *Domain, deadline, now time.Time) *PollMessag
 		text += fmt.Sprintf("; its redemption period has ended, and it is purged after %s", d.RGPStatus.PurgeDate.UTC().Format(time.RFC3339))
 	}
 	return &PollMessage{ClID: d.ClID, CreatedAt: now, Message: text}
+}
+
+// Poll message texts, by what an application has become (RFC 8334 §2.4).
+const (
+	PollMsgApplicationValidated = "Application validated"
+	PollMsgApplicationInvalid   = "Application invalid"
+	PollMsgApplicationAllocated = "Application allocated"
+	PollMsgApplicationRejected  = "Application rejected"
+)
+
+// NewApplicationPollMessage returns the message the applicant gets when the
+// operator moves its application to a new status: the text for that status,
+// with the reason when there is one, and the application as it stands, for
+// <launch:infData>. a is copied as it stands.
+func NewApplicationPollMessage(a *LaunchApplication, now time.Time) *PollMessage {
+	var text string
+	switch a.Status {
+	case ApplicationStatusPendingAllocation:
+		text = PollMsgApplicationValidated
+	case ApplicationStatusInvalid:
+		text = PollMsgApplicationInvalid
+	case ApplicationStatusAllocated:
+		text = PollMsgApplicationAllocated
+	case ApplicationStatusRejected:
+		text = PollMsgApplicationRejected
+	default:
+		text = "Application " + string(a.Status)
+	}
+	text += " for " + a.Name.String()
+	if a.Reason != "" && (a.Status == ApplicationStatusInvalid || a.Status == ApplicationStatusRejected) {
+		text += ": " + a.Reason
+	}
+	return &PollMessage{ClID: a.ClID, CreatedAt: now, Message: text, Application: a.DeepCopy()}
 }

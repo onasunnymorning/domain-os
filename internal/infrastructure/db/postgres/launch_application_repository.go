@@ -161,6 +161,36 @@ func (r *LaunchApplicationRepository) ListApplicationsByName(ctx context.Context
 	return out, nil
 }
 
+// ListApplicationsByPhase implements repositories.LaunchApplicationRepository.
+func (r *LaunchApplicationRepository) ListApplicationsByPhase(ctx context.Context, tld, phase string, status entities.ApplicationStatus) ([]*entities.LaunchApplication, error) {
+	q := dbFrom(ctx, r.db).Preload("Hosts").Preload("DSRecords", orderApplicationDS).Where("tld_name = ? AND phase_name = ?", tld, phase)
+	if status != "" {
+		q = q.Where("status = ?", string(status))
+	}
+	var recs []LaunchApplicationRecord
+	if err := q.Order("created_at, id").Find(&recs).Error; err != nil {
+		return nil, err
+	}
+	out := make([]*entities.LaunchApplication, len(recs))
+	for i := range recs {
+		out[i] = r.fromApplicationRecord(&recs[i])
+	}
+	return out, nil
+}
+
+// QueuePollMessages implements repositories.LaunchApplicationRepository.
+func (r *LaunchApplicationRepository) QueuePollMessages(ctx context.Context, msgs []*entities.PollMessage) error {
+	db := dbFrom(ctx, r.db)
+	for _, m := range msgs {
+		rec := toPollRecord(m)
+		if err := db.Create(rec).Error; err != nil {
+			return err
+		}
+		m.ID = rec.ID
+	}
+	return nil
+}
+
 // CountApplicationsByPhase implements repositories.LaunchApplicationRepository.
 func (r *LaunchApplicationRepository) CountApplicationsByPhase(ctx context.Context, tld, phase string) (int64, error) {
 	var n int64

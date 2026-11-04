@@ -23,6 +23,14 @@ type LaunchApplicationRepository interface {
 	// ListApplicationsByName returns every application for name, of every
 	// registrar and status, oldest first.
 	ListApplicationsByName(ctx context.Context, name string) ([]*entities.LaunchApplication, error)
+	// ListApplicationsByPhase returns the applications filed in a phase of
+	// a TLD, oldest first, those of one status when status is not empty.
+	ListApplicationsByPhase(ctx context.Context, tld, phase string, status entities.ApplicationStatus) ([]*entities.LaunchApplication, error)
+	// QueuePollMessages queues msgs, about applications, in their
+	// registrars' queues (repositories.PollMessageRepository reads them),
+	// in the transaction ctx carries if any, so that a status change and
+	// its messages commit together.
+	QueuePollMessages(ctx context.Context, msgs []*entities.PollMessage) error
 	// CountApplicationsByPhase counts the applications filed in a phase of
 	// a TLD, of every status: a phase with any cannot change its
 	// registration model (entities.Phase.SetLaunchSettings).

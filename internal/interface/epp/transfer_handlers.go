@@ -87,11 +87,16 @@ func (s *Server) poll(ctx context.Context, cmd *command) {
 		case msg == nil:
 			cmd.respond(epplib.StatusNoMessage, "", nil)
 		default:
-			var resData *etree.Element
+			var resData, ext *etree.Element
 			if msg.Transfer != nil {
 				resData = transferData(msg.Transfer)
 			}
-			cmd.respondWithQueue(epplib.StatusAckToDequeue, messageQueue(count, msg), resData)
+			if msg.Application != nil {
+				// RFC 8334 §3.1.2: a message about an application carries
+				// <launch:infData> with the application's status.
+				ext = launchInfData(msg.Application)
+			}
+			cmd.respondWithQueue(epplib.StatusAckToDequeue, messageQueue(count, msg), resData, ext)
 		}
 	case "ack":
 		id := schema.TokenValue(cmd.doc.FindElement("/epp/command/poll").SelectAttrValue("msgID", ""))

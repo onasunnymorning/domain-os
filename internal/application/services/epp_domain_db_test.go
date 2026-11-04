@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -295,4 +296,85 @@ func TestEPPLaunchApplicationOverPostgres(t *testing.T) {
 	require.NoError(t, svc.DeleteApplication(ctx, scope, "bid."+tld, ref))
 	_, err = svc.InfoApplication(ctx, scope, "bid."+tld, ref)
 	assert.ErrorIs(t, err, entities.ErrApplicationNotFound)
+}
+
+// TestLaunchAllocationOverPostgres allocates an application through the
+// Postgres repositories and the registration path, as the admin API wires
+// them: the domain is registered to the winner in its phase with the quote
+// from filing, the other application for the name is rejected, and both
+// applicants get a poll message, in one transaction.
+func TestLaunchAllocationOverPostgres(t *testing.T) {
+	f := newEPPFixture(t)
+	db, ctx, tld, rar1, rar2 := f.db, context.Background(), f.tld, f.rar1, f.rar2
+	phases := postgres.NewGormPhaseRepository(db)
+	applications := postgres.NewLaunchApplicationRepository(db, "EPPTEST")
+	_, err := NewPhaseService(phases, f.tldRepo, postgres.NewLifecyclePolicyRepository(db), applications, f.events).CreatePhase(ctx, &commands.CreatePhaseCommand{
+		Name: "auction", Type: "Launch", Starts: time.Now().UTC().AddDate(0, 0, -1), TLDName: tld,
+		Launch: &entities.LaunchSettings{Mode: entities.LaunchModeLandrush, Model: entities.RegistrationModelApplication, AcceptSignedMarks: true},
+	})
+	require.NoError(t, err)
+	_, err = NewPriceService(phases, postgres.NewGormPriceRepository(db)).CreatePrice(ctx, &commands.CreatePriceCommand{
+		TLDName: tld, PhaseName: "auction", Currency: "USD", RegistrationAmount: 2500, RenewalAmount: 1000, TransferAmount: 1000, RestoreAmount: 1000,
+	})
+	require.NoError(t, err)
+	rarRepo := postgres.NewGormRegistrarRepository(db)
+	require.NoError(t, NewAccreditationService(postgres.NewAccreditationRepository(db), rarRepo, f.tldRepo, f.events).CreateAccreditation(ctx, tld, rar2))
+	svc := NewEPPDomainService(EPPDomainServiceDeps{
+		Domains: f.domainRepo, NNDNs: postgres.NewGormNNDNRepository(db), TLDs: f.tldRepo, Phases: phases,
+		Contacts: postgres.NewContactRepository(db, "EPPTEST"), Hosts: f.hostRepo, Registrars: rarRepo,
+		Register: f.registry, Applications: applications, Roids: f.roids,
+	})
+	file := func(rar string) *entities.LaunchApplication {
+		res, err := svc.Create(ctx, entities.RegistrarClID(rar), commands.EPPCreateDomainCommand{
+			Name: "won." + tld, Period: 2, PeriodUnit: "y", RegistrantID: "c" + rar,
+			Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar}}, HostNames: []string{"ns1." + rar + ".net"},
+			AuthInfo: "Tr4nsf3r-C0de-Xq9#Lm2!",
+			Launch:   &commands.EPPLaunchCreate{Phase: commands.EPPLaunchPhase{Value: "landrush"}, Type: "application"},
+		})
+		require.NoError(t, err)
+		return res.Application
+	}
+	winner, loser := file(rar1), file(rar2)
+
+	alloc := NewLaunchAllocationService(applications, phases, f.tldRepo, f.registry, postgres.NewTransactor(db), f.events)
+	allocated, err := alloc.Allocate(ctx, testPlatformScope, &commands.AllocateApplicationCommand{ApplicationID: winner.ID.String()})
+	require.NoError(t, err)
+	assert.Equal(t, entities.ApplicationStatusAllocated, allocated.Status)
+
+	dom, err := f.domainRepo.GetDomainByName(ctx, "won."+tld, true)
+	require.NoError(t, err)
+	assert.Equal(t, dom.RoID, allocated.DomainRoID)
+	assert.Equal(t, entities.ClIDType(rar1), dom.ClID)
+	assert.Equal(t, entities.ClIDType("auction"), dom.RegistrationPhaseName)
+	assert.Equal(t, dom.CreatedAt.AddDate(2, 0, 0), dom.ExpiryDate)
+	assert.True(t, dom.AuthInfo.Matches("Tr4nsf3r-C0de-Xq9#Lm2!"), "the applicant's code")
+	require.Len(t, dom.Hosts, 1)
+
+	rejected, err := applications.GetApplicationByID(ctx, loser.ID)
+	require.NoError(t, err)
+	assert.Equal(t, entities.ApplicationStatusRejected, rejected.Status)
+
+	polls := postgres.NewDomainTransferRepository(db, "EPPTEST")
+	msg, n, err := polls.OldestPollMessage(ctx, entities.ClIDType(rar2))
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+	assert.Equal(t, entities.ApplicationStatusRejected, msg.Application.Status)
+	msg, _, err = polls.OldestPollMessage(ctx, entities.ClIDType(rar1))
+	require.NoError(t, err)
+	assert.Equal(t, entities.ApplicationStatusAllocated, msg.Application.Status)
+
+	var registered postgres.DomainEventRecord
+	require.NoError(t, db.Where("type = ? AND subject = ?", "domain.registered", "won."+tld).First(&registered).Error)
+	var payload struct {
+		Quote struct {
+			Price struct {
+				Amount float64 `json:"amount"`
+			}
+		}
+	}
+	require.NoError(t, json.Unmarshal(registered.Data, &payload))
+	assert.Equal(t, float64(5000), payload.Quote.Price.Amount, "the quote from filing, not a new one")
+
+	_, err = alloc.Allocate(ctx, testPlatformScope, &commands.AllocateApplicationCommand{ApplicationID: loser.ID.String()})
+	assert.ErrorIs(t, err, entities.ErrApplicationTransition)
 }

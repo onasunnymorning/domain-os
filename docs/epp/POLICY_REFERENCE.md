@@ -149,6 +149,8 @@ The greeting offers the domain, contact and host object services. It offers four
 
 The `<launch:phase>` the server sends back carries the phase's mode as its value and the phase's name as its `name` attribute.
 
+**Allocation** is the operator's, through the admin API, not a registrar's command. When the operator validates, allocates or rejects an application, the applicant gets a poll message (`Application validated|invalid|allocated|rejected for <name>`, with the reason for an invalid or rejected one) whose `<extension>` carries `<launch:infData>` with the phase, the `applicationID` and the new status; there is no `<resData>`. An allocated name is registered to the applicant in the application's phase, with the application's contacts, nameservers, DS records and code, at the price quoted when it was filed; a plain `<domain:info>` then shows the domain. The other open applications for the name are rejected in the same transaction.
+
 **`<domain:check>`.** Each name is answered in the order asked, duplicates included, with `avail="1"` or `avail="0"` and a reason:
 
 | Reason | When |

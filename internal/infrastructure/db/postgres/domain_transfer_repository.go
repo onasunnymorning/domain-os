@@ -50,6 +50,13 @@ type PollMessageRecord struct {
 	ActionDate     *time.Time
 	Years          int
 	ExpiryDate     *time.Time
+	// The launch application, as <launch:infData> shows it (ADR 0024 §3):
+	// its ID, name (DomainName above), phase and status as they stood. A
+	// message is about a transfer or an application, never both.
+	ApplicationID *int64 `gorm:"index"`
+	AppPhaseName  string `gorm:"size:16"`
+	AppPhaseMode  string `gorm:"size:16"`
+	AppStatus     string `gorm:"size:24"`
 }
 
 // TableName pins the table name.
@@ -388,6 +395,11 @@ func toPollRecord(m *entities.PollMessage) *PollMessageRecord {
 		rec.LosingClID, rec.ActingClID, rec.ActionDate = t.LosingClID.String(), t.ActingClID.String(), timePtr(t.ActionDate)
 		rec.Years, rec.ExpiryDate = t.Years, timePtr(t.ExpiryDate)
 	}
+	if a := m.Application; a != nil {
+		id, _ := a.ID.Int64()
+		rec.ApplicationID, rec.DomainName = &id, a.Name.String()
+		rec.AppPhaseName, rec.AppPhaseMode, rec.AppStatus = a.PhaseName.String(), string(a.PhaseMode), string(a.Status)
+	}
 	return rec
 }
 
@@ -402,6 +414,15 @@ func (r *DomainTransferRepository) fromPollRecord(rec *PollMessageRecord) *entit
 			ID: *rec.TransferID, DomainRoID: roid, DomainName: entities.DomainName(rec.DomainName), Status: entities.TransferStatus(rec.TrStatus),
 			RequestingClID: entities.ClIDType(rec.RequestingClID), RequestedAt: timeOf(rec.RequestedAt), LosingClID: entities.ClIDType(rec.LosingClID),
 			ActingClID: entities.ClIDType(rec.ActingClID), ActionDate: timeOf(rec.ActionDate), Years: rec.Years, ExpiryDate: timeOf(rec.ExpiryDate),
+		}
+	}
+	if rec.ApplicationID != nil {
+		id, _ := entities.NewRoidType(*rec.ApplicationID, entities.RoidTypeApplication, r.repository)
+		name := entities.DomainName(rec.DomainName)
+		m.Application = &entities.LaunchApplication{
+			ID: id, Name: name, TLDName: entities.DomainName(name.ParentDomain()),
+			PhaseName: entities.ClIDType(rec.AppPhaseName), PhaseMode: entities.LaunchMode(rec.AppPhaseMode),
+			ClID: entities.ClIDType(rec.ClID), Status: entities.ApplicationStatus(rec.AppStatus),
 		}
 	}
 	return m

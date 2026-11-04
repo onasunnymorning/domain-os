@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Rhymond/go-money"
 	"slices"
 	"strings"
 	"time"
@@ -1190,14 +1191,50 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	if err := rc.Phase.Launch.AdmitsRegistration(); err != nil {
 		return nil, fmt.Errorf("%w: %s", err, rc.Phase.Name)
 	}
-	return svc.registerIn(ctx, cmd, domainName, rc.Phase)
+	return svc.registerIn(ctx, cmd, domainName, rc.Phase, registration{})
+}
+
+// registration is what registerIn takes beyond the command when a
+// registration is not priced and coded as it goes: the quote to bill and
+// record instead of pricing the name now, and the transfer code's hash
+// instead of a code to hash. An allocated application supplies both (ADR
+// 0024 §3): its quote from when it was filed, and the code its applicant
+// gave then, which the registry holds only hashed.
+type registration struct {
+	quote    *entities.Quote
+	authInfo entities.AuthInfoHash
+}
+
+// RegisterApplication registers the name of app, an application the
+// operator allocates, to its applicant in phase, the application's phase
+// loaded with its prices; the phase may have ended. The domain gets the
+// application's contacts, nameservers, DS records, period and code, and the
+// domain.registered event carries the quote from filing. The registrar's
+// accreditation was checked when the application was filed.
+func (svc *DomainService) RegisterApplication(ctx context.Context, app *entities.LaunchApplication, phase *entities.Phase) (_ *entities.Domain, err error) {
+	ctx, done := svc.begin(ctx)
+	defer done(&err)
+	if phase == nil || phase.Name != app.PhaseName {
+		return nil, fmt.Errorf("%w: the application's phase is %s", entities.ErrPhaseNotProvided, app.PhaseName)
+	}
+	quote := entities.NewQuote(app.Quote.Currency)
+	quote.DomainName, quote.Clid, quote.Years, quote.Class = app.Name, app.ClID, app.Years, app.Quote.Class
+	quote.TransactionType = entities.TransactionTypeRegistration
+	quote.Price = money.New(app.Quote.Amount, app.Quote.Currency)
+	quote.Phase = phase
+	cmd := &commands.RegisterDomainCommand{
+		Name: app.Name.String(), ClID: app.ClID.String(),
+		RegistrantID: app.RegistrantID.String(), AdminID: app.AdminID.String(), TechID: app.TechID.String(), BillingID: app.BillingID.String(),
+		Years: app.Years, HostNames: app.HostNames, PhaseName: app.PhaseName.String(), DSRecords: app.DSRecords,
+	}
+	return svc.registerIn(ctx, cmd, &app.Name, phase, registration{quote: quote, authInfo: app.AuthInfo})
 }
 
 // registerIn is RegisterDomain once the phase is known: the availability
 // check, the quote, the domain and its event, all under phase. Allocating
 // a launch application calls it with the application's phase, which may
 // have ended by then; everything else comes through RegisterDomain.
-func (svc *DomainService) registerIn(ctx context.Context, cmd *commands.RegisterDomainCommand, domainName *entities.DomainName, phase *entities.Phase) (*entities.Domain, error) {
+func (svc *DomainService) registerIn(ctx context.Context, cmd *commands.RegisterDomainCommand, domainName *entities.DomainName, phase *entities.Phase, reg registration) (*entities.Domain, error) {
 	domName := entities.DomainName(cmd.Name)
 
 	// Check if the domain is available
@@ -1235,17 +1272,21 @@ func (svc *DomainService) registerIn(ctx context.Context, cmd *commands.Register
 		cur = cmd.Fee.Currency
 	}
 	// The name is unregistered (checked above), so the price engine gets a
-	// bare domain, as GetQuote would build for it.
-	quote, err := svc.quoteIn(ctx, &queries.QuoteRequest{
-		DomainName:      cmd.Name,
-		ClID:            cmd.ClID,
-		TransactionType: entities.TransactionTypeRegistration,
-		Currency:        cur,
-		Years:           cmd.Years,
-		PhaseName:       cmd.PhaseName,
-	}, phase, &entities.Domain{Name: *domainName})
-	if err != nil {
-		return nil, err
+	// bare domain, as GetQuote would build for it. An allocated application
+	// brings the quote from its filing instead.
+	quote := reg.quote
+	if quote == nil {
+		quote, err = svc.quoteIn(ctx, &queries.QuoteRequest{
+			DomainName:      cmd.Name,
+			ClID:            cmd.ClID,
+			TransactionType: entities.TransactionTypeRegistration,
+			Currency:        cur,
+			Years:           cmd.Years,
+			PhaseName:       cmd.PhaseName,
+		}, phase, &entities.Domain{Name: *domainName})
+		if err != nil {
+			return nil, err
+		}
 	}
 	event.Quote = *quote
 
@@ -1272,6 +1313,9 @@ func (svc *DomainService) registerIn(ctx context.Context, cmd *commands.Register
 	dom, err := entities.RegisterDomain(roid.String(), cmd.Name, cmd.ClID, cmd.AuthInfo, cmd.RegistrantID, cmd.AdminID, cmd.TechID, cmd.BillingID, phase, cmd.Years)
 	if err != nil {
 		return nil, err
+	}
+	if reg.authInfo != "" {
+		dom.AuthInfo = reg.authInfo // the applicant's code, held hashed since filing
 	}
 
 	if err := dom.SetDSRecords(cmd.DSRecords); err != nil {

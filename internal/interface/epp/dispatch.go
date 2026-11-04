@@ -69,10 +69,16 @@ func (c *command) respond(code int, msg string, resData *etree.Element, extensio
 }
 
 // respondWithQueue sets a <poll> response: code with its standard text,
-// msgQ after the result, and resData, which may be nil.
-func (c *command) respondWithQueue(code int, msgQ, resData *etree.Element) {
+// msgQ after the result, resData, which may be nil, and any extensions.
+func (c *command) respondWithQueue(code int, msgQ, resData *etree.Element, extensions ...*etree.Element) {
 	c.code = code
-	c.response = responseDocument(code, "", c.frame.clTRID, c.svTRID, resData)
+	var exts []*etree.Element
+	for _, e := range extensions {
+		if e != nil {
+			exts = append(exts, e)
+		}
+	}
+	c.response = responseDocument(code, "", c.frame.clTRID, c.svTRID, resData, exts...)
 	resp := c.response.FindElement("/epp/response")
 	result := resp.SelectElement("result")
 	resp.InsertChildAt(result.Index()+1, msgQ)

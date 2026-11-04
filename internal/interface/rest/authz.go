@@ -51,6 +51,12 @@ const (
 	// their assignment to TLDs (ADR 0021), and from Phase 4 the access
 	// policies (ADR 0022). Reading them needs it too.
 	ScopeRDAPPolicyAdmin = "rdap:policy:admin"
+	// ScopeRegistryLaunchAdmin allows deciding launch applications (ADR 0024
+	// §3): validating, allocating and rejecting them. Allocation registers a
+	// name to one registrar over others, so it is a permission of its own,
+	// within the operator's tenant like every phase edit. Reading
+	// applications needs only the tenant scope.
+	ScopeRegistryLaunchAdmin = "registry:launch:admin"
 )
 
 // grantedPermissions returns the permissions an Auth0 access token grants,

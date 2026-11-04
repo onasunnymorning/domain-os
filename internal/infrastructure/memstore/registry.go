@@ -39,7 +39,8 @@ type Registry struct {
 	hosts        map[hostKey]*entities.Host
 	reserved     map[string]bool
 	knownTLDs    map[string]bool
-	Registered   []string // names Register stored, in order
+	operators    map[string]string // TLD → its operator
+	Registered   []string          // names Register stored, in order
 	registerHook func(*commands.RegisterDomainCommand) error
 	// transfers are each domain's transfers, oldest first, by ROID.
 	transfers map[entities.RoidType][]*entities.DomainTransfer
@@ -59,7 +60,7 @@ func NewRegistry(repository entities.RepositoryID) *Registry {
 	return &Registry{
 		now: time.Now, repository: repository, phases: map[string][]*entities.Phase{}, accredited: map[string]map[string]bool{},
 		domains: map[string]*entities.Domain{}, contacts: map[string]*entities.Contact{},
-		hosts: map[hostKey]*entities.Host{}, reserved: map[string]bool{}, knownTLDs: map[string]bool{},
+		hosts: map[hostKey]*entities.Host{}, reserved: map[string]bool{}, knownTLDs: map[string]bool{}, operators: map[string]string{},
 		transfers:    map[entities.RoidType][]*entities.DomainTransfer{},
 		applications: map[string]*entities.LaunchApplication{},
 	}
@@ -120,6 +121,17 @@ func (r *Registry) AddLaunchPhase(tld, name string, settings entities.LaunchSett
 	p.TLDName = entities.DomainName(tld)
 	r.phases[tld] = append(r.phases[tld], p)
 	return p
+}
+
+// SetPhase changes one phase of tld, as the registry's operator would.
+func (r *Registry) SetPhase(tld, name string, fn func(*entities.Phase)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, p := range r.phases[tld] {
+		if p.Name.String() == name {
+			fn(p)
+		}
+	}
 }
 
 // SetPolicy changes the policy of every phase of tld, as the registry's
@@ -579,6 +591,28 @@ func (v registryNNDNs) ExistingNames(_ context.Context, names []string) ([]strin
 type registryTLDs struct {
 	repositories.TLDRepository
 	r *Registry
+}
+
+// SetOperator records which operator runs a TLD, for the scoped reads.
+func (r *Registry) SetOperator(tld, ryid string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.operators[tld] = ryid
+}
+
+// GetByNameForOperator returns the TLD only if scope operates it, as the
+// Postgres repository does; another operator's, or an unknown one, is
+// ErrTLDNotFound.
+func (v registryTLDs) GetByNameForOperator(_ context.Context, scope entities.OperatorID, name string) (*entities.TLD, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return nil, v.r.err
+	}
+	if v.r.knownTLDs[name] && v.r.operators[name] == string(scope) {
+		return &entities.TLD{Name: entities.DomainName(name), RyID: entities.ClIDType(scope)}, nil
+	}
+	return nil, entities.ErrTLDNotFound
 }
 
 func (v registryTLDs) GetByName(_ context.Context, name string, _ bool) (*entities.TLD, error) {

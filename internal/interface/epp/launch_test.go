@@ -1,6 +1,7 @@
 package epp
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -413,4 +414,36 @@ func TestLaunchApplications(t *testing.T) {
 		assert.Nil(t, reg.Domain("bid.test"), "there never was a domain")
 		requireCode(t, c.roundTrip(createXML("bid.test", createOpts{ext: launchCreateXML("custom", "auction", "application", "")})), "1001")
 	})
+}
+
+// A poll message about an application (RFC 8334 §3.1.2, ADR 0024 §3), as
+// allocation queues it, carries <launch:infData> with the application's
+// status.
+func TestLaunchApplicationPollMessage(t *testing.T) {
+	creds := newTestCredentials(t)
+	launchRegistry(t, creds)
+	reg := creds.domains.registry
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
+	c := dial(t, ts.addr)
+	requireCode(t, c.roundTrip(loginWithServices([]string{nsDomain}, []string{nsLaunch})), "1000")
+	requireCode(t, c.roundTrip(createXML("bid.test", createOpts{ext: launchCreateXML("custom", "auction", "application", "")})), "1001")
+	apps, err := reg.Applications().ListApplicationsByName(context.Background(), "bid.test")
+	require.NoError(t, err)
+	require.Len(t, apps, 1)
+	app := apps[0]
+	require.NoError(t, app.Allocate(entities.RoidType("77_DOM-"+string(testRepositoryID))))
+	reg.Queue(entities.NewApplicationPollMessage(app, time.Now().UTC()))
+
+	resp := c.roundTrip(pollReqXML())
+	requireCode(t, resp, "1301")
+	assert.Equal(t, entities.PollMsgApplicationAllocated+" for bid.test", text(resp, "//response/msgQ/msg"))
+	assert.Nil(t, resp.FindElement("//resData"), "no object data: the application is the extension's")
+	inf := resp.FindElement("//response/extension/infData")
+	require.NotNil(t, inf)
+	assert.Equal(t, app.ID.String(), inf.SelectElement("applicationID").Text())
+	assert.Equal(t, "allocated", inf.SelectElement("status").SelectAttrValue("s", ""))
+	assert.Equal(t, "auction", inf.SelectElement("phase").SelectAttrValue("name", ""))
+	id := resp.FindElement("//response/msgQ").SelectAttrValue("id", "")
+	requireCode(t, c.roundTrip(pollAckXML(id)), "1000")
+	requireCode(t, c.roundTrip(pollReqXML()), "1300")
 }
