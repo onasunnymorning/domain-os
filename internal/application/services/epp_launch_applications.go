@@ -61,7 +61,11 @@ func (s *EPPDomainService) fileApplication(ctx context.Context, scope entities.R
 	if err := app.Validate(); err != nil {
 		return nil, err
 	}
-	return s.applications.CreateApplication(ctx, app)
+	stored, err := s.applications.CreateApplication(ctx, app)
+	if errors.Is(err, entities.ErrDomainAlreadyExists) {
+		return nil, ErrDomainExists // registered since it was checked
+	}
+	return stored, err
 }
 
 // InfoApplication implements interfaces.EPPDomainService.

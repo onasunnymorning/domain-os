@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"gorm.io/gorm"
@@ -26,11 +27,13 @@ type LaunchApplicationRecord struct {
 	ClID      string `gorm:"not null"`
 	Status    string `gorm:"size:24;not null;index"`
 
-	RegistrantID *string
-	AdminID      *string
-	TechID       *string
-	BillingID    *string
-	Years        int `gorm:"not null"`
+	// The contacts are indexed: ContactRepository.CountContactLinks reads
+	// them on every contact delete.
+	RegistrantID *string `gorm:"index"`
+	AdminID      *string `gorm:"index"`
+	TechID       *string `gorm:"index"`
+	BillingID    *string `gorm:"index"`
+	Years        int     `gorm:"not null"`
 	// AuthInfo is the code's salted hash (RFC 9154), NULL when none is set.
 	AuthInfo *string
 	// The quote at filing, billed at allocation (entities.ApplicationQuote).
@@ -53,11 +56,13 @@ type LaunchApplicationRecord struct {
 func (LaunchApplicationRecord) TableName() string { return "launch_applications" }
 
 // LaunchApplicationHost is one of an application's nameservers, by name:
-// a host object of the applicant, looked up again at allocation.
+// a host object of the applicant, looked up again at allocation. The name
+// is indexed: HostRepository.GetHostAssociationCount reads it on every host
+// delete.
 type LaunchApplicationHost struct {
 	ID            int64  `gorm:"primaryKey"`
 	ApplicationID int64  `gorm:"not null;uniqueIndex:idx_launch_application_hosts_unique,priority:1"`
-	Name          string `gorm:"not null;uniqueIndex:idx_launch_application_hosts_unique,priority:2"`
+	Name          string `gorm:"not null;uniqueIndex:idx_launch_application_hosts_unique,priority:2;index"`
 }
 
 // TableName pins the table name.
@@ -116,6 +121,20 @@ func (r *LaunchApplicationRepository) CreateApplication(ctx context.Context, a *
 	}
 	stored := &LaunchApplicationRecord{}
 	err = dbFrom(ctx, r.db).Transaction(func(tx *gorm.DB) error {
+		// The name's lock, then the check an allocation could invalidate:
+		// a name registered since the service checked it is refused here,
+		// and a filing cannot slip between an allocation's registration
+		// and its rejection of the other applications.
+		if err := lockName(tx, rec.Name); err != nil {
+			return err
+		}
+		var registered int64
+		if err := tx.Model(&Domain{}).Where("name = ?", rec.Name).Count(&registered).Error; err != nil {
+			return err
+		}
+		if registered > 0 {
+			return entities.ErrDomainAlreadyExists
+		}
 		if err := tx.Create(rec).Error; err != nil {
 			if isUniqueViolation(err) {
 				return entities.ErrApplicationExists
@@ -159,6 +178,62 @@ func (r *LaunchApplicationRepository) ListApplicationsByName(ctx context.Context
 		out[i] = r.fromApplicationRecord(&recs[i])
 	}
 	return out, nil
+}
+
+// LockName implements repositories.LaunchApplicationRepository, with a
+// transaction-scoped advisory lock on the name's hash.
+func (r *LaunchApplicationRepository) LockName(ctx context.Context, name string) error {
+	return lockName(dbFrom(ctx, r.db), name)
+}
+
+// lockName takes the transaction-scoped advisory lock for name on tx. It
+// is released when the transaction ends; outside one it is released at
+// once, which protects nothing, so every caller runs in one.
+func lockName(tx *gorm.DB, name string) error {
+	return tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", name).Error
+}
+
+// ListApplicationsByPhase implements repositories.LaunchApplicationRepository.
+// The page is bounded (Limit) before the child records are loaded; the
+// cursor is the last application's ID, and IDs rise with filing order.
+func (r *LaunchApplicationRepository) ListApplicationsByPhase(ctx context.Context, tld, phase string, status entities.ApplicationStatus, pageSize int, pageCursor string) ([]*entities.LaunchApplication, error) {
+	var after int64
+	if pageCursor != "" {
+		var err error
+		if after, err = strconv.ParseInt(pageCursor, 10, 64); err != nil {
+			return nil, fmt.Errorf("%w: cursor %q", entities.ErrInvalidApplication, pageCursor)
+		}
+	}
+	if pageSize <= 0 {
+		pageSize = 25
+	}
+	q := dbFrom(ctx, r.db).Preload("Hosts").Preload("DSRecords", orderApplicationDS).
+		Where("tld_name = ? AND phase_name = ? AND id > ?", tld, phase, after)
+	if status != "" {
+		q = q.Where("status = ?", string(status))
+	}
+	var recs []LaunchApplicationRecord
+	if err := q.Order("id").Limit(pageSize).Find(&recs).Error; err != nil {
+		return nil, err
+	}
+	out := make([]*entities.LaunchApplication, len(recs))
+	for i := range recs {
+		out[i] = r.fromApplicationRecord(&recs[i])
+	}
+	return out, nil
+}
+
+// QueuePollMessages implements repositories.LaunchApplicationRepository.
+func (r *LaunchApplicationRepository) QueuePollMessages(ctx context.Context, msgs []*entities.PollMessage) error {
+	db := dbFrom(ctx, r.db)
+	for _, m := range msgs {
+		rec := toPollRecord(m)
+		if err := db.Create(rec).Error; err != nil {
+			return err
+		}
+		m.ID = rec.ID
+	}
+	return nil
 }
 
 // CountApplicationsByPhase implements repositories.LaunchApplicationRepository.

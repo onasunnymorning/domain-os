@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -141,6 +142,39 @@ func TestLaunchApplicationRepository(t *testing.T) {
 		assert.Equal(t, entities.RoidType("78_DOM-TEST"), allocated.DomainRoID)
 		_, err = repo.UpdateApplicationIfUnchanged(ctx, validated)
 		assert.ErrorIs(t, err, entities.ErrApplicationChanged, "the version before allocation is stale")
+	})
+	t.Run("list by phase and status, a page at a time", func(t *testing.T) {
+		all, err := repo.ListApplicationsByPhase(ctx, "apptest", "auction", "", 100, "")
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(all), 2)
+		first, err := repo.ListApplicationsByPhase(ctx, "apptest", "auction", "", 1, "")
+		require.NoError(t, err)
+		require.Len(t, first, 1)
+		assert.Equal(t, all[0].ID, first[0].ID)
+		id, _ := first[0].ID.Int64()
+		next, err := repo.ListApplicationsByPhase(ctx, "apptest", "auction", "", 1, strconv.FormatInt(id, 10))
+		require.NoError(t, err)
+		require.Len(t, next, 1)
+		assert.Equal(t, all[1].ID, next[0].ID, "the cursor is the last ID")
+		_, err = repo.ListApplicationsByPhase(ctx, "apptest", "auction", "", 1, "not-a-cursor")
+		assert.ErrorIs(t, err, entities.ErrInvalidApplication)
+		rejected, err := repo.ListApplicationsByPhase(ctx, "apptest", "auction", entities.ApplicationStatusRejected, 100, "")
+		require.NoError(t, err)
+		for _, a := range rejected {
+			assert.Equal(t, entities.ApplicationStatusRejected, a.Status)
+		}
+		none, err := repo.ListApplicationsByPhase(ctx, "apptest", "nothing", "", 100, "")
+		require.NoError(t, err)
+		assert.Empty(t, none)
+	})
+	t.Run("an open application counts as a contact link", func(t *testing.T) {
+		contacts := NewContactRepository(db, "TEST")
+		n, err := contacts.CountContactLinks(ctx, "c-rar-two")
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, n, int64(1), "bid.apptest by rar-two names c-rar-two and is open")
+		n, err = contacts.CountContactLinks(ctx, "c-nobody")
+		require.NoError(t, err)
+		assert.Zero(t, n)
 	})
 	t.Run("delete if unchanged", func(t *testing.T) {
 		a := testApplication(t, base+6, "gone.apptest", "rar-one")

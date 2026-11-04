@@ -1,8 +1,10 @@
 package memstore
 
 import (
+	"cmp"
 	"context"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/Rhymond/go-money"
@@ -67,6 +69,9 @@ func (v registryApplications) CreateApplication(_ context.Context, a *entities.L
 	if v.r.err != nil {
 		return nil, v.r.err
 	}
+	if _, ok := v.r.domains[a.Name.String()]; ok {
+		return nil, entities.ErrDomainAlreadyExists
+	}
 	for _, o := range v.r.applications {
 		if o.Name == a.Name && o.PhaseName == a.PhaseName && o.ClID == a.ClID && !o.Status.IsFinal() {
 			return nil, entities.ErrApplicationExists
@@ -103,6 +108,52 @@ func (v registryApplications) ListApplicationsByName(_ context.Context, name str
 	}
 	slices.SortFunc(out, func(a, b *entities.LaunchApplication) int { return a.CreatedAt.Compare(b.CreatedAt) })
 	return out, nil
+}
+
+// ListApplicationsByPhase pages by ID, as the Postgres repository does.
+func (v registryApplications) ListApplicationsByPhase(_ context.Context, tld, phase string, status entities.ApplicationStatus, pageSize int, pageCursor string) ([]*entities.LaunchApplication, error) {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return nil, v.r.err
+	}
+	var after int64
+	if pageCursor != "" {
+		var err error
+		if after, err = strconv.ParseInt(pageCursor, 10, 64); err != nil {
+			return nil, err
+		}
+	}
+	var out []*entities.LaunchApplication
+	for _, a := range v.r.applications {
+		id, _ := a.ID.Int64()
+		if a.TLDName.String() == tld && a.PhaseName.String() == phase && (status == "" || a.Status == status) && id > after {
+			out = append(out, a.DeepCopy())
+		}
+	}
+	slices.SortFunc(out, func(a, b *entities.LaunchApplication) int {
+		ia, _ := a.ID.Int64()
+		ib, _ := b.ID.Int64()
+		return cmp.Compare(ia, ib)
+	})
+	if pageSize > 0 && len(out) > pageSize {
+		out = out[:pageSize]
+	}
+	return out, nil
+}
+
+// LockName is a no-op: the registry's one lock serialises every write.
+func (v registryApplications) LockName(context.Context, string) error { return nil }
+
+// QueuePollMessages queues msgs as a write that causes them would.
+func (v registryApplications) QueuePollMessages(_ context.Context, msgs []*entities.PollMessage) error {
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if v.r.err != nil {
+		return v.r.err
+	}
+	v.r.queue(msgs)
+	return nil
 }
 
 func (v registryApplications) CountApplicationsByPhase(_ context.Context, tld, phase string) (int64, error) {
@@ -173,4 +224,49 @@ func (v registryPhases) GetPhaseByTLDAndName(_ context.Context, tld, name string
 		}
 	}
 	return nil, entities.ErrPhaseNotFound
+}
+
+// RegisterApplication stands in for DomainService.RegisterApplication: it
+// builds the domain in the application's phase, which may have ended, with
+// the application's contacts, nameservers, DS records and code, and stores
+// it. Pricing and events belong to DomainService.
+func (r *Registry) RegisterApplication(_ context.Context, app *entities.LaunchApplication, phase *entities.Phase) (*entities.Domain, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.err != nil {
+		return nil, r.err
+	}
+	if _, ok := r.domains[app.Name.String()]; ok {
+		return nil, entities.ErrDomainAlreadyExists
+	}
+	r.nextID++
+	roid, err := entities.NewRoidType(r.nextID, entities.RoidTypeDomain, r.repository)
+	if err != nil {
+		return nil, err
+	}
+	dom, err := entities.RegisterDomain(roid.String(), app.Name.String(), app.ClID.String(), "",
+		app.RegistrantID.String(), app.AdminID.String(), app.TechID.String(), app.BillingID.String(), phase, app.Years)
+	if err != nil {
+		return nil, err
+	}
+	dom.AuthInfo = app.AuthInfo
+	dom.Status.PendingCreate = false // validated already, as an application
+	dom.SetOKStatusIfNeeded()
+	if err := dom.SetDSRecords(app.DSRecords); err != nil {
+		return nil, err
+	}
+	for _, h := range app.HostNames {
+		host, ok := r.hosts[hostKey{h, app.ClID.String()}]
+		if !ok {
+			return nil, entities.ErrHostNotFound
+		}
+		if _, err := dom.AddHost(host, false); err != nil {
+			return nil, err
+		}
+	}
+	dom.CreatedAt = r.now().UTC()
+	dom.ExpiryDate = dom.CreatedAt.AddDate(app.Years, 0, 0)
+	r.domains[app.Name.String()] = dom
+	r.Registered = append(r.Registered, app.Name.String())
+	return dom, nil
 }

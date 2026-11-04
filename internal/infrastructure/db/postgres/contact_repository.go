@@ -146,7 +146,17 @@ func (r *ContactRepository) CountContactLinks(ctx context.Context, id string) (i
 	var n int64
 	err := r.db.WithContext(ctx).Model(&Domain{}).
 		Where("registrant_id = ? OR admin_id = ? OR tech_id = ? OR billing_id = ?", id, id, id, id).Count(&n).Error
-	return n, err
+	if err != nil {
+		return 0, err
+	}
+	// An open launch application names contacts too (ADR 0024 §3): the
+	// domain it may become needs them, so they count as links until the
+	// application is final.
+	var apps int64
+	err = r.db.WithContext(ctx).Model(&LaunchApplicationRecord{}).
+		Where("status IN ?", []string{string(entities.ApplicationStatusPendingValidation), string(entities.ApplicationStatusPendingAllocation)}).
+		Where("registrant_id = ? OR admin_id = ? OR tech_id = ? OR billing_id = ?", id, id, id, id).Count(&apps).Error
+	return n + apps, err
 }
 
 // DeleteContactByID deletes a contact from the database
