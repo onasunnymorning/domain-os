@@ -205,7 +205,7 @@ func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 	// matches nothing.
 	var authInfo *string
 	if pw := cmd.doc.FindElement("/epp/command/info/*/authInfo/pw"); pw != nil {
-		v := schema.NormalizedStringValue(pw.Text())
+		v := schema.NormalizedStringValue(schema.Text(pw))
 		authInfo = &v
 	}
 	// <launch:info> asks about an application (RFC 8334 §3.1.2), which
@@ -250,22 +250,22 @@ func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 	create := cmd.doc.FindElement("/epp/command/create/*")
 	c := commands.EPPCreateDomainCommand{Name: cmd.objects[0]}
 	if p := create.SelectElement("period"); p != nil {
-		c.Period, _ = strconv.Atoi(schema.TokenValue(p.Text())) // the schema has checked it is 1 to 99
+		c.Period, _ = strconv.Atoi(schema.TokenValue(schema.Text(p))) // the schema has checked it is 1 to 99
 		c.PeriodUnit = schema.TokenValue(p.SelectAttrValue("unit", ""))
 	}
 	if ns := create.SelectElement("ns"); ns != nil {
 		c.HostAttributes = len(ns.SelectElements("hostAttr")) > 0
 		for _, h := range ns.SelectElements("hostObj") {
-			c.HostNames = append(c.HostNames, schema.TokenValue(h.Text()))
+			c.HostNames = append(c.HostNames, schema.TokenValue(schema.Text(h)))
 		}
 	}
 	if r := create.SelectElement("registrant"); r != nil {
-		c.RegistrantID = schema.TokenValue(r.Text())
+		c.RegistrantID = schema.TokenValue(schema.Text(r))
 	}
 	for _, el := range create.SelectElements("contact") {
 		c.Contacts = append(c.Contacts, commands.EPPDomainContact{
 			Type: schema.TokenValue(el.SelectAttrValue("type", "")),
-			ID:   schema.TokenValue(el.Text()),
+			ID:   schema.TokenValue(schema.Text(el)),
 		})
 	}
 	if create.FindElement("authInfo/ext") != nil {
@@ -275,7 +275,7 @@ func (s *Server) domainCreate(ctx context.Context, cmd *command) {
 	if pw := create.FindElement("authInfo/pw"); pw != nil {
 		// eppcom:pwAuthInfoType is a normalizedString: the password is the
 		// text with tabs and line breaks as spaces, as it was validated.
-		c.AuthInfo = schema.NormalizedStringValue(pw.Text())
+		c.AuthInfo = schema.NormalizedStringValue(schema.Text(pw))
 	}
 	readSecDNSCreate(cmd.doc, &c)
 	readLaunchCreate(cmd.doc, &c)
@@ -334,7 +334,7 @@ func (s *Server) domainUpdate(ctx context.Context, cmd *command) {
 	}
 	if chg != nil {
 		if r := chg.SelectElement("registrant"); r != nil {
-			v := schema.TokenValue(r.Text())
+			v := schema.TokenValue(schema.Text(r))
 			c.Registrant = &v
 		}
 		if a := chg.SelectElement("authInfo"); a != nil {
@@ -342,7 +342,7 @@ func (s *Server) domainUpdate(ctx context.Context, cmd *command) {
 			case a.SelectElement("null") != nil:
 				c.AuthInfoNull = true
 			case a.SelectElement("pw") != nil:
-				v := schema.NormalizedStringValue(a.SelectElement("pw").Text())
+				v := schema.NormalizedStringValue(schema.Text(a.SelectElement("pw")))
 				c.AuthInfo = &v
 			default: // <domain:ext>: not a password, so nothing to hash
 				s.refuse(cmd, entities.ErrEPPAuthInfoExt)
@@ -403,7 +403,7 @@ func rgpRestore(doc *etree.Document) (*commands.EPPRestore, error) {
 			name string
 			into *time.Time
 		}{{"delTime", &report.DelTime}, {"resTime", &report.ResTime}} {
-			v, err := schema.DateTimeValue(rep.SelectElement(t.name).Text())
+			v, err := schema.DateTimeValue(schema.Text(rep.SelectElement(t.name)))
 			if err != nil {
 				return nil, fmt.Errorf("%w: %s: %w", entities.ErrRestoreReportTimes, t.name, err)
 			}
@@ -433,13 +433,13 @@ func domainAddRem(el *etree.Element, attrs *bool) (hosts []string, contacts []co
 			*attrs = true
 		}
 		for _, h := range ns.SelectElements("hostObj") {
-			hosts = append(hosts, schema.TokenValue(h.Text()))
+			hosts = append(hosts, schema.TokenValue(schema.Text(h)))
 		}
 	}
 	for _, ct := range el.SelectElements("contact") {
 		contacts = append(contacts, commands.EPPDomainContact{
 			Type: schema.TokenValue(ct.SelectAttrValue("type", "")),
-			ID:   schema.TokenValue(ct.Text()),
+			ID:   schema.TokenValue(schema.Text(ct)),
 		})
 	}
 	return hosts, contacts, statusValues(el)
@@ -460,7 +460,7 @@ func secDNSUpdate(doc *etree.Document) *commands.EPPDNSSECUpdate {
 		u := &commands.EPPDNSSECUpdate{Urgent: urgent == "true" || urgent == "1"}
 		if rem := el.SelectElement("rem"); rem != nil {
 			if all := rem.SelectElement("all"); all != nil {
-				v := schema.TokenValue(all.Text())
+				v := schema.TokenValue(schema.Text(all))
 				u.RemoveAll = v == "true" || v == "1"
 			}
 			u.RemoveDS = dsDataOf(rem)
@@ -484,12 +484,12 @@ func dsDataOf(el *etree.Element) []commands.EPPDSData {
 	var out []commands.EPPDSData
 	for _, ds := range el.SelectElements("dsData") {
 		num := func(name string) int {
-			n, _ := strconv.Atoi(schema.TokenValue(ds.SelectElement(name).Text())) // the schema has checked it
+			n, _ := strconv.Atoi(schema.TokenValue(schema.Text(ds.SelectElement(name)))) // the schema has checked it
 			return n
 		}
 		out = append(out, commands.EPPDSData{
 			KeyTag: num("keyTag"), Algorithm: num("alg"), DigestType: num("digestType"),
-			Digest: schema.TokenValue(ds.SelectElement("digest").Text()),
+			Digest: schema.TokenValue(schema.Text(ds.SelectElement("digest"))),
 		})
 	}
 	return out
@@ -498,7 +498,7 @@ func dsDataOf(el *etree.Element) []commands.EPPDSData {
 // maxSigLifeOf is el's <secDNS:maxSigLife>, or def if it has none.
 func maxSigLifeOf(el *etree.Element, def int) int {
 	if m := el.SelectElement("maxSigLife"); m != nil {
-		n, _ := strconv.Atoi(schema.TokenValue(m.Text())) // the schema has checked it is a positive int
+		n, _ := strconv.Atoi(schema.TokenValue(schema.Text(m))) // the schema has checked it is a positive int
 		return n
 	}
 	return def
@@ -513,10 +513,10 @@ func (s *Server) domainRenew(ctx context.Context, cmd *command) {
 	}
 	renew := cmd.doc.FindElement("/epp/command/renew/*")
 	// xs:date may carry a time zone; the expiry date is compared as a day.
-	cur := schema.TokenValue(renew.SelectElement("curExpDate").Text())
+	cur := schema.TokenValue(schema.Text(renew.SelectElement("curExpDate")))
 	c := commands.EPPRenewDomainCommand{Name: cmd.objects[0], CurExpDate: dateOnly(cur)}
 	if p := renew.SelectElement("period"); p != nil {
-		c.Period, _ = strconv.Atoi(schema.TokenValue(p.Text())) // the schema has checked it is 1 to 99
+		c.Period, _ = strconv.Atoi(schema.TokenValue(schema.Text(p))) // the schema has checked it is 1 to 99
 		c.PeriodUnit = schema.TokenValue(p.SelectAttrValue("unit", ""))
 	}
 	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
@@ -593,7 +593,7 @@ func readLaunchPhase(el *etree.Element) commands.EPPLaunchPhase {
 	if el == nil {
 		return commands.EPPLaunchPhase{}
 	}
-	return commands.EPPLaunchPhase{Value: schema.TokenValue(el.Text()), Name: schema.TokenValue(el.SelectAttrValue("name", ""))}
+	return commands.EPPLaunchPhase{Value: schema.TokenValue(schema.Text(el)), Name: schema.TokenValue(el.SelectAttrValue("name", ""))}
 }
 
 // readLaunchCreate reads a <launch:create> extension (RFC 8334 §3.3) into
@@ -635,17 +635,17 @@ func readSecDNSCreate(doc *etree.Document, c *commands.EPPCreateDomainCommand) {
 			continue
 		}
 		if m := el.SelectElement("maxSigLife"); m != nil {
-			c.MaxSigLife, _ = strconv.Atoi(schema.TokenValue(m.Text())) // the schema has checked it is a positive int
+			c.MaxSigLife, _ = strconv.Atoi(schema.TokenValue(schema.Text(m))) // the schema has checked it is a positive int
 		}
 		c.KeyData = len(el.SelectElements("keyData")) > 0
 		for _, ds := range el.SelectElements("dsData") {
 			num := func(name string) int {
-				n, _ := strconv.Atoi(schema.TokenValue(ds.SelectElement(name).Text())) // the schema has checked it
+				n, _ := strconv.Atoi(schema.TokenValue(schema.Text(ds.SelectElement(name)))) // the schema has checked it
 				return n
 			}
 			c.DSData = append(c.DSData, commands.EPPDSData{
 				KeyTag: num("keyTag"), Algorithm: num("alg"), DigestType: num("digestType"),
-				Digest: schema.TokenValue(ds.SelectElement("digest").Text()),
+				Digest: schema.TokenValue(schema.Text(ds.SelectElement("digest"))),
 			})
 		}
 	}

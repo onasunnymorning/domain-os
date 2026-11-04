@@ -273,6 +273,20 @@ func findAttr(attrs []Attribute, name string) *Attribute {
 	return nil
 }
 
+// Text is el's character data as validation saw it: every character-data
+// child joined, with comments and processing instructions skipped. A
+// handler must read element values with it, never etree's Element.Text,
+// which stops at the first comment or processing instruction, so that
+// <launch:phase><?x?>landrush</launch:phase> would read as empty after
+// validation accepted "landrush". A nil el reads as empty.
+func Text(el *etree.Element) string {
+	if el == nil {
+		return ""
+	}
+	s, _ := textOf(el)
+	return s
+}
+
 // textOf returns el's character data, and whether any of it is not
 // whitespace. Comments and processing instructions are not content.
 func textOf(el *etree.Element) (string, bool) {

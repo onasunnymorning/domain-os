@@ -32,7 +32,7 @@ func (s *Server) domainTransfer(ctx context.Context, cmd *command) {
 	}
 	var authInfo *string
 	if pw := obj.FindElement("authInfo/pw"); pw != nil {
-		v := schema.NormalizedStringValue(pw.Text())
+		v := schema.NormalizedStringValue(schema.Text(pw))
 		authInfo = &v
 	}
 	name := cmd.objects[0]
@@ -45,7 +45,7 @@ func (s *Server) domainTransfer(ctx context.Context, cmd *command) {
 	case "request":
 		c := commands.EPPTransferDomainCommand{Name: name, AuthInfo: authInfo}
 		if p := obj.SelectElement("period"); p != nil {
-			c.Period, _ = strconv.Atoi(schema.TokenValue(p.Text())) // the schema has checked it is 1 to 99
+			c.Period, _ = strconv.Atoi(schema.TokenValue(schema.Text(p))) // the schema has checked it is 1 to 99
 			c.PeriodUnit = schema.TokenValue(p.SelectAttrValue("unit", ""))
 		}
 		tr, err = s.domains.TransferRequest(ctx, scope, c)

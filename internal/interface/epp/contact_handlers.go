@@ -61,11 +61,11 @@ func (s *Server) contactCreate(ctx context.Context, cmd *command) {
 		PostalInfo: contactPostalInfos(create),
 		Voice:      contactPhone(create.SelectElement("voice")),
 		Fax:        contactPhone(create.SelectElement("fax")),
-		Email:      schema.TokenValue(create.SelectElement("email").Text()),
+		Email:      schema.TokenValue(schema.Text(create.SelectElement("email"))),
 		Disclose:   contactDisclose(create.SelectElement("disclose")),
 	}
 	if pw := create.FindElement("authInfo/pw"); pw != nil {
-		c.AuthInfo = schema.NormalizedStringValue(pw.Text())
+		c.AuthInfo = schema.NormalizedStringValue(schema.Text(pw))
 	}
 	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
 	defer cancel()
@@ -104,13 +104,13 @@ func (s *Server) contactUpdate(ctx context.Context, cmd *command) {
 		c.Voice = contactPhone(chg.SelectElement("voice"))
 		c.Fax = contactPhone(chg.SelectElement("fax"))
 		if el := chg.SelectElement("email"); el != nil {
-			email := schema.TokenValue(el.Text())
+			email := schema.TokenValue(schema.Text(el))
 			c.Email = &email
 		}
 		if el := chg.SelectElement("authInfo"); el != nil {
 			pw := ""
 			if p := el.SelectElement("pw"); p != nil {
-				pw = schema.NormalizedStringValue(p.Text())
+				pw = schema.NormalizedStringValue(schema.Text(p))
 			}
 			c.AuthInfo = &pw
 		}
@@ -157,26 +157,26 @@ func contactPostalInfos(el *etree.Element) []commands.EPPPostalInfo {
 	for _, pi := range el.SelectElements("postalInfo") {
 		p := commands.EPPPostalInfo{Type: schema.TokenValue(pi.SelectAttrValue("type", ""))}
 		if n := pi.SelectElement("name"); n != nil {
-			v := schema.NormalizedStringValue(n.Text())
+			v := schema.NormalizedStringValue(schema.Text(n))
 			p.Name = &v
 		}
 		if o := pi.SelectElement("org"); o != nil {
-			v := schema.NormalizedStringValue(o.Text())
+			v := schema.NormalizedStringValue(schema.Text(o))
 			p.Org = &v
 		}
 		if a := pi.SelectElement("addr"); a != nil {
 			addr := &commands.EPPContactAddress{
-				City: schema.NormalizedStringValue(a.SelectElement("city").Text()),
-				CC:   schema.TokenValue(a.SelectElement("cc").Text()),
+				City: schema.NormalizedStringValue(schema.Text(a.SelectElement("city"))),
+				CC:   schema.TokenValue(schema.Text(a.SelectElement("cc"))),
 			}
 			for _, st := range a.SelectElements("street") {
-				addr.Streets = append(addr.Streets, schema.NormalizedStringValue(st.Text()))
+				addr.Streets = append(addr.Streets, schema.NormalizedStringValue(schema.Text(st)))
 			}
 			if sp := a.SelectElement("sp"); sp != nil {
-				addr.SP = schema.NormalizedStringValue(sp.Text())
+				addr.SP = schema.NormalizedStringValue(schema.Text(sp))
 			}
 			if pc := a.SelectElement("pc"); pc != nil {
-				addr.PC = schema.TokenValue(pc.Text())
+				addr.PC = schema.TokenValue(schema.Text(pc))
 			}
 			p.Addr = addr
 		}
@@ -190,7 +190,7 @@ func contactPhone(el *etree.Element) *commands.EPPPhone {
 	if el == nil {
 		return nil
 	}
-	p := &commands.EPPPhone{Number: schema.TokenValue(el.Text())}
+	p := &commands.EPPPhone{Number: schema.TokenValue(schema.Text(el))}
 	if x := el.SelectAttr("x"); x != nil {
 		ext := schema.TokenValue(x.Value)
 		p.Ext = &ext

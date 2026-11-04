@@ -183,7 +183,7 @@ func (s *Server) login(ctx context.Context, cmd *command) {
 // credential has been checked.
 func (s *Server) negotiate(cmd *command) (objects, extensions []string, ok bool) {
 	for _, el := range cmd.doc.FindElements("//login/svcs/objURI") {
-		uri := strings.TrimSpace(el.Text())
+		uri := strings.TrimSpace(schema.Text(el))
 		if !slices.Contains(supportedObjects, uri) {
 			cmd.respond(epplib.StatusUnimplementedObjectService, "Unimplemented object service; "+uri+" is not offered", nil)
 			return nil, nil, false
@@ -191,7 +191,7 @@ func (s *Server) negotiate(cmd *command) (objects, extensions []string, ok bool)
 		objects = append(objects, uri)
 	}
 	for _, el := range cmd.doc.FindElements("//login/svcs/svcExtension/extURI") {
-		uri := strings.TrimSpace(el.Text())
+		uri := strings.TrimSpace(schema.Text(el))
 		if !slices.Contains(supportedExtensions, uri) {
 			cmd.respond(epplib.StatusUnimplementedExtension, "Unimplemented extension; "+uri+" is not offered", nil)
 			return nil, nil, false
@@ -203,7 +203,7 @@ func (s *Server) negotiate(cmd *command) (objects, extensions []string, ok bool)
 
 func elementText(doc *etree.Document, path string) string {
 	if el := doc.FindElement(path); el != nil {
-		return strings.TrimSpace(el.Text())
+		return strings.TrimSpace(schema.Text(el))
 	}
 	return ""
 }

@@ -206,6 +206,40 @@ func TestLaunchExtensionMustMatchCommand(t *testing.T) {
 	assert.Len(t, reg.Registered, 1, "only mine.test was registered")
 }
 
+// A processing instruction or comment inside an element is not content:
+// the schema accepts <launch:phase><?x?>landrush</launch:phase> as the value
+// "landrush", and the handler must read the same value, not an empty one
+// that would fall back to the GA phase (or, for <domain:name>, to no name).
+func TestElementValuesSkipProcessingInstructions(t *testing.T) {
+	creds := newTestCredentials(t)
+	launchRegistry(t, creds)
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
+	c := dial(t, ts.addr)
+	requireCode(t, c.roundTrip(loginWithServices([]string{nsDomain}, []string{nsLaunch})), "1000")
+
+	phase := `<launch:phase><?x?>land<!-- c -->rush</launch:phase>`
+	ext := `<launch:create xmlns:launch="` + nsLaunch + `">` + phase + `</launch:create>`
+	t.Run("create in the launch phase named", func(t *testing.T) {
+		resp := c.roundTrip(createXML("ab.test", createOpts{ext: ext}))
+		requireCode(t, resp, "2306") // the landrush minimum of five letters applies, so this was not GA
+		assert.Contains(t, msg(resp), "phase")
+		requireCode(t, c.roundTrip(createXML("rushed.test", createOpts{ext: ext})), "1000")
+		assert.Equal(t, entities.ClIDType("landrush"), creds.domains.registry.Domain("rushed.test").RegistrationPhaseName)
+	})
+	t.Run("check in the launch phase named", func(t *testing.T) {
+		resp := c.roundTrip(cmdXML(`<check><domain:check xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"><domain:name>ab.test</domain:name></domain:check></check>
+<extension><launch:check xmlns:launch="`+nsLaunch+`" type="avail">`+phase+`</launch:check></extension>`, "LCK-PI"))
+		requireCode(t, resp, "1000")
+		assert.Equal(t, "0", resp.FindElement("//chkData/cd/name").SelectAttrValue("avail", ""), "two letters, under the landrush minimum")
+	})
+	t.Run("a domain name", func(t *testing.T) {
+		resp := c.roundTrip(cmdXML(`<create><domain:create xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"><domain:name><?x?>pi.test</domain:name><domain:registrant>registrar1-c1</domain:registrant><domain:contact type="tech">registrar1-c2</domain:contact><domain:authInfo><domain:pw><!-- c -->Tr4nsf3r-C0de-Xq9#Lm2!</domain:pw></domain:authInfo></domain:create></create>`, "CRE-PI"))
+		requireCode(t, resp, "1000")
+		assert.Equal(t, "pi.test", text(resp, "//creData/name"))
+		require.NotNil(t, creds.domains.registry.Domain("pi.test"))
+	})
+}
+
 func TestLaunchCheckAvailability(t *testing.T) {
 	creds := newTestCredentials(t)
 	launchRegistry(t, creds)
