@@ -120,6 +120,14 @@ func sentinelDeclarations(t *testing.T, path string) int {
 	if err != nil {
 		t.Fatalf("parse %s: %v", path, err)
 	}
+	return countSentinels(f)
+}
+
+// countSentinels is sentinelDeclarations on a parsed file. The constructor
+// is resolved through the file's import specs, so an aliased import
+// (`import stderrors "errors"`) counts the same as the plain one.
+func countSentinels(f *ast.File) int {
+	imports := importsByLocalName(f)
 	n := 0
 	for _, decl := range f.Decls {
 		gd, ok := decl.(*ast.GenDecl)
@@ -132,7 +140,7 @@ func sentinelDeclarations(t *testing.T, path string) int {
 				if !strings.HasPrefix(name.Name, "Err") || i >= len(vs.Values) {
 					continue
 				}
-				if isErrorConstructor(vs.Values[i]) {
+				if isErrorConstructor(vs.Values[i], imports) {
 					n++
 				}
 			}
@@ -141,7 +149,22 @@ func sentinelDeclarations(t *testing.T, path string) int {
 	return n
 }
 
-func isErrorConstructor(e ast.Expr) bool {
+// importsByLocalName maps each import's name in the file (its alias, or the
+// package name the path ends in) to its import path.
+func importsByLocalName(f *ast.File) map[string]string {
+	m := map[string]string{}
+	for _, imp := range f.Imports {
+		path := strings.Trim(imp.Path.Value, `"`)
+		name := path[strings.LastIndex(path, "/")+1:]
+		if imp.Name != nil {
+			name = imp.Name.Name
+		}
+		m[name] = path
+	}
+	return m
+}
+
+func isErrorConstructor(e ast.Expr, imports map[string]string) bool {
 	call, ok := e.(*ast.CallExpr)
 	if !ok {
 		return false
@@ -154,7 +177,53 @@ func isErrorConstructor(e ast.Expr) bool {
 	if !ok {
 		return false
 	}
-	return (pkg.Name == "errors" && sel.Sel.Name == "New") || (pkg.Name == "fmt" && sel.Sel.Name == "Errorf")
+	switch imports[pkg.Name] {
+	case "errors":
+		return sel.Sel.Name == "New"
+	case "fmt":
+		return sel.Sel.Name == "Errorf"
+	}
+	return false
+}
+
+// TestCountSentinels pins what the INV-09 ratchet counts: the two standard
+// constructors, however the package is named in the file, and nothing
+// else.
+func TestCountSentinels(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want int
+	}{
+		{"errors.New", `package p; import "errors"; var ErrA = errors.New("a")`, 1},
+		{"fmt.Errorf", `package p; import "fmt"; var ErrA = fmt.Errorf("a")`, 1},
+		{"aliased errors", `package p; import stderrors "errors"; var ErrA = stderrors.New("a")`, 1},
+		{"aliased fmt", `package p; import f "fmt"; var ErrA = f.Errorf("a")`, 1},
+		{"both aliased in one block", `package p
+import (
+	e "errors"
+	f "fmt"
+)
+var (
+	ErrA = e.New("a")
+	ErrB = f.Errorf("b")
+)`, 2},
+		{"local package named errors", `package p; import errors "example.com/x/errors"; var ErrA = errors.New("a")`, 0},
+		{"not a sentinel name", `package p; import "errors"; var oops = errors.New("a")`, 0},
+		{"a wrapped domain sentinel", `package p; import "fmt"; func f() error { return fmt.Errorf("x: %w", ErrA) }; var ErrA error`, 0},
+		{"errors.New at package level without Err prefix", `package p; import "errors"; var NotFound = errors.New("a")`, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := parser.ParseFile(token.NewFileSet(), "x.go", tc.src, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := countSentinels(f); got != tc.want {
+				t.Errorf("got %d sentinel(s), want %d", got, tc.want)
+			}
+		})
+	}
 }
 
 // repoRoot is the directory holding go.mod.

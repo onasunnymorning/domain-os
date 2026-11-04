@@ -489,7 +489,7 @@ ci-arch: ## Enforce the architectural invariants (BLOCKING) — mirrors the "Arc
 	@echo "🏛  Checking INV-06 (workflow determinism)..."
 	@go test -count=1 -run TestWorkflowDeterminism ./internal/application/workflows/
 	@echo "🏛  Checking INV-09 (sentinel errors declared in the domain)..."
-	@go test -count=1 -run TestSentinelsAreDeclaredInTheDomain ./internal/arch/
+	@go test -count=1 -run 'TestSentinelsAreDeclaredInTheDomain|TestCountSentinels' ./internal/arch/
 	@echo "✅ Architecture gate passed."
 
 generate-contract: ## Regenerate deploy/contract.json from env registry + service metadata
