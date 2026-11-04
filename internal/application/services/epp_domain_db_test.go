@@ -390,6 +390,31 @@ func TestLaunchAllocationOverPostgres(t *testing.T) {
 	_, err = alloc.Allocate(ctx, testPlatformScope, &commands.AllocateApplicationCommand{ApplicationID: loser.ID.String()})
 	assert.ErrorIs(t, err, entities.ErrApplicationTransition)
 
+	t.Run("a decision whose event cannot be recorded rolls back", func(t *testing.T) {
+		broken := NewLaunchAllocationService(applications, phases, f.tldRepo, postgres.NewContactRepository(db, "EPPTEST"), f.hostRepo, f.registry, postgres.NewTransactor(db), failingPublisher{})
+		res, err := svc.Create(ctx, entities.RegistrarClID(rar1), commands.EPPCreateDomainCommand{
+			Name: "kept." + tld, RegistrantID: "c" + rar1, Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar1}},
+			Launch: &commands.EPPLaunchCreate{Phase: commands.EPPLaunchPhase{Value: "landrush"}, Type: "application"},
+		})
+		require.NoError(t, err)
+		_, err = broken.Reject(ctx, testPlatformScope, &commands.RejectApplicationCommand{ApplicationID: res.Application.ID.String(), Reason: "x"})
+		require.Error(t, err)
+		kept, err := applications.GetApplicationByID(ctx, res.Application.ID)
+		require.NoError(t, err)
+		assert.Equal(t, entities.ApplicationStatusPendingAllocation, kept.Status, "the status change rolled back")
+		_, n, err := polls.OldestPollMessage(ctx, entities.ClIDType(rar1))
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), n, "no message was queued for it: only the allocation's remains")
+
+		_, err = broken.Allocate(ctx, testPlatformScope, &commands.AllocateApplicationCommand{ApplicationID: res.Application.ID.String()})
+		require.Error(t, err)
+		_, err = f.domainRepo.GetDomainByName(ctx, "kept."+tld, false)
+		assert.ErrorIs(t, err, entities.ErrDomainNotFound, "the registration rolled back with the event")
+		kept, err = applications.GetApplicationByID(ctx, res.Application.ID)
+		require.NoError(t, err)
+		assert.Equal(t, entities.ApplicationStatusPendingAllocation, kept.Status)
+	})
+
 	t.Run("a name registered since filing is a conflict, and a filing for a registered name is refused", func(t *testing.T) {
 		res, err := svc.Create(ctx, entities.RegistrarClID(rar1), commands.EPPCreateDomainCommand{
 			Name: "taken." + tld, RegistrantID: "c" + rar1, Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar1}},

@@ -121,11 +121,25 @@ func (s *LaunchAllocationService) Reject(ctx context.Context, scope entities.Reg
 	return s.write(ctx, EventApplicationRejected, cmd, before, app)
 }
 
+// begin opens the decision's transaction, as DomainService.begin does: done
+// commits it when the decision returned no error, rolls it back on an error
+// or a panic (which it re-raises), and reports the commit's error.
+func (s *LaunchAllocationService) begin(ctx context.Context) (context.Context, func(*error)) {
+	ctx, finish := s.tx.Begin(ctx)
+	return ctx, func(errp *error) {
+		if r := recover(); r != nil {
+			_ = finish(fmt.Errorf("panic: %v", r))
+			panic(r)
+		}
+		*errp = finish(*errp)
+	}
+}
+
 // write stores app, a decided application, queues its applicant's message
 // and publishes the event, in one transaction.
 func (s *LaunchAllocationService) write(ctx context.Context, event string, cmd, before interface{}, app *entities.LaunchApplication) (_ *entities.LaunchApplication, err error) {
-	ctx, finish := s.tx.Begin(ctx)
-	defer func() { err = finish(err) }()
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	stored, err := s.applications.UpdateApplicationIfUnchanged(ctx, app)
 	if err != nil {
 		return nil, err
@@ -167,8 +181,8 @@ func (s *LaunchAllocationService) Allocate(ctx context.Context, scope entities.R
 		return nil, err
 	}
 	before := app.DeepCopy()
-	ctx, finish := s.tx.Begin(ctx)
-	defer func() { err = finish(err) }()
+	ctx, done := s.begin(ctx)
+	defer done(&err)
 	// The name's lock (LaunchApplicationRepository.LockName): no filing for
 	// the name runs between the registration below and the rejections.
 	if err := s.applications.LockName(ctx, app.Name.String()); err != nil {
