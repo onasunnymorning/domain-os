@@ -257,6 +257,16 @@ var Registry = []EnvVar{
 	{Name: "ESCROW_INTAKE_SFTP_ENABLED", Services: []Service{ServiceWorker}, Default: "false", Description: "Validate escrow deposits that arrive over sFTP: the escrow-intake-sweep schedule always runs, and finds nothing to do while this is false"},
 	{Name: "ESCROW_INTAKE_SFTP_ALLOW_PLAINTEXT", Services: []Service{ServiceWorker}, Default: "false", Description: "Also accept a lone unsigned <name>.xml or <name>.xml.gz uploaded over sFTP as a deposit, validated with the plaintext profile. Unsigned deposits are registry data in the clear at rest, so keep this off outside test and simulation environments; while off they are left in the inbox and counted in the sweep result"},
 	{Name: "ESCROW_INTAKE_SFTP_PREFIX", Services: []Service{ServiceWorker}, Default: "sftp/", Description: "Escrow bucket prefix the sFTP server writes under; deposits are read from <prefix>inbox/<RyID>/<tld>/ and moved to <prefix>claimed/ and <prefix>rejected/. Must not overlap escrow-validation/ or uploads/"},
+	// ─── Trademark Clearinghouse feed (ADR 0024 §4, roadmap 9a) ───
+	// The three data sets are platform data refreshed by the refresh-tmch
+	// schedule; the lists are published behind the registry's TMDB credentials.
+	{Name: "TMCH_CA_URL", Services: []Service{ServiceWorker, ServiceAPI}, Default: "https://ca.icann.org/tmch.crt", Description: "Where the TMCH CA certificate bundle (PEM) is published; the pilot Clearinghouse publishes its own"},
+	{Name: "TMCH_SMDRL_URL", Services: []Service{ServiceWorker, ServiceAPI}, Default: "https://ry.marksdb.org/smdrl/smdrl-latest.csv", Description: "Where the SMD revocation list is published (CSV, needs TMCH_USERNAME/TMCH_PASSWORD)"},
+	{Name: "TMCH_DNL_URL", Services: []Service{ServiceWorker, ServiceAPI}, Default: "https://ry.marksdb.org/dnl/dnl-latest.csv", Description: "Where the DNL (claims) list is published (CSV, needs TMCH_USERNAME/TMCH_PASSWORD)"},
+	{Name: "TMCH_USERNAME", Services: []Service{ServiceWorker, ServiceAPI}, Description: "The registry's TMDB username for the SMDRL and DNL downloads. Unset: the TMCH feed is not configured and refresh-tmch does nothing"},
+	{Name: "TMCH_PASSWORD", Services: []Service{ServiceWorker, ServiceAPI}, Secret: true, Description: "The registry's TMDB password for the SMDRL and DNL downloads"},
+	{Name: "TMCH_REFRESH_INTERVAL", Services: []Service{ServiceWorker}, Default: "6h", Description: "How often refresh-tmch fetches the TMCH data sets (Go duration, at least 1h). Applied to the schedule when the worker starts"},
+
 	{Name: "ESCROW_INTAKE_SWEEP_INTERVAL", Services: []Service{ServiceWorker}, Default: "2m", Description: "How often the sFTP intake sweep looks for new deposits (Go duration, at least 30s). Applied to the schedule when the worker starts"},
 
 	// ─── Escrow key store (EVE key registry, issue #429, ADR-0009) ───

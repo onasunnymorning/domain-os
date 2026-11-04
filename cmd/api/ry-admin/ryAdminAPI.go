@@ -26,6 +26,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/secrets"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/tmch"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/ianaregistrars"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannspec5"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
@@ -38,6 +39,7 @@ import (
 	"github.com/gin-contrib/cors"
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
 
@@ -287,6 +289,19 @@ func main() {
 	// FX
 	fxRepo := postgres.NewFXRepository(gormDB)
 	fxService := appservices.NewFXService(fxRepo)
+	// TMCH data (ADR 0024 §4): the feed from the environment (INV-17); the
+	// admin API reports freshness, serves it as metrics, and refreshes on
+	// request. Without credentials the feed is unconfigured and a refresh
+	// is refused.
+	tmchCfg, err := sharedconfig.LoadTMCH()
+	if err != nil {
+		logger.Warn("TMCH configuration", zap.Error(err))
+	}
+	tmchService := appservices.NewTMCHService(postgres.NewTMCHRepository(gormDB), tmch.NewFeed(tmch.Config{
+		CertificatesURL: tmchCfg.CertificatesURL, SMDRLURL: tmchCfg.SMDRLURL, DNLURL: tmchCfg.DNLURL,
+		Username: tmchCfg.Username, Password: tmchCfg.Password,
+	}, nil), "domain-os/api")
+	prometheus.MustRegister(rest.NewTMCHCollector(tmchService))
 	// Sync
 	ianaRepo := ianaregistrars.NewIANARRepository()
 	icannRepo := icannspec5.NewICANNRepo()
@@ -435,6 +450,7 @@ func main() {
 	rest.NewAccreditationController(r, accreditationService, authMiddleware)
 	rest.NewPremiumController(r, premiumListService, premiumLabelService, authMiddleware)
 	rest.NewFXController(r, fxService, authMiddleware)
+	rest.NewTMCHController(r, tmchService, authMiddleware)
 	rest.NewWhoisController(r, whoisService, authMiddleware)
 	rest.NewDnssecController(r, dnssecService, authMiddleware)
 	// Workflows

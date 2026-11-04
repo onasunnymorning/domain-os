@@ -1,0 +1,70 @@
+# Alert rules for the TMCH data (ADR 0024 §4, roadmap 9a): the Trademark
+# Clearinghouse's CA bundle, SMD revocation list and DNL list, which the
+# refresh-tmch schedule keeps current and sunrise and claims read.
+#
+# The metrics are served by the admin API (job domain-os-api), which reads
+# the stored status on every scrape: TestTMCHAlertRulesNameServedMetrics
+# (internal/interface/rest) fails if a rule names one that does not exist.
+# Each alert links to its section of docs/epp/RUNBOOK.md.
+#
+# Nothing fires on an installation without a TMCH feed (tmch_feed_configured
+# is 0): such an installation runs no sunrise or claims phase.
+#
+# Severity: critical pages someone now; warning is looked at the same day;
+# info is for a dashboard or a ticket.
+
+groups:
+  - name: tmch-freshness
+    rules:
+      # The Clearinghouse regenerates both lists at least daily and the
+      # schedule fetches every six hours, so a stored generation over 36
+      # hours old means either the feed has been failing for a day or the
+      # Clearinghouse has stopped publishing. A revocation or a new label
+      # the registry has not seen is a wrong sunrise or claims answer.
+      - alert: TMCHDataStale
+        expr: |
+          (time() - tmch_set_generated_timestamp_seconds{set=~"smdrl|dnl"}) > 36 * 3600
+            and tmch_set_generated_timestamp_seconds{set=~"smdrl|dnl"} > 0
+            and on(instance) tmch_feed_configured == 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The stored TMCH {{ $labels.set }} was generated {{ $value | humanizeDuration }} ago"
+          runbook: "docs/epp/RUNBOOK.md#tmch-data-is-stale"
+
+      # A feed that is configured but has never loaded a set, an hour after
+      # the worker should have run the first refresh.
+      - alert: TMCHDataNeverFetched
+        expr: |
+          tmch_set_fetched_timestamp_seconds == 0
+            and on(instance) tmch_feed_configured == 1
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "The TMCH {{ $labels.set }} has never been fetched although a feed is configured"
+          runbook: "docs/epp/RUNBOOK.md#tmch-data-is-stale"
+
+      # ICANN publishes a new CA bundle before the old certificate expires;
+      # a bundle that is about to expire has not been refreshed, or the new
+      # bundle has not been published to this URL.
+      - alert: TMCHCertificateExpiresIn30Days
+        expr: |
+          (tmch_certificates_not_after_timestamp_seconds - time()) < 30 * 86400
+            and tmch_certificates_not_after_timestamp_seconds > 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "The stored TMCH CA bundle expires in {{ $value | humanizeDuration }}"
+          runbook: "docs/epp/RUNBOOK.md#the-tmch-ca-bundle-is-expiring"
+
+      - alert: TMCHStatusUnreadable
+        expr: increase(tmch_status_read_errors_total[15m]) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} cannot read the stored TMCH status"
+          runbook: "docs/epp/RUNBOOK.md#tmch-data-is-stale"
