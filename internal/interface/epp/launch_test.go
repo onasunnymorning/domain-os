@@ -308,7 +308,10 @@ func TestLaunchApplications(t *testing.T) {
 
 	var id string
 	t.Run("create files an application: 1001 with <launch:creData>", func(t *testing.T) {
-		resp := c.roundTrip(createXML("bid.test", createOpts{ext: launchCreateXML("custom", "auction", "application", "")}))
+		resp := c.roundTrip(createXML("bid.test", createOpts{
+			ns:  `<domain:ns><domain:hostObj>ns1.` + testRegistrar + `.net</domain:hostObj></domain:ns>`,
+			ext: launchCreateXML("custom", "auction", "application", "") + secDNSCreate(dsDataXML(2371, 13, 2, "49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE3DC8B27C3F72E84BC2E1D3F4")),
+		}))
 		requireCode(t, resp, "1001")
 		assert.Equal(t, "bid.test", text(resp, "//creData/name"))
 		assert.NotEmpty(t, text(resp, "//creData/crDate"))
@@ -349,6 +352,13 @@ func TestLaunchApplications(t *testing.T) {
 		assert.Equal(t, id, launch.SelectElement("applicationID").Text())
 		assert.Equal(t, "pendingAllocation", launch.SelectElement("status").SelectAttrValue("s", ""))
 		assert.Equal(t, "custom", launch.SelectElement("phase").Text())
+		assert.Equal(t, "ns1."+testRegistrar+".net", text(resp, "//resData/infData/ns/hostObj"))
+		assert.Equal(t, "2371", text(resp, "//response/extension/infData/dsData/keyTag"), "the DS records, as the session logged in with secDNS")
+	})
+	t.Run("info with hosts=none leaves the nameservers out", func(t *testing.T) {
+		resp := c.roundTrip(cmdXML(`<info><domain:info xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"><domain:name hosts="none">bid.test</domain:name></domain:info></info><extension>`+launchRef("info", launchPhaseXML("custom", "auction"), id)+`</extension>`, "AI-2"))
+		requireCode(t, resp, "1000")
+		assert.Nil(t, resp.FindElement("//resData/infData/ns"))
 	})
 	t.Run("info refusals", func(t *testing.T) {
 		for _, tc := range []struct{ name, frame, code, msgPart string }{
@@ -378,7 +388,7 @@ func TestLaunchApplications(t *testing.T) {
 			launchRef("update", launchPhaseXML("custom", "auction"), id)))
 		requireCode(t, resp, "1000")
 		app := reg.Application(id)
-		assert.Equal(t, []string{"ns2." + testRegistrar + ".net"}, app.HostNames, "the create named no nameserver")
+		assert.Equal(t, []string{"ns1." + testRegistrar + ".net", "ns2." + testRegistrar + ".net"}, app.HostNames)
 		assert.Equal(t, entities.ClIDType(testRegistrar+"-c2"), app.RegistrantID)
 		resp = c.roundTrip(domainUpdateXML("bid.test", `<domain:add><domain:status s="clientHold"/></domain:add>`, launchRef("update", launchPhaseXML("custom", "auction"), id)))
 		requireCode(t, resp, "2306")

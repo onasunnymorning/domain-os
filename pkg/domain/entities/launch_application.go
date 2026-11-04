@@ -138,6 +138,10 @@ type LaunchApplication struct {
 	DomainRoID RoidType
 
 	CreatedAt time.Time
+	// UpdatedAt is the version the application was read with: the
+	// repository sets it on every write and refuses a write made on another
+	// version (ErrApplicationChanged). The transitions below leave it alone
+	// for that reason.
 	UpdatedAt time.Time
 }
 
@@ -234,29 +238,27 @@ func (a *LaunchApplication) CanChange() error {
 
 // Validated records that the operator validated the application: from
 // pendingValidation to pendingAllocation.
-func (a *LaunchApplication) Validated(now time.Time) error {
+func (a *LaunchApplication) Validated() error {
 	if a.Status != ApplicationStatusPendingValidation {
 		return fmt.Errorf("%w: %s is %s, not pendingValidation", ErrApplicationTransition, a.ID, a.Status)
 	}
 	a.Status = ApplicationStatusPendingAllocation
-	a.UpdatedAt = now.UTC()
 	return nil
 }
 
 // Invalidate records that validation failed, with the reason: from
 // pendingValidation to invalid.
-func (a *LaunchApplication) Invalidate(reason string, now time.Time) error {
+func (a *LaunchApplication) Invalidate(reason string) error {
 	if a.Status != ApplicationStatusPendingValidation {
 		return fmt.Errorf("%w: %s is %s, not pendingValidation", ErrApplicationTransition, a.ID, a.Status)
 	}
 	a.Status, a.Reason = ApplicationStatusInvalid, reason
-	a.UpdatedAt = now.UTC()
 	return nil
 }
 
 // Allocate records that the name was registered to the application as the
 // domain with ROID domainRoID: from pendingAllocation to allocated.
-func (a *LaunchApplication) Allocate(domainRoID RoidType, now time.Time) error {
+func (a *LaunchApplication) Allocate(domainRoID RoidType) error {
 	if a.Status != ApplicationStatusPendingAllocation {
 		return fmt.Errorf("%w: %s is %s, not pendingAllocation", ErrApplicationTransition, a.ID, a.Status)
 	}
@@ -264,18 +266,16 @@ func (a *LaunchApplication) Allocate(domainRoID RoidType, now time.Time) error {
 		return fmt.Errorf("%w: domain ROID: %w", ErrInvalidApplication, err)
 	}
 	a.Status, a.DomainRoID = ApplicationStatusAllocated, domainRoID
-	a.UpdatedAt = now.UTC()
 	return nil
 }
 
 // Reject ends a non-final application with the reason: the name went to
 // another application, or the operator rejected this one.
-func (a *LaunchApplication) Reject(reason string, now time.Time) error {
+func (a *LaunchApplication) Reject(reason string) error {
 	if a.Status.IsFinal() {
 		return fmt.Errorf("%w: %s is %s", ErrApplicationTransition, a.ID, a.Status)
 	}
 	a.Status, a.Reason = ApplicationStatusRejected, reason
-	a.UpdatedAt = now.UTC()
 	return nil
 }
 

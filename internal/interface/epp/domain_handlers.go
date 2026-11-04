@@ -219,14 +219,20 @@ func (s *Server) domainInfo(ctx context.Context, cmd *command) {
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 	// <launch:info> asks about an application (RFC 8334 §3.1.2): the
-	// registrar's own, by its ID; the code, if any, plays no part.
+	// registrar's own, by its ID; the code, if any, plays no part. Its DS
+	// records are shown to a session that logged in with secDNS-1.1, as a
+	// domain's are.
 	if li := launchExtension(cmd.doc, "info"); li != nil {
 		app, err := s.domains.InfoApplication(ctx, scope, cmd.objects[0], readLaunchRef(li))
 		if err != nil {
 			s.refuse(cmd, err)
 			return
 		}
-		cmd.respond(epplib.StatusSuccess, "", applicationInfoData(app), launchInfData(app))
+		var secDNS *etree.Element
+		if slices.Contains(cmd.session.extensions, nsSecDNS) {
+			secDNS = secDNSInfoRecords(app.DSRecords)
+		}
+		cmd.respond(epplib.StatusSuccess, "", applicationInfoData(app, hosts), launchInfData(app), secDNS)
 		return
 	}
 	info, err := s.domains.Info(ctx, scope, cmd.objects[0], authInfo)

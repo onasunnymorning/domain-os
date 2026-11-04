@@ -245,13 +245,17 @@ func createData(d *entities.Domain) *etree.Element {
 
 // secDNSInfoData builds <secDNS:infData> (RFC 5910 §5.1.2) with the
 // domain's DS records, or nil when it has none.
-func secDNSInfoData(d *entities.Domain) *etree.Element {
-	if len(d.DSRecords) == 0 {
+func secDNSInfoData(d *entities.Domain) *etree.Element { return secDNSInfoRecords(d.DSRecords) }
+
+// secDNSInfoRecords builds <secDNS:infData> from DS records, a domain's or
+// an application's; nil for none.
+func secDNSInfoRecords(records []entities.DSRecord) *etree.Element {
+	if len(records) == 0 {
 		return nil
 	}
 	inf := etree.NewElement("secDNS:infData")
 	inf.CreateAttr("xmlns:secDNS", nsSecDNS)
-	for _, ds := range d.DSRecords {
+	for _, ds := range records {
 		el := inf.CreateElement("secDNS:dsData")
 		el.CreateElement("secDNS:keyTag").SetText(strconv.Itoa(int(ds.KeyTag)))
 		el.CreateElement("secDNS:alg").SetText(strconv.Itoa(int(ds.Algorithm)))
@@ -314,9 +318,10 @@ func launchInfData(a *entities.LaunchApplication) *etree.Element {
 
 // applicationInfoData builds the <domain:infData> of an application (RFC
 // 8334 §3.1.2): what the domain would carry, with the application's ID as
-// the ROID and pendingCreate as its status while it is not final. There is
-// no expiry yet, and no subordinate hosts.
-func applicationInfoData(a *entities.LaunchApplication) *etree.Element {
+// the ROID and pendingCreate as its status while it is not final. hosts is
+// the <domain:info> hosts attribute, as for infoData: the nameservers are
+// shown for all and del. There is no expiry yet, and no subordinate hosts.
+func applicationInfoData(a *entities.LaunchApplication, hosts string) *etree.Element {
 	inf := etree.NewElement("domain:infData")
 	inf.CreateAttr("xmlns:domain", nsDomain)
 	inf.CreateElement("domain:name").SetText(a.Name.String())
@@ -337,7 +342,7 @@ func applicationInfoData(a *entities.LaunchApplication) *etree.Element {
 			el.SetText(c.id.String())
 		}
 	}
-	if len(a.HostNames) > 0 {
+	if (hosts == "all" || hosts == "del") && len(a.HostNames) > 0 {
 		ns := inf.CreateElement("domain:ns")
 		for _, h := range a.HostNames {
 			ns.CreateElement("domain:hostObj").SetText(h)

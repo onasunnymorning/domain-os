@@ -87,7 +87,6 @@ func TestLaunchApplication_SetHostNames(t *testing.T) {
 
 func TestLaunchApplication_Transitions(t *testing.T) {
 	now := time.Now().UTC()
-	later := now.Add(time.Minute)
 	filed := func(validation bool) *LaunchApplication {
 		a, err := NewLaunchApplication(testAppID, "rushed.test", "rar-one", "", applicationPhase(t, validation), 1, now)
 		require.NoError(t, err)
@@ -96,38 +95,38 @@ func TestLaunchApplication_Transitions(t *testing.T) {
 
 	t.Run("validated, then allocated", func(t *testing.T) {
 		a := filed(true)
-		assert.ErrorIs(t, a.Allocate("9_DOM-TEST", later), ErrApplicationTransition, "not yet validated")
-		require.NoError(t, a.Validated(later))
+		assert.ErrorIs(t, a.Allocate("9_DOM-TEST"), ErrApplicationTransition, "not yet validated")
+		require.NoError(t, a.Validated())
 		assert.Equal(t, ApplicationStatusPendingAllocation, a.Status)
-		assert.Equal(t, later, a.UpdatedAt)
-		assert.ErrorIs(t, a.Validated(later), ErrApplicationTransition, "validated once")
-		require.NoError(t, a.Allocate("9_DOM-TEST", later))
+		assert.Equal(t, now, a.UpdatedAt, "the read version is the repository's to move")
+		assert.ErrorIs(t, a.Validated(), ErrApplicationTransition, "validated once")
+		require.NoError(t, a.Allocate("9_DOM-TEST"))
 		assert.Equal(t, ApplicationStatusAllocated, a.Status)
 		assert.Equal(t, RoidType("9_DOM-TEST"), a.DomainRoID)
 		assert.True(t, a.Status.IsFinal())
 		assert.ErrorIs(t, a.CanChange(), ErrApplicationFinal)
-		assert.ErrorIs(t, a.Reject("late", later), ErrApplicationTransition, "final")
+		assert.ErrorIs(t, a.Reject("late"), ErrApplicationTransition, "final")
 		assert.NoError(t, a.Validate())
 	})
 	t.Run("allocation needs a valid domain ROID", func(t *testing.T) {
 		a := filed(false)
-		assert.ErrorIs(t, a.Allocate("", later), ErrInvalidApplication)
+		assert.ErrorIs(t, a.Allocate(""), ErrInvalidApplication)
 		assert.Equal(t, ApplicationStatusPendingAllocation, a.Status, "unchanged")
 	})
 	t.Run("invalidated", func(t *testing.T) {
 		a := filed(true)
-		require.NoError(t, a.Invalidate("the applicant is not eligible", later))
+		require.NoError(t, a.Invalidate("the applicant is not eligible"))
 		assert.Equal(t, ApplicationStatusInvalid, a.Status)
 		assert.Equal(t, "the applicant is not eligible", a.Reason)
 		assert.True(t, a.Status.IsFinal())
 		a = filed(false)
-		assert.ErrorIs(t, a.Invalidate("x", later), ErrApplicationTransition, "only a pendingValidation application is validated")
+		assert.ErrorIs(t, a.Invalidate("x"), ErrApplicationTransition, "only a pendingValidation application is validated")
 	})
 	t.Run("rejected from either pending status", func(t *testing.T) {
 		for _, validation := range []bool{true, false} {
 			a := filed(validation)
 			require.NoError(t, a.CanChange())
-			require.NoError(t, a.Reject("the name went to another application", later))
+			require.NoError(t, a.Reject("the name went to another application"))
 			assert.Equal(t, ApplicationStatusRejected, a.Status)
 			assert.ErrorIs(t, a.CanChange(), ErrApplicationFinal)
 		}

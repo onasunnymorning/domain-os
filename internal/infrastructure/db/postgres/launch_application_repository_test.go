@@ -124,6 +124,24 @@ func TestLaunchApplicationRepository(t *testing.T) {
 		_, err = repo.UpdateApplicationIfUnchanged(ctx, missing)
 		assert.ErrorIs(t, err, entities.ErrApplicationNotFound)
 	})
+	t.Run("a transition made on the read version is written", func(t *testing.T) {
+		a := testApplication(t, base+8, "won.apptest", "rar-one")
+		a.Status = entities.ApplicationStatusPendingValidation
+		stored, err := repo.CreateApplication(ctx, a)
+		require.NoError(t, err)
+		time.Sleep(2 * time.Millisecond) // the transition happens later than the read
+		require.NoError(t, stored.Validated())
+		validated, err := repo.UpdateApplicationIfUnchanged(ctx, stored)
+		require.NoError(t, err, "the entity left the read version alone")
+		assert.Equal(t, entities.ApplicationStatusPendingAllocation, validated.Status)
+		require.NoError(t, validated.Allocate("78_DOM-TEST"))
+		allocated, err := repo.UpdateApplicationIfUnchanged(ctx, validated)
+		require.NoError(t, err)
+		assert.Equal(t, entities.ApplicationStatusAllocated, allocated.Status)
+		assert.Equal(t, entities.RoidType("78_DOM-TEST"), allocated.DomainRoID)
+		_, err = repo.UpdateApplicationIfUnchanged(ctx, validated)
+		assert.ErrorIs(t, err, entities.ErrApplicationChanged, "the version before allocation is stale")
+	})
 	t.Run("delete if unchanged", func(t *testing.T) {
 		a := testApplication(t, base+6, "gone.apptest", "rar-one")
 		stored, err := repo.CreateApplication(ctx, a)

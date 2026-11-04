@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -80,6 +81,18 @@ func (LaunchApplicationDSRecord) TableName() string { return "launch_application
 // and phase. The statuses listed are the non-final ones
 // (entities.ApplicationStatus.IsFinal).
 const launchApplicationOpenIndex = "CREATE UNIQUE INDEX IF NOT EXISTS uq_launch_applications_open ON launch_applications (name, phase_name, cl_id) WHERE status IN ('pendingValidation', 'pendingAllocation')"
+
+// migrateLaunchApplications creates the index that enforces one open
+// application per registrar, name and phase (ADR 0024 §3). It is the only
+// enforcement of that rule, so unlike the best-effort indexes a failure
+// fails the migration: a database without it would store duplicates where
+// the registry promises 2302.
+func migrateLaunchApplications(db *gorm.DB) error {
+	if err := db.Exec(launchApplicationOpenIndex).Error; err != nil {
+		return fmt.Errorf("create uq_launch_applications_open: %w", err)
+	}
+	return nil
+}
 
 // LaunchApplicationRepository is the Postgres
 // repositories.LaunchApplicationRepository.
