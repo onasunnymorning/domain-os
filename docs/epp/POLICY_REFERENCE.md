@@ -139,12 +139,15 @@ The greeting offers the domain, contact and host object services. It offers four
 |---|---|
 | `<domain:check>` with `<launch:check type="avail">` | The plain `<domain:chkData>`, each name's availability under the phase named (its label rules), with no extension in the response (RFC 8334 §3.1.1.2) |
 | `<launch:check>` of the claims form (the default) or the trademark form | 2102: the registry does not serve claims yet (roadmap 9c) |
-| `<domain:create>` with `<launch:create>` in an open, landrush or custom phase that registers at once | Registered under that phase's prices, fees, policy and horizon, answered as a GA create is (`<launch:creData>` is for applications only); the domain records its phase |
-| `<launch:create type="application">` | 2306: that phase registers at once |
-| A create in a phase that collects applications | 2306 until applications land (roadmap 8c) |
+| `<domain:create>` with `<launch:create>` in an open, landrush or custom phase that registers at once | Registered under that phase's prices, fees, policy and horizon, answered as a GA create is (`<launch:creData>` is for applications only); the domain records its phase. `type="application"` is 2306 |
+| `<domain:create>` with `<launch:create>` in a phase that collects applications | An application is filed after every rule of a create has passed: 1001, `<domain:creData>` with the name and filing date, and `<launch:creData>` with the phase and the server-assigned `applicationID`. `type="registration"` is 2306. A second open application by the same registrar for the name in the phase is 2302; other registrars may apply for the same name. Nothing is charged at filing; the quote is kept for allocation |
 | A create in a sunrise or claims phase, or carrying `<launch:codeMark>`, `<smd:encodedSignedMark>` or `<launch:notice>` | 2306: trademark evidence is not verified yet (roadmap 9a–9c) |
 | A decoded `<smd:signedMark>` or inline `<mark:mark>` | 2001: not modelled until sunrise lands |
-| `<launch:info>`, `<launch:update>`, `<launch:delete>` | 2306 until applications land |
+| `<domain:info>` with `<launch:info>` | The registrar's own application, by `applicationID` (2306 without one, 2303 for an unknown one, 2201 for another registrar's, 2306 when the name or phase given is not the application's): `<domain:infData>` with the application's ID as the ROID, `pendingCreate` while it is not final, its contacts, nameservers, sponsor and dates, and an empty `<domain:pw/>` when a code is set; plus `<launch:infData>` with the phase, the ID and the application's status (`pendingValidation`, `pendingAllocation`, `allocated`, `rejected`, `invalid`). `includeMark` is ignored: no marks are kept yet |
+| `<domain:update>` with `<launch:update>` | Changes the registrar's own application as a domain update would (contacts, nameservers, DS records, the code), 1000 with no data; statuses and `<rgp:update>` are 2306; a final application is 2304; the phase may have ended |
+| `<domain:delete>` with `<launch:delete>` | Withdraws the registrar's own application, 1000, removing it; a final one is 2304. The registrar may then apply again |
+
+The `<launch:phase>` the server sends back carries the phase's mode as its value and the phase's name as its `name` attribute.
 
 **`<domain:check>`.** Each name is answered in the order asked, duplicates included, with `avail="1"` or `avail="0"` and a reason:
 
@@ -168,7 +171,7 @@ Availability is the same for every registrar. A command costs two lookups howeve
 | Not a valid domain name | 2005 |
 | TLD not served, or not open (no GA phase in force); or the launch phase named cannot be registered in | 2306 |
 | Registrar not accredited for the TLD | 2201 |
-| The launch phase collects applications, or needs trademark evidence verified; `type="application"`; marks or notices given | 2306 |
+| The launch phase needs trademark evidence verified; the `type` attribute is not what the phase makes (`application` in a first-come phase, `registration` in an application phase); marks or notices given | 2306 |
 | A period in months that is not whole years | 2306 |
 | Period outside 1 year to the phase's maximum horizon (10 by default); no period is 1 year | 2004 |
 | The phase's label rules exclude the name | 2306 |

@@ -53,6 +53,7 @@ func newTestDomains() *testDomains {
 		EPPDomainService: services.NewEPPDomainService(services.EPPDomainServiceDeps{
 			Domains: reg.Domains(), NNDNs: reg.NNDNs(), TLDs: reg.TLDs(), Phases: reg.Phases(),
 			Contacts: reg.Contacts(), Hosts: reg.Hosts(), Registrars: reg.Registrars(), Transfers: reg.Transfers(), Register: reg,
+			Applications: reg.Applications(), Roids: services.NewRoidService(reg, testRepositoryID),
 		}),
 	}
 }
@@ -75,7 +76,7 @@ func (f *testDomains) Info(ctx context.Context, scope entities.RegistrarClID, na
 	return f.EPPDomainService.Info(ctx, scope, name, authInfo)
 }
 
-func (f *testDomains) Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) (*entities.Domain, error) {
+func (f *testDomains) Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) (*queries.EPPDomainCreated, error) {
 	if err := f.failure(); err != nil {
 		return nil, err
 	}

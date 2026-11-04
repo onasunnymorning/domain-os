@@ -18,21 +18,26 @@ type PhaseService struct {
 	tldRepo        repositories.TLDRepository
 	phaseRepo      repositories.PhaseRepository
 	lifecycleRepo  repositories.LifecyclePolicyRepository
+	applications   repositories.LaunchApplicationRepository
 	eventPublisher repositories.EventPublisher
 }
 
 // NewPhaseService returns a new instance of PhaseService. lifecycleRepo
-// answers which lifecycle policies a phase may name (ADR 0023).
+// answers which lifecycle policies a phase may name (ADR 0023);
+// applications answers whether a launch phase has applications filed (ADR
+// 0024), which freezes its registration model; nil counts none.
 func NewPhaseService(
 	phaseRepo repositories.PhaseRepository,
 	tldRepo repositories.TLDRepository,
 	lifecycleRepo repositories.LifecyclePolicyRepository,
+	applications repositories.LaunchApplicationRepository,
 	eventPublisher repositories.EventPublisher,
 ) *PhaseService {
 	return &PhaseService{
 		tldRepo:        tldRepo,
 		phaseRepo:      phaseRepo,
 		lifecycleRepo:  lifecycleRepo,
+		applications:   applications,
 		eventPublisher: eventPublisher,
 	}
 }
@@ -72,8 +77,7 @@ func (svc *PhaseService) SetLifecyclePolicy(ctx context.Context, scope entities.
 // within scope, as SetLifecyclePolicy does. The phase decides what may
 // change when (entities.Phase.SetLaunchSettings): nothing on a GA phase or
 // an ended one, the mode only before the phase starts, the model only
-// before it starts or has applications. Applications do not exist yet, so
-// none are counted here; the count arrives with them.
+// before it starts or has applications filed.
 func (svc *PhaseService) SetLaunchSettings(ctx context.Context, scope entities.RegistryScope, cmd *commands.SetLaunchSettingsCommand) (*entities.Phase, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
@@ -87,7 +91,15 @@ func (svc *PhaseService) SetLaunchSettings(ctx context.Context, scope entities.R
 	if err != nil {
 		return nil, err
 	}
-	if err := phase.SetLaunchSettings(cmd.LaunchSettings, time.Now().UTC(), false); err != nil {
+	hasApplications := false
+	if svc.applications != nil {
+		n, err := svc.applications.CountApplicationsByPhase(ctx, cmd.TLDName, cmd.PhaseName)
+		if err != nil {
+			return nil, fmt.Errorf("count applications in %s/%s: %w", cmd.TLDName, cmd.PhaseName, err)
+		}
+		hasApplications = n > 0
+	}
+	if err := phase.SetLaunchSettings(cmd.LaunchSettings, time.Now().UTC(), hasApplications); err != nil {
 		return nil, err
 	}
 	return svc.UpdatePhase(ctx, phase)

@@ -53,6 +53,14 @@ type EPPLaunchCreate struct {
 	Marks, Notices int
 }
 
+// EPPLaunchRef is a <launch:info>, <launch:update> or <launch:delete>
+// (RFC 8334 §3.1.2, §3.4, §3.5): the phase and the application named, each
+// empty if not given.
+type EPPLaunchRef struct {
+	Phase         EPPLaunchPhase
+	ApplicationID string
+}
+
 // EPPDSData is one <secDNS:dsData>.
 type EPPDSData struct {
 	KeyTag     int
@@ -90,6 +98,9 @@ type EPPUpdateDomainCommand struct {
 	// Restore is the <rgp:update> (RFC 3915 §4.2.5), nil if none was
 	// given.
 	Restore *EPPRestore
+	// Launch is the <launch:update> (RFC 8334 §3.4), nil if none was
+	// given: the update changes the application named, not a domain.
+	Launch *EPPLaunchRef
 }
 
 // Changes reports whether the update changes the domain: anything but a

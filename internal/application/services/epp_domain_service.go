@@ -46,8 +46,17 @@ type EPPDomainService struct {
 	hosts      repositories.HostRepository
 	registrars repositories.RegistrarRepository
 	transfers  repositories.DomainTransferRepository
-	register   EPPDomainRegistrar
-	now        func() time.Time
+	// applications and roids serve application phases (ADR 0024 §3):
+	// the applications filed, and the IDs they get.
+	applications repositories.LaunchApplicationRepository
+	roids        roidMinter
+	register     EPPDomainRegistrar
+	now          func() time.Time
+}
+
+// roidMinter mints ROIDs and application IDs: RoidService.
+type roidMinter interface {
+	GenerateRoid(objectType string) (entities.RoidType, error)
 }
 
 // EPPDomainRegistrar writes the domain transforms: DomainService, which
@@ -75,6 +84,10 @@ type EPPDomainRegistrar interface {
 	// CompleteRestoreAsRead restores dom, whose restore is pending, with
 	// its sponsor's report (entities.Domain.CompleteRestore).
 	CompleteRestoreAsRead(ctx context.Context, dom *entities.Domain, report entities.RestoreReport, actor entities.ClIDType) (*entities.Domain, error)
+	// QuoteRegistration prices the registration of name, unregistered,
+	// by clid for years in phase, in the phase's base currency: what an
+	// application is billed when allocated (ADR 0024 §3).
+	QuoteRegistration(ctx context.Context, name, clid string, years int, phase *entities.Phase) (*entities.Quote, error)
 }
 
 // EPPDomainServiceDeps are what EPPDomainService reads and writes through.
@@ -89,6 +102,11 @@ type EPPDomainServiceDeps struct {
 	// Transfers reads the domains' transfers; Register writes them.
 	Transfers repositories.DomainTransferRepository
 	Register  EPPDomainRegistrar
+	// Applications stores the applications filed in application phases,
+	// and Roids mints their IDs. Both may be left unset by a registry with
+	// no such phase; a create in one is then refused.
+	Applications repositories.LaunchApplicationRepository
+	Roids        roidMinter
 }
 
 // NewEPPDomainService returns the service.
@@ -96,6 +114,7 @@ func NewEPPDomainService(d EPPDomainServiceDeps) *EPPDomainService {
 	return &EPPDomainService{
 		domains: d.Domains, nndns: d.NNDNs, tlds: d.TLDs, phases: d.Phases,
 		contacts: d.Contacts, hosts: d.Hosts, registrars: d.Registrars, transfers: d.Transfers, register: d.Register,
+		applications: d.Applications, roids: d.Roids,
 		now: time.Now,
 	}
 }

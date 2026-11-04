@@ -62,6 +62,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&EPPTransactionRecord{},
 		&DomainTransferRecord{},
 		&PollMessageRecord{},
+		&LaunchApplicationRecord{},
+		&LaunchApplicationHost{},
+		&LaunchApplicationDSRecord{},
 		&EPPPolicyRecord{},
 		&EPPPolicyAssignmentRecord{},
 		&RegistrarFamilyRecord{},
@@ -90,6 +93,9 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 	if err := migrateLaunchSettings(db); err != nil {
+		return err
+	}
+	if err := migrateLaunchApplications(db); err != nil {
 		return err
 	}
 	if err := seedEPPPolicies(db); err != nil {

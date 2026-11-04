@@ -85,19 +85,56 @@ func (s *EPPDomainService) subordinateHosts(ctx context.Context, clid, domain st
 	return names, nil
 }
 
-// Create registers a domain for the session's registrar (RFC 5731 §3.2.1).
-// It applies every rule in one order, so that of several problems with a
-// command the first in this order is the one reported: the name; its TLD
-// and phase; the registrar's accreditation for the TLD (ADR 0006); the
-// period; the phase's label rules; that the name is neither registered nor
-// reserved; the contacts (each typed, at most one of each type, the
-// phase's contact policy, each existing and the registrar's own); the
-// nameservers (host objects, not attributes; no repeats; at most
-// entities.MaxHostsPerDomain; each one of the registrar's host objects);
-// the DNSSEC data (DS data only, no maxSigLife, at most MaxDSRecords, each
-// well formed with an accepted algorithm and digest type, none twice); and
-// the authorization password.
-func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) (*entities.Domain, error) {
+// createAdmission is a create the registry has checked in full
+// (admitCreate): the name, the phase it is made in, its period and
+// contacts, and its DS records. What is then made of it depends on the
+// phase: a registration, or an application.
+type createAdmission struct {
+	name  *entities.DomainName
+	phase *entities.Phase
+	c     eppCreate
+	ds    []entities.DSRecord
+}
+
+// Create registers a domain for the session's registrar (RFC 5731 §3.2.1),
+// or files its application for the name when the launch phase a
+// <launch:create> names collects applications (RFC 8334 §3.3, ADR 0024
+// §3). It applies every rule in one order, so that of several problems
+// with a command the first in this order is the one reported: the name;
+// its TLD and phase; the registrar's accreditation for the TLD (ADR 0006);
+// what the phase admits (a registration or an application, with no
+// trademark evidence); the period; the phase's label rules; that the name
+// is neither registered nor reserved; the contacts (each typed, at most
+// one of each type, the phase's contact policy, each existing and the
+// registrar's own); the nameservers (host objects, not attributes; no
+// repeats; at most entities.MaxHostsPerDomain; each one of the registrar's
+// host objects); the DNSSEC data (DS data only, no maxSigLife, at most
+// MaxDSRecords, each well formed with an accepted algorithm and digest
+// type, none twice); and the authorization password. Then, in an
+// application phase, that the registrar has no open application for the
+// name in it.
+func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) (*queries.EPPDomainCreated, error) {
+	adm, err := s.admitCreate(ctx, scope, cmd)
+	if err != nil {
+		return nil, err
+	}
+	if adm.phase.Launch.Model == entities.RegistrationModelApplication {
+		app, err := s.fileApplication(ctx, scope, cmd, adm)
+		if err != nil {
+			return nil, err
+		}
+		return &queries.EPPDomainCreated{Application: app}, nil
+	}
+	dom, err := s.registerAdmitted(ctx, scope, cmd, adm)
+	if err != nil {
+		return nil, err
+	}
+	return &queries.EPPDomainCreated{Domain: dom}, nil
+}
+
+// admitCreate applies the rules of Create that hold for a registration and
+// an application alike, in Create's order.
+func (s *EPPDomainService) admitCreate(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand) (*createAdmission, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
@@ -107,7 +144,8 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	}
 	// The phase: the GA phase in force, or the launch phase a
 	// <launch:create> names (ADR 0024). A launch phase that cannot be
-	// registered in is refused here, before anything else is read.
+	// registered or applied in is refused here, before anything else is
+	// read.
 	var ref entities.PhaseRef
 	if cmd.Launch != nil {
 		ref = launchRef(cmd.Launch.Phase)
@@ -132,8 +170,8 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	if err := admitLaunchCreate(t.phase, cmd.Launch); err != nil {
 		return nil, err
 	}
-	c := eppCreate{registrant: cmd.RegistrantID}
-	if c.years, err = createYears(cmd, t.phase.Lifecycle().MaxHorizonYears()); err != nil {
+	adm := &createAdmission{name: dn, phase: t.phase, c: eppCreate{registrant: cmd.RegistrantID}}
+	if adm.c.years, err = createYears(cmd, t.phase.Lifecycle().MaxHorizonYears()); err != nil {
 		return nil, err
 	}
 	if !t.phase.Policy.LabelIsAllowed(dn.Label()) {
@@ -147,20 +185,19 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	case reserved[dn.String()]:
 		return nil, ErrDomainBlocked
 	}
-	if err := c.assignContacts(cmd.Contacts); err != nil {
+	if err := adm.c.assignContacts(cmd.Contacts); err != nil {
 		return nil, err
 	}
-	if err := checkContactPolicy(t.phase.Policy.ContactDataPolicy, c); err != nil {
+	if err := checkContactPolicy(t.phase.Policy.ContactDataPolicy, adm.c); err != nil {
 		return nil, err
 	}
-	if err := s.checkContacts(ctx, scope, c); err != nil {
+	if err := s.checkContacts(ctx, scope, adm.c); err != nil {
 		return nil, err
 	}
 	if err := s.checkNameservers(ctx, scope, cmd); err != nil {
 		return nil, err
 	}
-	ds, err := dsRecords(cmd.DSData, cmd.MaxSigLife, cmd.KeyData)
-	if err != nil {
+	if adm.ds, err = dsRecords(cmd.DSData, cmd.MaxSigLife, cmd.KeyData); err != nil {
 		return nil, err
 	}
 	// RFC 9154 §5.1: a domain may be created without a code (the normal
@@ -170,22 +207,28 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 			return nil, err
 		}
 	}
+	return adm, nil
+}
 
+// registerAdmitted registers an admitted create through the registration
+// path (DomainService.RegisterDomain), which prices it, assigns its ROID,
+// stores it and publishes its event.
+func (s *EPPDomainService) registerAdmitted(ctx context.Context, scope entities.RegistrarClID, cmd commands.EPPCreateDomainCommand, adm *createAdmission) (*entities.Domain, error) {
 	// A launch registration names its phase; a GA one names none, and the
 	// registration path resolves the GA phase in force again as it writes.
 	var phaseName string
-	if t.phase.Type == entities.PhaseTypeLaunch {
-		phaseName = t.phase.Name.String()
+	if adm.phase.Type == entities.PhaseTypeLaunch {
+		phaseName = adm.phase.Name.String()
 	}
 	dom, err := s.register.RegisterDomain(ctx, &commands.RegisterDomainCommand{
-		Name: dn.String(), ClID: scope.String(), AuthInfo: cmd.AuthInfo,
-		RegistrantID: c.registrant, AdminID: c.admin, TechID: c.tech, BillingID: c.billing,
-		Years: c.years, HostNames: cmd.HostNames, DSRecords: ds, PhaseName: phaseName,
+		Name: adm.name.String(), ClID: scope.String(), AuthInfo: cmd.AuthInfo,
+		RegistrantID: adm.c.registrant, AdminID: adm.c.admin, TechID: adm.c.tech, BillingID: adm.c.billing,
+		Years: adm.c.years, HostNames: cmd.HostNames, DSRecords: adm.ds, PhaseName: phaseName,
 	})
 	if err != nil {
 		// Another registrar may have registered the name since it was
 		// checked; that is "exists", whatever the registration path said.
-		if _, lookupErr := s.domains.GetDomainByName(ctx, dn.String(), false); lookupErr == nil {
+		if _, lookupErr := s.domains.GetDomainByName(ctx, adm.name.String(), false); lookupErr == nil {
 			return nil, ErrDomainExists
 		}
 		return nil, err
@@ -193,23 +236,28 @@ func (s *EPPDomainService) Create(ctx context.Context, scope entities.RegistrarC
 	return dom, nil
 }
 
-// admitLaunchCreate applies what a registration may do under phase today
-// (ADR 0024 §2): the phase must admit registrations at all
-// (LaunchSettings.AdmitsRegistration: not a sunrise or claims phase, whose
-// evidence nobody verifies yet; not an application phase, since
-// applications do not exist yet); a <launch:create> must not ask for an
-// application (RFC 8334 §3.3: type="application" in a first-come phase is a
-// mismatch); and it must carry no trademark evidence, which is not
-// verified. Without a <launch:create> the GA phase's zero settings admit.
+// admitLaunchCreate applies what a create may do under phase (ADR 0024
+// §2). Without a <launch:create> the phase is the GA phase, whose zero
+// settings admit a registration. With one: the phase must not need
+// trademark evidence verified (sunrise, claims: ErrLaunchModeUnsupported,
+// until roadmap 9a-9c); the type attribute, if given, must be what the
+// phase makes (RFC 8334 §3.3: type="application" in a first-come phase,
+// or type="registration" in an application phase, is
+// ErrLaunchCreateTypeMismatch); and the create must carry no trademark
+// evidence, which nothing verifies yet (ErrLaunchEvidenceUnsupported).
 func admitLaunchCreate(phase *entities.Phase, launch *commands.EPPLaunchCreate) error {
-	if err := phase.Launch.AdmitsRegistration(); err != nil {
-		return fmt.Errorf("%w: %s", err, phase.Name)
-	}
 	if launch == nil {
-		return nil
+		return phase.Launch.AdmitsRegistration()
 	}
-	if launch.Type == "application" {
+	if phase.Launch.RequiresVerification() {
+		return fmt.Errorf("%w: %s", entities.ErrLaunchModeUnsupported, phase.Name)
+	}
+	applications := phase.Launch.Model == entities.RegistrationModelApplication
+	switch {
+	case launch.Type == "application" && !applications:
 		return fmt.Errorf("%w: %s registers at once", entities.ErrLaunchCreateTypeMismatch, phase.Name)
+	case launch.Type == "registration" && applications:
+		return fmt.Errorf("%w: %s collects applications", entities.ErrLaunchCreateTypeMismatch, phase.Name)
 	}
 	if launch.Marks+launch.Notices > 0 {
 		return entities.ErrLaunchEvidenceUnsupported

@@ -83,7 +83,7 @@ registrations (the domain starts `pendingCreate`) and gains one for
 applications: an application starts `pendingValidation` when it is set, else
 `pendingAllocation`.
 
-## 2. RFC 8334 over EPP (first-come phases implemented; applications next)
+## 2. RFC 8334 over EPP (first-come phases and applications implemented; allocation next)
 
 The server offers `urn:ietf:params:xml:ns:launch-1.0` in the greeting and
 accepts it at login; a command carrying the extension on a session that did
@@ -105,11 +105,15 @@ phase is open, and names the phase only when two of one mode are.
 |---|---|---|
 | `<domain:check>` + `<launch:check type="avail">` | availability under the phase's label rules, answered in the plain `<domain:chkData>` with no extension (§3.1.1.2) | the same; filed applications do not make a name unavailable |
 | `<launch:check>` of the claims form (the default) or the trademark form | 2102 until claims support lands | |
-| `<domain:create>` + `<launch:create>` (type `registration` or none) | registered at once under the phase's prices, fees and policy, answered as a GA create is: `<launch:creData>` is for applications only (§3.3.1) | 2306 until applications land |
-| `<domain:create>` + `<launch:create type="application">` | 2306 `ErrLaunchCreateTypeMismatch` | 1001 and `<launch:creData>` with a server-assigned `applicationID` (next) |
+| `<domain:create>` + `<launch:create>` (type `registration` or none) | registered at once under the phase's prices, fees and policy, answered as a GA create is: `<launch:creData>` is for applications only (§3.3.1) | with no type or `type="application"`: an application is filed, 1001 with `<launch:creData>` carrying the server-assigned `applicationID`; `type="registration"` is 2306 `ErrLaunchCreateTypeMismatch` |
+| `<domain:create>` + `<launch:create type="application">` | 2306 `ErrLaunchCreateTypeMismatch` | as above |
 | `<domain:create>` in a sunrise or claims phase, or carrying marks, codes or notices | 2306 | 2306 |
-| `<domain:info>` + `<launch:info>` with `applicationID` | 2306 until applications land | `<domain:infData>` from the application and `<launch:infData>` with its status (next) |
-| `<domain:update>` / `<domain:delete>` + `<launch:update>` / `<launch:delete>` | 2306 until applications land | changes or withdraws a non-final application; a final one is 2304 (next) |
+| `<domain:info>` + `<launch:info>` with `applicationID` | 2303: the ID names no application | `<domain:infData>` from the application (its ID as the ROID, `pendingCreate` while not final) and `<launch:infData>` with the phase, the ID and its status; another registrar's is 2201 |
+| `<domain:update>` / `<domain:delete>` + `<launch:update>` / `<launch:delete>` | 2303 | changes (contacts, nameservers, DS records, code) or withdraws a non-final application, 1000; a final one is 2304; statuses and restores are 2306 |
+
+A `<launch:phase>` the server sends back (`<launch:creData>`, `<launch:infData>`)
+carries the phase's mode as its value and the phase's name as its `name`
+attribute, so a registrar can name the phase back either way.
 
 A plain `<domain:check>` or `<domain:create>` without the extension is the
 GA phase's, as before.
@@ -122,19 +126,34 @@ not used. A refusal's result code is in
 [`docs/epp/POLICY_REFERENCE.md`](../epp/POLICY_REFERENCE.md) as each command
 lands.
 
-## 3. Applications and allocation (next PRs)
+## 3. Applications and allocation (applications implemented; allocation next)
 
-An application holds what a create holds (contacts, nameservers, DS records,
-the period, the authorization code) plus the quote computed when it was
-filed, checked against the fee extension as a registration's is. **Nothing
-is charged at filing.** An operator **allocates one application per name
-through the admin API** (`validate`, `allocate`, `reject`); allocation
-registers the domain in the application's phase, which may have ended,
-rejects the other applications for the name in the same transaction, and
-sends each applicant a poll message carrying `<launch:infData>`. The
-`domain.registered` event, with the stored quote, is published at
-allocation. There is no allocation workflow: the decision (auction, lottery,
-manual) is the operator's, and a loop cannot take it.
+An application (`entities.LaunchApplication`, the `launch_applications`
+table) holds what a create holds (contacts, nameservers by name, DS records,
+the period, the authorization code hashed as a domain's is) plus the quote
+computed when it was filed, in the phase's base currency. **Nothing is
+charged at filing.** Its ID is minted as a ROID with the `APP` object
+identifier (`<n>_APP-<repository>`), so it is `roidType`-valid and stands
+as the `<domain:roid>` in `<domain:infData>`. A create passes every rule a
+registration passes (the name is neither registered nor reserved, the
+phase's label rules, the contacts and hosts are the registrar's) before it
+is filed; filed applications do not make a name unavailable to other
+applicants, and a registrar may hold **one open application per name and
+phase** (a partial unique index over the non-final statuses), filing again
+once it is final or withdrawn. The registrar that filed an application is
+the only one that may read, change or withdraw it (ADR 0006); a change
+replaces what a domain update would (contacts, nameservers, DS records, the
+code), never statuses, and is refused once the application is final. A
+phase with applications filed can no longer change its registration model.
+
+An operator **allocates one application per name through the admin API**
+(`validate`, `allocate`, `reject`; next PR); allocation registers the domain
+in the application's phase, which may have ended, rejects the other
+applications for the name in the same transaction, and sends each applicant
+a poll message carrying `<launch:infData>`. The `domain.registered` event,
+with the stored quote, is published at allocation. There is no allocation
+workflow: the decision (auction, lottery, manual) is the operator's, and a
+loop cannot take it.
 
 ## 4. Deferred: sunrise, claims and TMCH (roadmap 9a–9c)
 

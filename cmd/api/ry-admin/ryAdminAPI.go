@@ -267,7 +267,7 @@ func main() {
 	// Phases
 	phaseRepo := postgres.NewGormPhaseRepository(gormDB)
 	lifecyclePolicyRepo := postgres.NewLifecyclePolicyRepository(gormDB)
-	phaseService := appservices.NewPhaseService(phaseRepo, tldRepo, lifecyclePolicyRepo, eventPublisher)
+	phaseService := appservices.NewPhaseService(phaseRepo, tldRepo, lifecyclePolicyRepo, postgres.NewLaunchApplicationRepository(gormDB, repositoryID), eventPublisher)
 	// Fees
 	feeRepo := postgres.NewFeeRepository(gormDB)
 	feeService := appservices.NewFeeService(phaseRepo, feeRepo)

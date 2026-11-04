@@ -178,6 +178,7 @@ func run(cfg config.EPP, repositoryID entities.RepositoryID, logger *slog.Logger
 		Domains: domainRepo, NNDNs: nndnRepo, TLDs: tldRepo, Phases: phaseRepo,
 		Contacts: postgres.NewContactRepository(db, repositoryID), Hosts: hostRepo, Registrars: registrarRepo,
 		Transfers: transfers, Register: registry,
+		Applications: postgres.NewLaunchApplicationRepository(db, repositoryID), Roids: roids,
 	})
 	hosts := services.NewEPPHostService(services.EPPHostServiceDeps{
 		Hosts: hostRepo, Domains: domainRepo, TLDs: tldRepo, Roids: roids, Events: events,
