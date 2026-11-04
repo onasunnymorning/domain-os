@@ -171,6 +171,21 @@ func GetWorkflowRegistry() []WorkflowMeta {
 			docFile: "updateFX.doc.md",
 		},
 		{
+			Key:          "refresh-tmch",
+			Name:         "Refresh TMCH Data",
+			Description:  "Fetches the Trademark Clearinghouse CA bundle, SMD revocation list and DNL list and stores each newer generation (ADR 0024 §4)",
+			Queue:        temporal.QueueScheduled,
+			Category:     "data",
+			Tags:         []string{"data", "launch", "tmch"},
+			Scheduled:    true,
+			ScheduleInfo: "Every TMCH_REFRESH_INTERVAL (default 6h)",
+			ScheduleID:   "refresh-tmch",
+			Steps: []WorkflowStep{
+				{Key: "refresh-tmch-data", Label: "Refresh TMCH data (fetch → replace newer sets)", ActivityName: "RefreshTMCHData"},
+			},
+			docFile: "refreshTMCH.doc.md",
+		},
+		{
 			Key:          "sync-spec5",
 			Name:         "Sync Spec5 Labels",
 			Description:  "Pulls the XML Spec5 reserved names from ICANN and refreshes the database",

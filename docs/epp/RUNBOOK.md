@@ -80,6 +80,21 @@ For a registrar's own misconfigured client: once it is fixed, lift the lockouts 
 
 ---
 
+### TMCH data is stale
+
+`TMCHDataStale`, `TMCHDataNeverFetched`, `TMCHStatusUnreadable`: the stored Trademark Clearinghouse data (ADR 0024 §4) is not current. `TMCHDataStale` means the stored SMD revocation list or DNL list was generated over 36 hours ago; the Clearinghouse publishes both at least daily and the `refresh-tmch` schedule fetches every `TMCH_REFRESH_INTERVAL` (6h), so a day without a newer generation means the feed has been failing or the Clearinghouse has stopped publishing. `TMCHDataNeverFetched` means a feed is configured but a set has never loaded. `TMCHStatusUnreadable` means the admin API cannot read the status table at all, which is the database, not the feed.
+
+A stale SMDRL may accept a revoked signed mark in a sunrise; a stale DNL list may answer a claims check wrongly. Neither stops registrations, so this is a same-day fix.
+
+1. `GET $API/tmch` shows each set's generation and fetch time; a fetch time that keeps moving with a generation that does not means the Clearinghouse is publishing the same list, which is their incident, not ours.
+2. Look at the last `refresh-tmch` runs in the Temporal UI (schedule `refresh-tmch`). A failed run's failure message names each set that failed and why: a 401 is the registry's TMDB credentials (`TMCH_USERNAME`, `TMCH_PASSWORD`), a 404 the URL (`TMCH_*_URL`; the pilot and production Clearinghouses differ), a parse error a format change to report to the Clearinghouse.
+3. Once the cause is fixed, `POST $API/tmch/refresh` (needs `registry:policy:admin`) fetches at once rather than waiting for the schedule.
+4. On an installation that runs no sunrise or claims phase, the feed may stay unconfigured; the alerts do not fire while `tmch_feed_configured` is 0.
+
+### The TMCH CA bundle is expiring
+
+`TMCHCertificateExpiresIn30Days`: the last certificate of the stored TMCH CA bundle expires within 30 days. ICANN publishes a new bundle well before the old one expires, so either the refresh has not run (see above) or the new bundle is not at `TMCH_CA_URL`. Check [ICANN's TMCH pages](https://www.icann.org/resources/pages/tmch-2012-02-25-en) for the current bundle URL and `POST $API/tmch/refresh` once it is right. A signed mark verified against an expired bundle is refused in a sunrise, so this becomes critical at expiry.
+
 ## Tasks
 
 ### Rotate a registrar's credentials
@@ -135,6 +150,10 @@ EPP_PASSWORD=... go run ./cmd/tools/eppload -addr epp.test.example:700 -cert cli
 The report (`-json` for JSON) has each command's count, rate, result codes and p50, p95, p99 and maximum latency, the refusals by `<extValue>` reason, and how often the server ended a session. With `-reconnect` (the default) a session the server ends logs in again, as a client would, so a drop run shows the whole escalation. Watch the *EPP server* dashboard while it runs.
 
 A drop rehearsal: delete a set of test domains, let their redemption and pending delete periods run out (set them short on the test TLD's phase), and start `drop` before the purge loop's next scheduled run. The names are released at a random offset within its 45-minute window and in a random order ([§ Release of deleted names](POLICY_REFERENCE.md#release-of-deleted-names)), so no session can aim for the moment.
+
+### Refresh the TMCH data by hand
+
+`POST $API/tmch/refresh` (needs `registry:policy:admin`) fetches the Clearinghouse's CA bundle, SMD revocation list and DNL list and stores each set the Clearinghouse has regenerated, as the `refresh-tmch` schedule does. The answer says what each set did (`refreshed`, `unchanged`, `failed`); 409 means the installation has no feed (`TMCH_USERNAME`, `TMCH_PASSWORD`), 502 that at least one set could not be fetched or stored: that set keeps its previous copy, the sets that succeeded in the same run are stored. `GET $API/tmch` shows what is stored.
 
 ### Fuzz the frame decoder
 

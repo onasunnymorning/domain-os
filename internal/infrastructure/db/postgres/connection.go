@@ -75,6 +75,10 @@ func AutoMigrate(db *gorm.DB) error {
 		&RDAPAccessPolicyRecord{},
 		&RDAPAccessNetworkRecord{},
 		&InstallationSetting{},
+		&TMCHSetRecord{},
+		&TMCHCertificateRecord{},
+		&TMCHSMDRevocationRecord{},
+		&TMCHDNLLabelRecord{},
 	)
 	if err != nil {
 		return err

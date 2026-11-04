@@ -22,6 +22,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/db/postgres"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/secrets"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/tmch"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/ianaregistrars"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/web/icannspec5"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest"
@@ -180,6 +181,13 @@ func NewTestAPI() (*TestAPI, error) {
 	rest.NewAccreditationController(router, accreditationService, auth)
 	rest.NewPremiumController(router, premiumListService, premiumLabelService, auth)
 	rest.NewFXController(router, fxService, auth)
+	// TMCH data: a feed served by a local fixture server, so the refresh
+	// endpoint can be exercised without the Clearinghouse.
+	tmchFeedServer = newTMCHFeedServer()
+	rest.NewTMCHController(router, services.NewTMCHService(postgres.NewTMCHRepository(db), tmch.NewFeed(tmch.Config{
+		CertificatesURL: tmchFeedServer.URL + "/tmch.crt", SMDRLURL: tmchFeedServer.URL + "/smdrl/smdrl-latest.csv", DNLURL: tmchFeedServer.URL + "/dnl/dnl-latest.csv",
+		Username: "registry", Password: "test-feed",
+	}, nil), "domain-os/api"), auth)
 	rest.NewNNDNController(router, nndnService, auth)
 	rest.NewWhoisController(router, whoisService, auth)
 	rest.NewSyncController(router, syncService, auth)

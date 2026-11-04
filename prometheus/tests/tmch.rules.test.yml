@@ -1,0 +1,72 @@
+# promtool unit tests for tmch.rules.yml: `make alerts-check`.
+rule_files:
+  - ../rules/tmch.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # A configured feed. The DNL list was generated a minute after the epoch
+  # and never again; the SMDRL is regenerated at 36h, so it is fresh at the
+  # evaluation times below; the CA bundle has never been fetched; the
+  # stored bundle expires 10 days after 37h.
+  - interval: 1m
+    input_series:
+      - series: 'tmch_feed_configured{instance="api-1"}'
+        values: '1+0x2300'
+      - series: 'tmch_set_generated_timestamp_seconds{instance="api-1", set="dnl"}'
+        values: '60+0x2300'
+      - series: 'tmch_set_generated_timestamp_seconds{instance="api-1", set="smdrl"}'
+        values: '129600+0x2300'
+      - series: 'tmch_set_fetched_timestamp_seconds{instance="api-1", set="dnl"}'
+        values: '100+0x2300'
+      - series: 'tmch_set_fetched_timestamp_seconds{instance="api-1", set="smdrl"}'
+        values: '100+0x2300'
+      - series: 'tmch_set_fetched_timestamp_seconds{instance="api-1", set="certificates"}'
+        values: '0+0x2300' # never fetched
+      - series: 'tmch_certificates_not_after_timestamp_seconds{instance="api-1"}'
+        values: '997200+0x2300'
+    alert_rule_test:
+      - eval_time: 36h20m
+        alertname: TMCHDataStale
+        exp_alerts: [] # 36h old since 36h01m, not yet for 30 minutes
+      - eval_time: 36h32m
+        alertname: TMCHDataStale
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: api-1, set: dnl }
+            exp_annotations:
+              summary: "The stored TMCH dnl was generated 1d 12h 31m 0s ago"
+              runbook: "docs/epp/RUNBOOK.md#tmch-data-is-stale"
+      - eval_time: 59m
+        alertname: TMCHDataNeverFetched
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: TMCHDataNeverFetched
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: api-1, set: certificates }
+            exp_annotations:
+              summary: "The TMCH certificates has never been fetched although a feed is configured"
+              runbook: "docs/epp/RUNBOOK.md#tmch-data-is-stale"
+      - eval_time: 60m
+        alertname: TMCHCertificateExpiresIn30Days
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: api-1 }
+            exp_annotations:
+              summary: "The stored TMCH CA bundle expires in 11d 12h 0m 0s"
+              runbook: "docs/epp/RUNBOOK.md#the-tmch-ca-bundle-is-expiring"
+
+  # No feed configured: a stale list and a set never fetched are not alerts.
+  - interval: 1m
+    input_series:
+      - series: 'tmch_feed_configured{instance="api-1"}'
+        values: '0+0x2300'
+      - series: 'tmch_set_generated_timestamp_seconds{instance="api-1", set="dnl"}'
+        values: '60+0x2300'
+      - series: 'tmch_set_fetched_timestamp_seconds{instance="api-1", set="dnl"}'
+        values: '0+0x2300'
+    alert_rule_test:
+      - eval_time: 37h
+        alertname: TMCHDataStale
+        exp_alerts: []
+      - eval_time: 37h
+        alertname: TMCHDataNeverFetched
+        exp_alerts: []

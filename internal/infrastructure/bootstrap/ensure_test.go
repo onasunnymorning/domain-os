@@ -15,8 +15,8 @@ import (
 func Test_desiredSchedules_AllDefined(t *testing.T) {
 	specs := desiredSchedules(testOptions)
 
-	// We must have exactly 10 schedules.
-	require.Len(t, specs, 10, "expected 10 schedules in desiredSchedules()")
+	// We must have exactly 11 schedules.
+	require.Len(t, specs, 11, "expected 11 schedules in desiredSchedules()")
 
 	// Map by ID for easy lookup
 	byID := make(map[string]scheduleSpec, len(specs))
@@ -34,6 +34,18 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 		require.Len(t, s.Args, 1)
 		_, ok = s.Args[0].(workflows.ExpiryLoopParams)
 		assert.True(t, ok, "ExpiryLoop args should be ExpiryLoopParams, got %T", s.Args[0])
+		assert.NotEmpty(t, s.Note)
+	})
+
+	t.Run("refresh-tmch", func(t *testing.T) {
+		s, ok := byID["refresh-tmch"]
+		require.True(t, ok, "missing schedule refresh-tmch")
+		assert.Equal(t, temporal.QueueScheduled, s.Queue)
+		assert.Equal(t, testOptions.TMCHRefreshInterval, s.Interval)
+		assert.Equal(t, testOptions.TMCHRefreshInterval, s.CatchupWindow)
+		require.Len(t, s.Args, 1)
+		_, ok = s.Args[0].(workflows.RefreshTMCHParams)
+		assert.True(t, ok, "RefreshTMCH args should be RefreshTMCHParams, got %T", s.Args[0])
 		assert.NotEmpty(t, s.Note)
 	})
 
@@ -155,7 +167,7 @@ func Test_desiredSchedules_AllDefined(t *testing.T) {
 	})
 }
 
-var testOptions = Options{EscrowIntakeSweepInterval: 5 * time.Minute}
+var testOptions = Options{EscrowIntakeSweepInterval: 5 * time.Minute, TMCHRefreshInterval: 6 * time.Hour}
 
 func Test_desiredSchedules_UniqueIDs(t *testing.T) {
 	specs := desiredSchedules(testOptions)

@@ -1,6 +1,6 @@
 # ADR 0024 — Launch phases and the EPP launch extension
 
-- **Status:** Accepted (sections 1 to 3 are implemented: the model in #537, first-come phases over EPP in #538, applications in #539, allocation in #540, the admin UI in the PR after; section 4 is deferred to roadmap 9a–9c)
+- **Status:** Accepted (sections 1 to 3 are implemented: the model in #537, first-come phases over EPP in #538, applications in #539, allocation in #540, the admin UI in the PR after; section 4.1, the TMCH data, is implemented; 4.2, sunrise and claims, is deferred to roadmap 9b–9c)
 - **Implemented so far:** 2026-11-03 — `entities.LaunchSettings` on `Phase` (`launch_*` columns on `phases`), `TLD.RegistrationContextAt` as the one rule for which phase governs a registration, `Domain.RegistrationPhaseName`, `PUT /tlds/{tld}/phases/{phase}/launch`, time-aware activity on `Phase` (`IsActiveAt`, `HasStartedAt`, `HasEndedAt`) and the `GetCurrentLaunchPhases` fix (roadmap 8a). The `launch-1.0` extension over EPP for first-come phases: the schema models, the greeting, `<launch:check type="avail">` and `<launch:create>` (roadmap 8b).
 - **Date:** 2026-11-03
 - **Deciders:** Platform / Registry
@@ -162,13 +162,80 @@ transaction. Validation (`pendingValidation` → `pendingAllocation`, or
 allocation workflow: the decision (auction, lottery, manual) is the
 operator's, and a loop cannot take it.
 
-## 4. Deferred: sunrise, claims and TMCH (roadmap 9a–9c)
+## 4. Sunrise, claims and TMCH (roadmap 9a–9c)
 
-A `LaunchVerifier` port (verify a signed mark, verify a claims notice) will
-sit in the domain layer with its implementation in infrastructure. It needs
-platform-wide data that is not a phase's: the TMCH CA certificates, the SMD
-revocation list and the claims (DNL) list, refreshed on a schedule. Until
-then sunrise- and claims-mode phases exist, can be priced and planned, and
+Sunrise and claims need data that is not a phase's and not a TLD's: what
+the Trademark Clearinghouse publishes to every registry. 9a stores it; 9b
+and 9c read it.
+
+### 4.1 TMCH data (9a, implemented)
+
+The Clearinghouse publishes three data sets, each as a complete file with
+its generation time, never a delta:
+
+- the **TMCH CA certificate bundle** (PEM), which a signed mark's XML
+  signature (RFC 7848) is verified against;
+- the **SMD revocation list** (SMDRL; CSV: version and generation time,
+  then `smd-id,insertion-datetime`), the signed marks the Clearinghouse has
+  revoked;
+- the **DNL list** (CSV: version and generation time, then
+  `DNL,lookup-key,insertion-datetime`), the labels that match a trademark
+  record, each with the key a registrar presents for the claims notice.
+
+They are **platform-wide data in typed tables** (ADR 0018): `tmch_sets`
+(one row per set: generation time, fetch time, source, entry count, and
+the bundle's expiry), `tmch_certificates`, `tmch_smd_revocations` keyed by
+SMD ID and `tmch_dnl_labels` keyed by label, which is what the EPP path
+will look up: one indexed row, never the list. `entities.TMCHCertificates`,
+`SMDRevocationList` and `DNLList` validate what is parsed (a CA bundle with
+no valid CA certificate, a list of an unknown version, a label that is not
+a label, a duplicate entry are refused whole).
+
+**Refresh.** The `refresh-tmch` schedule (every `TMCH_REFRESH_INTERVAL`,
+6h by default, at least hourly) runs one activity through
+`services.TMCHService.Refresh`: fetch each set and have the repository
+store it when it supersedes the stored one (a later generation; for the CA
+bundle, which has no generation of its own, also different contents). The
+repository decides under the set's advisory lock, re-reading the stored
+header there, and replaces the set whole in one transaction with its
+`tmch.<set>.refreshed` outbox event (INV-01): a reader never sees a partial
+list, the same generation fetched twice writes nothing but its fetch time,
+and a slow refresh behind a fast one cannot put an older list back. A row
+of a list that is not an entry (an invalid label, a duplicate) is left out
+and counted rather than failing the list; a file that loses more rows than
+it keeps is refused. A set that fails leaves the stored one in place and
+fails the run, which Temporal retries. The admin API runs the same refresh
+on `POST /tmch/refresh` (`registry:policy:admin`).
+
+**Where the feed is configured.** The URLs and the registry's TMDB
+credentials are deployment settings (ADR 0018: environment, `TMCH_CA_URL`,
+`TMCH_SMDRL_URL`, `TMCH_DNL_URL`, `TMCH_USERNAME`, `TMCH_PASSWORD`,
+`TMCH_REFRESH_INTERVAL`), because they differ between the pilot and the
+production Clearinghouse and the password is a secret. The URLs have
+defaults, so the credentials are what makes an installation a TMCH client:
+without them the feed is not configured, the schedule exists and does
+nothing, the admin API says so, and no freshness alert fires, since such an
+installation runs no sunrise or claims phase. The credentials go only to
+the configured hosts: a redirect to another host or scheme is refused.
+
+**Freshness.** `GET /tmch` reports each set's generation and fetch time.
+The admin API serves them as `tmch_set_generated_timestamp_seconds`,
+`tmch_set_fetched_timestamp_seconds`, `tmch_set_entries` and
+`tmch_certificates_not_after_timestamp_seconds`, read from the table on
+each scrape (the worker that refreshes has no metrics port, and the table
+is what every process reads). `prometheus/rules/tmch.rules.yml` warns when
+a stored list's generation is over 36 hours old (both lists are published
+at least daily and fetched every 6 hours, so this is a day of failed
+refreshes), when a configured feed has never loaded a set, and 30 days
+before the CA bundle expires; each links to its section of
+[`docs/epp/RUNBOOK.md`](../epp/RUNBOOK.md#tmch-data-is-stale).
+
+### 4.2 Deferred: sunrise and claims (9b, 9c)
+
+A `LaunchVerifier` port (verify a signed mark against the stored bundle and
+SMDRL, verify a claims notice) will sit in the domain layer with its
+implementation in infrastructure, reading the repository above. Until then
+sunrise- and claims-mode phases exist, can be priced and planned, and
 refuse registrations over EPP with 2306.
 
 ## Consequences
@@ -179,8 +246,9 @@ refuse registrations over EPP with 2306.
   inactive or GA phase by name (a pre-v1 break, deliberate).
 - A registrar can register in an open or landrush first-come phase over EPP
   today; the greeting's `launch-1.0` satisfies RST epp-02/8.
-- `Phase` gains one value object, not a new shape; sunrise and claims will
-  add a verifier and data feeds, not entity fields.
+- `Phase` gains one value object, not a new shape; the TMCH data is
+  platform-wide tables, and sunrise and claims will add a verifier, not
+  entity fields.
 - `GetCurrentGAPhase` now includes the start instant; a registration at
   exactly a phase's start belongs to it.
 - Invariants: entities import nothing inward (INV-14); the actor stays on

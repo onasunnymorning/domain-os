@@ -17,6 +17,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/snowflakeidgenerator"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/storage"
 	"github.com/onasunnymorning/domain-os/internal/infrastructure/temporal"
+	"github.com/onasunnymorning/domain-os/internal/infrastructure/tmch"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
@@ -70,7 +71,11 @@ func main() {
 	if err != nil {
 		log.Printf("WARNING: %v", err) // #nosec G706 -- the value is quoted with %q, which escapes control characters
 	}
-	bootstrap.EnsureTemporalInfrastructure(client, bootstrap.Options{EscrowIntakeSweepInterval: sweepInterval})
+	tmchCfg, err := config.LoadTMCH()
+	if err != nil {
+		log.Printf("WARNING: %v", err) // #nosec G706 -- the value is quoted with %q, which escapes control characters
+	}
+	bootstrap.EnsureTemporalInfrastructure(client, bootstrap.Options{EscrowIntakeSweepInterval: sweepInterval, TMCHRefreshInterval: tmchCfg.RefreshInterval})
 
 	// Self-healing infrastructure: ensure all storage buckets exist.
 	// Idempotent — safe to run on every startup/deploy.
@@ -140,6 +145,7 @@ func main() {
 	scheduledWorker.RegisterWorkflowWithOptions(workflows.SyncSpec5Workflow, workflow.RegisterOptions{Name: workflows.SyncSpec5TypeName})
 	scheduledWorker.RegisterWorkflow(workflows.EventRelay)
 	scheduledWorker.RegisterWorkflow(workflows.EventPrune)
+	scheduledWorker.RegisterWorkflow(workflows.RefreshTMCH)
 	scheduledWorker.RegisterWorkflowWithOptions(workflows.Spec5SweepWorkflow, workflow.RegisterOptions{Name: workflows.Spec5SweepTypeName})
 	scheduledWorker.RegisterWorkflowWithOptions(workflows.SyncRegistrarsWorkflow, workflow.RegisterOptions{Name: workflows.SyncRegistrarsTypeName})
 	scheduledWorker.RegisterWorkflowWithOptions(workflows.EscrowIntakeSweepWorkflow, workflow.RegisterOptions{Name: workflows.EscrowIntakeSweepTypeName})
@@ -193,6 +199,18 @@ func main() {
 	} else {
 		fastOpsWorker.RegisterActivity(fxActs)
 		drainDataWorker.RegisterActivity(fxActs)
+	}
+
+	// TMCH data (ADR 0024 §4): the feed's URLs and credentials come from the
+	// environment (INV-17); without credentials the refresh does nothing.
+	scheduledWorker.RegisterActivity(activities.NewTMCHActivities(db, tmch.Config{
+		CertificatesURL: tmchCfg.CertificatesURL, SMDRLURL: tmchCfg.SMDRLURL, DNLURL: tmchCfg.DNLURL,
+		Username: tmchCfg.Username, Password: tmchCfg.Password,
+	}))
+	if tmchCfg.Configured() {
+		log.Printf("unified-worker TMCH feed configured; refresh-tmch runs every %s", tmchCfg.RefreshInterval)
+	} else {
+		log.Printf("unified-worker TMCH feed not configured (TMCH_USERNAME/TMCH_PASSWORD unset); refresh-tmch does nothing")
 	}
 
 	// SyncSpec5 (Scheduled + Drain Data)

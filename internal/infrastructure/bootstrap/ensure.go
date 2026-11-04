@@ -36,6 +36,8 @@ type Options struct {
 	// EscrowIntakeSweepInterval is how often escrow-intake-sweep runs; see
 	// config.EscrowIntakeSweepInterval.
 	EscrowIntakeSweepInterval time.Duration
+	// TMCHRefreshInterval is how often refresh-tmch runs; see config.LoadTMCH.
+	TMCHRefreshInterval time.Duration
 }
 
 // desiredSchedules returns the canonical list of schedules that must exist.
@@ -92,6 +94,16 @@ func desiredSchedules(opts Options) []scheduleSpec {
 			Args:          []interface{}{workflows.SyncRegistrarsParams{}},
 			CatchupWindow: 24 * time.Hour,
 			Note:          "Syncs registrars with IANA daily — managed by bootstrap",
+		},
+		{
+			ID:            "refresh-tmch",
+			Workflow:      workflows.RefreshTMCH,
+			Queue:         temporal.QueueScheduled,
+			Interval:      opts.TMCHRefreshInterval,
+			Offset:        0,
+			Args:          []interface{}{workflows.RefreshTMCHParams{}},
+			CatchupWindow: opts.TMCHRefreshInterval,
+			Note:          "Refreshes the TMCH CA bundle, SMD revocation list and DNL list (ADR 0024 §4) — managed by bootstrap",
 		},
 		{
 			ID:            "update-fx",
