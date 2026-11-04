@@ -147,7 +147,8 @@ code), never statuses, and is refused once the application is final. A
 phase with applications filed can no longer change its registration model.
 
 An operator **allocates one application per name through the admin API**
-(`POST /launch-applications/{id}/validate|allocate|reject`, listing them at
+(`POST /launch-applications/{id}/validate|allocate|reject`, validate taking an
+explicit `valid` true or false with a reason when false; listing them at
 `GET /tlds/{tld}/phases/{phase}/applications`); deciding needs the
 `registry:launch:admin` permission within the TLD's tenant, reading only the
 tenant. Allocation registers the domain in the application's phase, which may
