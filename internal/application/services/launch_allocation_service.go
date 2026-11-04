@@ -20,16 +20,6 @@ const (
 	EventApplicationRejected  = "launch.application.rejected"
 )
 
-// Refusals of malformed decisions.
-var (
-	// ErrReasonRequired: an application is made invalid or rejected without
-	// a reason.
-	ErrReasonRequired = errors.New("a reason is required")
-	// ErrDecisionRequired: a validation outcome without the decision (valid
-	// true or false).
-	ErrDecisionRequired = errors.New("the decision is required: valid true or false")
-)
-
 // ApplicationRegistrar registers an allocated application's name:
 // DomainService.RegisterApplication.
 type ApplicationRegistrar interface {
@@ -95,7 +85,7 @@ func (s *LaunchAllocationService) Validate(ctx context.Context, scope entities.R
 		return nil, err
 	}
 	if cmd.Valid == nil {
-		return nil, ErrDecisionRequired
+		return nil, entities.ErrDecisionRequired
 	}
 	before := app.DeepCopy()
 	event := EventApplicationValidated
@@ -103,7 +93,7 @@ func (s *LaunchAllocationService) Validate(ctx context.Context, scope entities.R
 		err = app.Validated()
 	} else {
 		if cmd.Reason == "" {
-			return nil, ErrReasonRequired
+			return nil, entities.ErrReasonRequired
 		}
 		event = EventApplicationInvalid
 		err = app.Invalidate(cmd.Reason)
@@ -117,7 +107,7 @@ func (s *LaunchAllocationService) Validate(ctx context.Context, scope entities.R
 // Reject implements interfaces.LaunchApplicationService.
 func (s *LaunchAllocationService) Reject(ctx context.Context, scope entities.RegistryScope, cmd *commands.RejectApplicationCommand) (*entities.LaunchApplication, error) {
 	if cmd.Reason == "" {
-		return nil, ErrReasonRequired
+		return nil, entities.ErrReasonRequired
 	}
 	app, err := s.inScope(ctx, scope, cmd.ApplicationID)
 	if err != nil {

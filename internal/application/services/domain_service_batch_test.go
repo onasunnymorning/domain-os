@@ -526,7 +526,7 @@ func TestBatchAutoRenewDomains_RegistrarDisabled(t *testing.T) {
 
 	assert.Empty(t, result.Succeeded)
 	assert.Len(t, result.Failed, 1)
-	assert.Contains(t, result.Failed[0].Error, ErrAutoRenewNotEnabledRar.Error())
+	assert.Contains(t, result.Failed[0].Error, entities.ErrAutoRenewNotEnabledRar.Error())
 }
 
 func TestBatchAutoRenewDomains_PhaseDisallowsAutoRenew(t *testing.T) {
@@ -560,7 +560,7 @@ func TestBatchAutoRenewDomains_PhaseDisallowsAutoRenew(t *testing.T) {
 
 	assert.Empty(t, result.Succeeded)
 	assert.Len(t, result.Failed, 1)
-	assert.Contains(t, result.Failed[0].Error, ErrAutoRenewNotEnabledTLD.Error())
+	assert.Contains(t, result.Failed[0].Error, entities.ErrAutoRenewNotEnabledTLD.Error())
 }
 
 func TestBatchAutoRenewDomains_DomainNotFound(t *testing.T) {

@@ -2,7 +2,7 @@
 
 High-level shape of `domain-os`: what the layers are, where they live, and how requests flow through them.
 
-**This document describes structure. It does not define rules.** The architectural rules — with `file:line` evidence, a class saying how well each actually holds, and every known violation enumerated — live in [`docs/INVARIANTS.md`](docs/INVARIANTS.md) and are cited by ID (`INV-01`…`INV-14`). Where the two disagree, `docs/INVARIANTS.md` is authoritative, because it carries the evidence.
+**This document describes structure. It does not define rules.** The architectural rules — with `file:line` evidence, a class saying how well each actually holds, and every known violation enumerated — live in [`docs/INVARIANTS.md`](docs/INVARIANTS.md) and are cited by ID (`INV-01`…`INV-18`). Where the two disagree, `docs/INVARIANTS.md` is authoritative, because it carries the evidence.
 
 That split is deliberate. An architecture document that also asserts rules tends to describe the system as intended rather than as built, and the gap is invisible until someone relies on it.
 
@@ -15,7 +15,7 @@ Hexagonal (ports and adapters), organised around Domain-Driven Design patterns. 
 Four things hold this together, each backed by an invariant:
 
 - **The domain is the core, and depends outward on nothing.** No `internal/**` import, no persistence or transport machinery. Pure value-object libraries (money, UUID, IDNA, DNS name handling) are permitted and used. — `INV-14`
-- **Layers meet at interfaces.** The domain declares what it needs from persistence; the infrastructure layer supplies it.
+- **Layers meet at interfaces.** The domain declares what it needs from persistence; the infrastructure layer supplies it. Inbound adapters hold the application's ports (`internal/application/interfaces`) and match the domain's sentinels, never a concrete service; only `cmd/` names implementations. — `INV-18`, `INV-09`
 - **Long-running work runs on Temporal.** Domain lifecycle, escrow import, zone/serial drift, FX updates and similar multi-step flows are workflows, not in-process loops. Workflow code stays deterministic; all IO sits in activities. — `INV-06`
 - **Nondeterminism, tenancy and error semantics are boundary concerns**, each with its own invariant — see `INV-02` (tenancy), `INV-07`/`INV-09` (errors), `INV-10` (context).
 
@@ -56,7 +56,7 @@ Adapters providing technical capability.
 
 ### 4. Interface — `internal/interface/`
 
-Inbound adapters translating external protocols into application calls.
+Inbound adapters translating external protocols into application calls. They depend on `internal/application/interfaces` and the domain, not on `internal/application/services` — `INV-18`, gated in CI.
 
 - **`rest/`** — HTTP controllers (Gin), request/response types, auth and context middleware.
 - **`epp/`** — EPP server (RFC 5730/5734): session handling and command handlers. Domain and host commands are bound in part; what is bound, and the roadmap for the rest, is in [`docs/epp/ARCHITECTURE.md`](docs/epp/ARCHITECTURE.md).

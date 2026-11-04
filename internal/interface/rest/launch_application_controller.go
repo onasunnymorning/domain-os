@@ -9,7 +9,6 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
-	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
@@ -212,13 +211,13 @@ func applicationError(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, entities.ErrApplicationTransition), errors.Is(err, entities.ErrApplicationFinal),
 		errors.Is(err, entities.ErrApplicationChanged), errors.Is(err, entities.ErrDomainAlreadyExists),
-		errors.Is(err, services.ErrDomainExists), errors.Is(err, entities.ErrApplicationContactGone),
+		errors.Is(err, entities.ErrDomainExists), errors.Is(err, entities.ErrApplicationContactGone),
 		errors.Is(err, entities.ErrApplicationHostGone),
 		// A host or contact gone between the allocation's check and its
 		// write: the same repairable conflict, however it surfaces.
 		errors.Is(err, entities.ErrHostNotFound), errors.Is(err, entities.ErrContactNotFound):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-	case errors.Is(err, services.ErrReasonRequired), errors.Is(err, services.ErrDecisionRequired), errors.Is(err, entities.ErrInvalidApplication),
+	case errors.Is(err, entities.ErrReasonRequired), errors.Is(err, entities.ErrDecisionRequired), errors.Is(err, entities.ErrInvalidApplication),
 		errors.Is(err, entities.ErrInvalidDomain), errors.Is(err, entities.ErrInvalidRegistryScope),
 		errors.Is(err, entities.ErrContactDataPolicyViolation):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

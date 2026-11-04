@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
-	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/request"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
@@ -145,7 +144,7 @@ func (ctrl *TLDController) DeleteTLDByName(ctx *gin.Context) {
 	}
 	err := ctrl.tldService.DeleteTLDByName(ctx.Request.Context(), scope, name)
 	if err != nil {
-		if errors.Is(err, services.ErrCannotDeleteTLDWithActivePhases) {
+		if errors.Is(err, entities.ErrCannotDeleteTLDWithActivePhases) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
@@ -190,7 +189,7 @@ func (ctrl *TLDController) CreateTLD(ctx *gin.Context) {
 
 	result, err := ctrl.tldService.CreateTLD(ctx.Request.Context(), cmd)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidCreateTLDCommand) {
+		if errors.Is(err, entities.ErrInvalidCreateTLDCommand) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}

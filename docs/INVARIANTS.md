@@ -43,6 +43,7 @@ Every claim carries `file:line` evidence at the SHA above. Nothing is asserted w
 | INV-15 | Context values are carried on typed keys | A | Invariants |
 | INV-16 | correlation_id = Temporal Workflow ID; trace_id = Run ID | **B** | Invariants |
 | INV-17 | The process environment is read only at the composition root | **B** | Invariants |
+| INV-18 | Adapters depend on ports, not implementations | **B** | Invariants |
 | ~~UNR-01~~ | Retired — promoted to INV-14 on 2026-08-25 | — | — |
 | ~~UNR-02~~ | Retired — promoted to INV-15 on 2026-08-25 | — | — |
 | ~~UNR-03~~ | Retired — resolved 2026-08-25 | — | — |
@@ -241,6 +242,8 @@ Tracked for cleanup and enforcement in [#404](https://github.com/onasunnymorning
 
 **Evidence.** 165 sentinel declarations in non-test code, 37 files of them in `pkg/domain/entities`. Outer layers declare almost none: `internal/application/services` 4, `internal/interface/rest` 2, `pkg/domain/queries` 2, `internal/application/commands` 2, and one apiece in four `internal/infrastructure` packages.
 
+*Update 2026-11-04.* The services package had grown to 15 sentinels that the REST and EPP adapters matched with `errors.Is`, which made the adapters import the concrete package ([INV-18](#inv-18--adapters-depend-on-ports-not-implementations)). All 15 moved to [`pkg/domain/entities/registry_errors.go`](../pkg/domain/entities/registry_errors.go). The 21 files still declaring a sentinel outside the domain (38 declarations) are allowlisted by name and count in [`internal/arch/sentinels_test.go`](../internal/arch/sentinels_test.go), which `make ci-arch` runs: a new sentinel anywhere else, or one more in a listed file, fails the build. The rule is enforced as a ratchet; the class stays A because every remaining declaration is enumerated.
+
 ---
 
 ## INV-10 — Repository methods take `ctx` first
@@ -375,6 +378,22 @@ Tracked for cleanup and enforcement in [#404](https://github.com/onasunnymorning
 
 ---
 
+## INV-18 — Adapters depend on ports, not implementations
+
+*Confirmed 2026-11-04.*
+
+**Rule.** A package under `internal/interface/**` (REST, EPP, CLI, MCP, RDAP, WHOIS) imports `internal/application/interfaces`, `internal/application/commands`, `pkg/domain/...` and its own helpers. It does not import `internal/application/services`. A handler holds the port (the interface) a service implements, is handed the implementation by the composition root in `cmd/`, and recognises a refusal by a domain sentinel ([INV-09](#inv-09--the-domain-declares-sentinel-errors-outer-layers-wrap-rather-than-declare)), never by a service's.
+
+**Why.** This is what makes the adapters testable and the services swappable, and the two are the same property. A handler that holds `*services.DomainService` can only be tested through a real service over a real database; one that holds `interfaces.DomainService` is tested with a fake in microseconds, and the EPP server already works this way over the memstore registry. A handler that matches `services.ErrDomainExists` is bound to one implementation's spelling of a failure; one that matches `entities.ErrDomainExists` works with any implementation of the port, and so does every other adapter. The dependency direction is also the layering [`architecture.md`](../architecture.md) describes: interface → application ports → domain. An import of the concrete package is the one edge that direction forbids, and until 2026-11-04 nothing checked it: the launch-application controller shipped with that import for three error sentinels, and review caught it only as a remark.
+
+**Class: B.** As of 2026-11-04, 9 files under `internal/interface` import the services package, each for a concrete type or constructor that has no port yet (one for a typed error the audit service declares). All 9 are allowlisted by name in [`.golangci.arch.yml`](../.golangci.arch.yml) with what they take from the package; every other file is gated, and the 5 that imported it only for sentinels were fixed rather than listed.
+
+**Direction.** When you touch an allowlisted file, give the type it holds a port in `internal/application/interfaces`, have `cmd/` pass the implementation, and delete the line. A typed error an adapter matches with `errors.As` moves to the domain as INV-09 asks. New adapters start clean: the gate fails on the first import.
+
+**How to write to this rule.** Three habits cover it. Declare the refusals a feature can raise in `pkg/domain/entities` first, before the service, so that the service wraps and the adapter matches one name. Give every service an interface in `internal/application/interfaces` and type the handler's field with it; the constructor in `cmd/` is the only place that names the concrete type. Test the handler with a fake of the port, and the service with the memstore or a Postgres fixture; neither test should need the other layer.
+
+---
+
 # Proposed — resolved 2026-08-25
 
 **This section is closed.** All ten Class C candidates have been answered. Six were promoted to invariants, four were retired without promotion. **No `PROP-nn` ID is live**, none should be cited in review, and none will be reused.
@@ -444,7 +463,7 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 | INV-06 | **ENFORCED** | architecture test | — | [`workflows/determinism_test.go`](../internal/application/workflows/determinism_test.go) parses every file in the package and rejects nondeterministic imports and `time.Now`/`time.Since` calls. Verified to fail on an injected violation, not merely to pass. Test files are checked for nondeterminism but exempted from the IO rules, since Temporal never replays them. |
 | INV-07 | **ENFORCED (with 8 exceptions)** | `errorlint` (`.golangci.arch.yml`) | — | Live in the `arch-lint` job. The 8 files still holding the 47-site backlog are allowlisted by path with per-file counts, so the backlog cannot grow anywhere else; delete each line as its file is cleared ([#404](https://github.com/onasunnymorning/domain-os/issues/404)). **`pkg/domain/entities/domain.go` was fixed rather than excluded** — an unwrapped error in the domain layer defeats `errors.Is` for every caller above it, so the domain layer is fully gated. Only the `errorf` check is on; `asserts` and `comparison` add ~38 more and are a separate decision, since `==` → `errors.Is` can change behaviour where a sentinel is compared by identity. |
 | INV-08 | partial | architecture test | M | Can assert every entity type has a `New…` constructor returning `error`; cannot assert the validation inside it is meaningful, nor distinguish a business rule from a presence check at the edge. |
-| INV-09 | partial | architecture test | M | Can assert no `Err… = errors.New` outside `pkg/domain/entities` (13 current outliers to fix or allowlist). Cannot assert an outer-layer error *should* have been a domain sentinel — that stays review. |
+| INV-09 | **ENFORCED (ratchet, 21 exceptions)** | architecture test | — | [`internal/arch/sentinels_test.go`](../internal/arch/sentinels_test.go), run by `make ci-arch` and the `arch-lint` job: every package-level `Err… = errors.New`/`fmt.Errorf` outside `pkg/domain/entities` must be in its allowlist, by file and count; a new or extra one fails, and so does a stale line. The 15 service sentinels the adapters matched were moved rather than listed. Cannot assert an outer-layer error *should* have been a domain sentinel — that stays review. |
 | INV-10 | **yes** | architecture test | **S** | Parse `pkg/domain/repositories/`, assert param 0 is `context.Context`. Allowlist the 2 `idGenerator` methods; the `iana_interface.go:8` violation should be fixed rather than allowlisted, since it is a live uncancellable HTTP call. |
 | INV-11 | partial | grep-level CI check | S | Cheapest reliable form is a grep asserting no `Offset(`/`OFFSET` appears in `internal/infrastructure/db/postgres/` — currently zero, so it lands green. Asserting the positive (every list method takes a cursor) is signature-shape matching and brittle. |
 | INV-12 | **ENFORCED (workflows)** | `depguard` (`.golangci.arch.yml`) | — | `log` and `log/slog` denied from `internal/application/workflows/**`, which is clean. **Activities deliberately excluded**: some accept a `*log.Logger` as an injected dependency and some log at construction time where no activity context exists, so a blanket ban there would be wrong. Extending it needs those cases triaged first. |
@@ -454,9 +473,10 @@ Whether each item could migrate from prose to a CI gate. **Assessment only — n
 | INV-15 | **ENFORCED** | `staticcheck` SA1029 (`.golangci.arch.yml`) | — | Live in the `arch-lint` job, scoped to SA1029 alone. The rest of `staticcheck` is configured separately in `.golangci.yml`, which is also blocking as of [#411](https://github.com/onasunnymorning/domain-os/issues/411); the split is kept so a change to the main config cannot quietly relax this rule. Landed green with no exceptions. |
 | INV-16 | partial | custom analyser | M | Can assert every `workflow.ExecuteActivity` call passing a correlation argument passes `getWorkflowID(ctx)`. Cannot assert semantic correctness. Deriving the value in `prepareRequest` would make most of it unnecessary. |
 | INV-17 | **ENFORCED (with 31 exceptions)** | `forbidigo` (`.golangci.arch.yml`) | — | `os.Getenv`/`os.LookupEnv` denied outside `cmd/`, `internal/config/` and `_test.go`, matched by type, so an aliased `os` import does not escape the rule. The 31-file backlog is allowlisted by path with per-file counts; delete each line as its file is migrated to injected config. Tested with a file that adds a read outside the allowlist: the gate fails on it. Complements the env-var drift tests, which govern *which* variables exist; this rule governs *where* they are read. |
+| INV-18 | **ENFORCED (with 9 exceptions)** | `depguard` (`.golangci.arch.yml`) | — | `internal/application/services` denied from `internal/interface/**` (tests excluded). The 9 files holding a concrete service type or constructor are allowlisted by name with what they take; delete each line as its type gets a port. Verified to fail on an injected import. |
 | ~~UNR-03~~ | — | — | — | **Resolved 2026-08-25** — `architecture.md`, `stack.md` and `.cursorrules` corrected. Doc-vs-code drift is not mechanically checkable; the mitigation is that rules now live in one evidenced place and the narrative docs delegate to it. |
 
-**Enforcement status.** Eight rules are now enforced in CI by the `arch-lint` job, which runs [`.golangci.arch.yml`](../.golangci.arch.yml) and fails the build. The same checks run locally via `make ci-arch`, and are wired into `make ci-local` so the local pipeline matches GitHub Actions. The rules: `INV-01`, `INV-03`, `INV-12` (workflows) and `INV-14` (two named exceptions) via `depguard`; `INV-07` via `errorlint` (eight named exceptions); `INV-15` via `staticcheck` SA1029; `INV-17` via `forbidigo` (31 named exceptions); and `INV-06` as an architecture test. The gate is currently green, and each rule has been verified to fail on an injected violation rather than merely to pass.
+**Enforcement status.** Ten rules are now enforced in CI by the `arch-lint` job (`INV-09` as an architecture test and `INV-18` via `depguard` joined on 2026-11-04), which runs [`.golangci.arch.yml`](../.golangci.arch.yml) and fails the build. The same checks run locally via `make ci-arch`, and are wired into `make ci-local` so the local pipeline matches GitHub Actions. The rules: `INV-01`, `INV-03`, `INV-12` (workflows) and `INV-14` (two named exceptions) via `depguard`; `INV-07` via `errorlint` (eight named exceptions); `INV-15` via `staticcheck` SA1029; `INV-17` via `forbidigo` (31 named exceptions); and `INV-06` as an architecture test. The gate is currently green, and each rule has been verified to fail on an injected violation rather than merely to pass.
 
 **The main lint pass is enforced too, as of [#411](https://github.com/onasunnymorning/domain-os/issues/411).**
 

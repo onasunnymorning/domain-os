@@ -476,7 +476,8 @@ ci-arch: ## Enforce the architectural invariants (BLOCKING) — mirrors the "Arc
 	@echo "    INV-01 telemetry off the delivery path   INV-03 vendor LLM SDK boundary"
 	@echo "    INV-07 errors wrapped with %w            INV-12 Temporal workflow logging"
 	@echo "    INV-14 domain layer imports inward       INV-15 typed context keys"
-	@echo "    INV-17 env read only at composition root"
+	@echo "    INV-17 env read only at composition root  INV-18 adapters depend on ports"
+	@echo "    INV-09 sentinels declared in the domain (architecture test)"
 	@golangci-lint run --config .golangci.arch.yml ./... || { \
 		echo ""; \
 		echo "❌ Architecture gate FAILED. Each finding names the invariant it breaks."; \
@@ -487,6 +488,8 @@ ci-arch: ## Enforce the architectural invariants (BLOCKING) — mirrors the "Arc
 	}
 	@echo "🏛  Checking INV-06 (workflow determinism)..."
 	@go test -count=1 -run TestWorkflowDeterminism ./internal/application/workflows/
+	@echo "🏛  Checking INV-09 (sentinel errors declared in the domain)..."
+	@go test -count=1 -run TestSentinelsAreDeclaredInTheDomain ./internal/arch/
 	@echo "✅ Architecture gate passed."
 
 generate-contract: ## Regenerate deploy/contract.json from env registry + service metadata

@@ -16,11 +16,6 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
 
-var (
-	ErrCannotDeleteTLDWithActivePhases = errors.New("cannot delete TLD with active phases")
-	ErrInvalidCreateTLDCommand         = errors.New("invalid create TLD command")
-)
-
 // TLDService implements the TLDService interface
 type TLDService struct {
 	tldRepository repositories.TLDRepository
@@ -77,19 +72,19 @@ func WithOperatorRegistrarDeps(
 func (svc *TLDService) CreateTLD(ctx context.Context, cmd *commands.CreateTLDCommand) (*entities.TLD, error) {
 	newTLD, err := entities.NewTLD(cmd.Name, cmd.RyID)
 	if err != nil {
-		return nil, errors.Join(ErrInvalidCreateTLDCommand, err)
+		return nil, errors.Join(entities.ErrInvalidCreateTLDCommand, err)
 	}
 
 	newTLD.AllowEscrowImport = cmd.AllowEscrowImport
 
 	err = svc.tldRepository.Create(ctx, newTLD)
 	if err != nil {
-		return nil, errors.Join(ErrInvalidCreateTLDCommand, err)
+		return nil, errors.Join(entities.ErrInvalidCreateTLDCommand, err)
 	}
 
 	createdTLD, err := svc.tldRepository.GetByName(ctx, strings.ToLower(cmd.Name), false)
 	if err != nil {
-		return nil, errors.Join(ErrInvalidCreateTLDCommand, err)
+		return nil, errors.Join(entities.ErrInvalidCreateTLDCommand, err)
 	}
 
 	// Auto-provision operator registrar accounts (9998/9999) if requested and deps are available
@@ -125,7 +120,7 @@ func (svc *TLDService) DeleteTLDByName(ctx context.Context, scope entities.Regis
 	}
 
 	if len(tld.GetCurrentPhases()) != 0 {
-		return ErrCannotDeleteTLDWithActivePhases
+		return entities.ErrCannotDeleteTLDWithActivePhases
 	}
 	err = svc.tldRepository.DeleteByName(ctx, scope, name)
 	if err != nil {
