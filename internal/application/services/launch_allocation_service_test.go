@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"testing"
 	"time"
@@ -204,4 +205,23 @@ func TestLaunchAllocation_ContactsAndValidation(t *testing.T) {
 		assert.False(t, dom.Status.PendingCreate, "validated as an application already")
 		assert.True(t, dom.Status.OK)
 	})
+}
+
+// failingPublisher refuses every event.
+type failingPublisher struct{}
+
+func (failingPublisher) Publish(context.Context, ...entities.DomainEvent) error {
+	return errors.New("outbox unavailable")
+}
+
+func TestLaunchAllocation_PublishFailureFailsTheDecision(t *testing.T) {
+	_, reg, apps := allocationRegistry(t)
+	svc := NewLaunchAllocationService(reg.Applications(), reg.Phases(), reg.TLDs(), reg.Contacts(), reg, passThroughTx{}, failingPublisher{})
+	ctx := context.Background()
+	_, err := svc.Reject(ctx, ryOne, &commands.RejectApplicationCommand{ApplicationID: apps[2].ID.String(), Reason: "x"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "outbox unavailable")
+	_, err = svc.Allocate(ctx, ryOne, &commands.AllocateApplicationCommand{ApplicationID: apps[0].ID.String()})
+	require.Error(t, err, "the publisher's failure reaches the transaction's finisher, which rolls the decision back on Postgres")
+	assert.Contains(t, err.Error(), "outbox unavailable")
 }

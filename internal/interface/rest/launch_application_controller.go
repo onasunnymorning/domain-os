@@ -12,6 +12,7 @@ import (
 	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
+	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
 )
 
 // LaunchApplicationController is the operator's side of launch applications
@@ -71,7 +72,8 @@ func (ctrl *LaunchApplicationController) ListApplications(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	apps, err := ctrl.svc.ListApplications(ctx.Request.Context(), scope, ctx.Param("tldName"), ctx.Param("phaseName"), entities.ApplicationStatus(ctx.Query("status")), pageSize, pageCursor)
+	filter := queries.ListApplicationsFilter{Status: ctx.Query("status")}
+	apps, err := ctrl.svc.ListApplications(ctx.Request.Context(), scope, ctx.Param("tldName"), ctx.Param("phaseName"), entities.ApplicationStatus(filter.Status), pageSize, pageCursor)
 	if err != nil {
 		applicationError(ctx, err)
 		return
@@ -82,7 +84,7 @@ func (ctrl *LaunchApplicationController) ListApplications(ctx *gin.Context) {
 	res := response.ListItemResult{Data: apps}
 	if len(apps) > 0 {
 		id, _ := apps[len(apps)-1].ID.Int64()
-		res.SetMeta(ctx, strconv.FormatInt(id, 10), len(apps), pageSize, nil)
+		res.SetMeta(ctx, strconv.FormatInt(id, 10), len(apps), pageSize, filter)
 	}
 	ctx.JSON(http.StatusOK, res)
 }

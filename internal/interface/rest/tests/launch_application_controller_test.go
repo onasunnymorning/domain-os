@@ -146,6 +146,12 @@ var _ = Describe("LaunchApplicationController", Ordered, func() {
 		Expect(resp.Code).To(Equal(http.StatusOK))
 		Expect(DecodeJSON(resp, &page)).To(Succeed())
 		Expect(page.Data).To(BeEmpty())
+
+		resp = launchReq(http.MethodGet, fmt.Sprintf("/tlds/%s/phases/%s/applications?status=pendingAllocation&pagesize=1", tldName, phaseName), ryID, false, nil)
+		Expect(resp.Code).To(Equal(http.StatusOK))
+		var withLink struct{ Meta struct{ NextLink string } }
+		Expect(DecodeJSON(resp, &withLink)).To(Succeed())
+		Expect(withLink.Meta.NextLink).To(ContainSubstring("status=pendingAllocation"), "the next page keeps the status")
 		resp = launchReq(http.MethodGet, fmt.Sprintf("/tlds/%s/phases/%s/applications?status=nope", tldName, phaseName), ryID, false, nil)
 		Expect(resp.Code).To(Equal(http.StatusBadRequest))
 	})

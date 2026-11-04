@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/onasunnymorning/domain-os/internal/appcontext"
@@ -132,7 +131,9 @@ func (s *LaunchAllocationService) write(ctx context.Context, event string, cmd, 
 	if err := s.applications.QueuePollMessages(ctx, []*entities.PollMessage{entities.NewApplicationPollMessage(stored, s.now().UTC())}); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, event, cmd, before, stored)
+	if err := s.publish(ctx, event, cmd, before, stored); err != nil {
+		return nil, err
+	}
 	return stored, nil
 }
 
@@ -200,12 +201,16 @@ func (s *LaunchAllocationService) Allocate(ctx context.Context, scope entities.R
 			return nil, err
 		}
 		msgs = append(msgs, entities.NewApplicationPollMessage(rejected, now))
-		s.publish(ctx, EventApplicationRejected, cmd, rejectedBefore, rejected)
+		if err := s.publish(ctx, EventApplicationRejected, cmd, rejectedBefore, rejected); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.applications.QueuePollMessages(ctx, msgs); err != nil {
 		return nil, err
 	}
-	s.publish(ctx, EventApplicationAllocated, cmd, before, winner)
+	if err := s.publish(ctx, EventApplicationAllocated, cmd, before, winner); err != nil {
+		return nil, err
+	}
 	return winner, nil
 }
 
@@ -260,9 +265,12 @@ func (s *LaunchAllocationService) tldInScope(ctx context.Context, scope entities
 	return err
 }
 
-func (s *LaunchAllocationService) publish(ctx context.Context, eventType string, command, before, after interface{}) {
+// publish records the decision's event in the transaction ctx carries. A
+// failure is returned, so the decision rolls back with it (INV-01: the
+// change and its outbox event commit together or not at all).
+func (s *LaunchAllocationService) publish(ctx context.Context, eventType string, command, before, after interface{}) error {
 	if s.events == nil {
-		return
+		return nil
 	}
 	app := after.(*entities.LaunchApplication)
 	ev := entities.NewDomainEvent("domain-os/api", eventType, app.ID.String(),
@@ -279,6 +287,7 @@ func (s *LaunchAllocationService) publish(ctx context.Context, eventType string,
 	}
 	ev.Command, ev.BeforeState, ev.AfterState = command, before, after
 	if err := s.events.Publish(ctx, ev); err != nil {
-		log.Printf("failed to publish %s: %v", eventType, err)
+		return fmt.Errorf("publish %s: %w", eventType, err)
 	}
+	return nil
 }
