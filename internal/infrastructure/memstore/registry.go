@@ -754,6 +754,18 @@ func (v registryContacts) CountContactLinks(_ context.Context, id string) (int64
 			}
 		}
 	}
+	// Open applications name contacts too, as the Postgres repository counts.
+	for _, a := range v.r.applications {
+		if a.Status.IsFinal() {
+			continue
+		}
+		for _, ref := range []entities.ClIDType{a.RegistrantID, a.AdminID, a.TechID, a.BillingID} {
+			if ref.String() == id {
+				n++
+				break
+			}
+		}
+	}
 	return n, nil
 }
 

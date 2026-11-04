@@ -143,7 +143,7 @@ func NewTestAPI() (*TestAPI, error) {
 	lifecyclePolicyRepo := postgres.NewLifecyclePolicyRepository(db)
 	launchApplicationRepo := postgres.NewLaunchApplicationRepository(db, "APEX")
 	phaseService := services.NewPhaseService(phaseRepo, tldRepo, lifecyclePolicyRepo, launchApplicationRepo, eventPublisher)
-	launchApplicationService := services.NewLaunchAllocationService(launchApplicationRepo, phaseRepo, tldRepo, domainService, postgres.NewTransactor(db), eventPublisher)
+	launchApplicationService := services.NewLaunchAllocationService(launchApplicationRepo, phaseRepo, tldRepo, contactRepo, domainService, postgres.NewTransactor(db), eventPublisher)
 	ianaRegistrarService := services.NewIANARegistrarService(ianaRegistrarRepo)
 	accreditationService := services.NewAccreditationService(accreditationRepo, registrarRepo, tldRepo, eventPublisher)
 	feeService := services.NewFeeService(phaseRepo, feeRepo)

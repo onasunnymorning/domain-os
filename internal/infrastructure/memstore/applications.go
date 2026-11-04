@@ -1,8 +1,10 @@
 package memstore
 
 import (
+	"cmp"
 	"context"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/Rhymond/go-money"
@@ -67,6 +69,9 @@ func (v registryApplications) CreateApplication(_ context.Context, a *entities.L
 	if v.r.err != nil {
 		return nil, v.r.err
 	}
+	if _, ok := v.r.domains[a.Name.String()]; ok {
+		return nil, entities.ErrDomainAlreadyExists
+	}
 	for _, o := range v.r.applications {
 		if o.Name == a.Name && o.PhaseName == a.PhaseName && o.ClID == a.ClID && !o.Status.IsFinal() {
 			return nil, entities.ErrApplicationExists
@@ -105,21 +110,40 @@ func (v registryApplications) ListApplicationsByName(_ context.Context, name str
 	return out, nil
 }
 
-func (v registryApplications) ListApplicationsByPhase(_ context.Context, tld, phase string, status entities.ApplicationStatus) ([]*entities.LaunchApplication, error) {
+// ListApplicationsByPhase pages by ID, as the Postgres repository does.
+func (v registryApplications) ListApplicationsByPhase(_ context.Context, tld, phase string, status entities.ApplicationStatus, pageSize int, pageCursor string) ([]*entities.LaunchApplication, error) {
 	v.r.mu.Lock()
 	defer v.r.mu.Unlock()
 	if v.r.err != nil {
 		return nil, v.r.err
 	}
+	var after int64
+	if pageCursor != "" {
+		var err error
+		if after, err = strconv.ParseInt(pageCursor, 10, 64); err != nil {
+			return nil, err
+		}
+	}
 	var out []*entities.LaunchApplication
 	for _, a := range v.r.applications {
-		if a.TLDName.String() == tld && a.PhaseName.String() == phase && (status == "" || a.Status == status) {
+		id, _ := a.ID.Int64()
+		if a.TLDName.String() == tld && a.PhaseName.String() == phase && (status == "" || a.Status == status) && id > after {
 			out = append(out, a.DeepCopy())
 		}
 	}
-	slices.SortFunc(out, func(a, b *entities.LaunchApplication) int { return a.CreatedAt.Compare(b.CreatedAt) })
+	slices.SortFunc(out, func(a, b *entities.LaunchApplication) int {
+		ia, _ := a.ID.Int64()
+		ib, _ := b.ID.Int64()
+		return cmp.Compare(ia, ib)
+	})
+	if pageSize > 0 && len(out) > pageSize {
+		out = out[:pageSize]
+	}
 	return out, nil
 }
+
+// LockName is a no-op: the registry's one lock serialises every write.
+func (v registryApplications) LockName(context.Context, string) error { return nil }
 
 // QueuePollMessages queues msgs as a write that causes them would.
 func (v registryApplications) QueuePollMessages(_ context.Context, msgs []*entities.PollMessage) error {
@@ -226,6 +250,8 @@ func (r *Registry) RegisterApplication(_ context.Context, app *entities.LaunchAp
 		return nil, err
 	}
 	dom.AuthInfo = app.AuthInfo
+	dom.Status.PendingCreate = false // validated already, as an application
+	dom.SetOKStatusIfNeeded()
 	if err := dom.SetDSRecords(app.DSRecords); err != nil {
 		return nil, err
 	}

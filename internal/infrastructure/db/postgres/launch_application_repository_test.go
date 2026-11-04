@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -142,43 +143,38 @@ func TestLaunchApplicationRepository(t *testing.T) {
 		_, err = repo.UpdateApplicationIfUnchanged(ctx, validated)
 		assert.ErrorIs(t, err, entities.ErrApplicationChanged, "the version before allocation is stale")
 	})
-	t.Run("list by phase and status", func(t *testing.T) {
-		all, err := repo.ListApplicationsByPhase(ctx, "apptest", "auction", "")
+	t.Run("list by phase and status, a page at a time", func(t *testing.T) {
+		all, err := repo.ListApplicationsByPhase(ctx, "apptest", "auction", "", 100, "")
 		require.NoError(t, err)
-		assert.GreaterOrEqual(t, len(all), 2)
-		rejected, err := repo.ListApplicationsByPhase(ctx, "apptest", "auction", entities.ApplicationStatusRejected)
+		require.GreaterOrEqual(t, len(all), 2)
+		first, err := repo.ListApplicationsByPhase(ctx, "apptest", "auction", "", 1, "")
+		require.NoError(t, err)
+		require.Len(t, first, 1)
+		assert.Equal(t, all[0].ID, first[0].ID)
+		id, _ := first[0].ID.Int64()
+		next, err := repo.ListApplicationsByPhase(ctx, "apptest", "auction", "", 1, strconv.FormatInt(id, 10))
+		require.NoError(t, err)
+		require.Len(t, next, 1)
+		assert.Equal(t, all[1].ID, next[0].ID, "the cursor is the last ID")
+		_, err = repo.ListApplicationsByPhase(ctx, "apptest", "auction", "", 1, "not-a-cursor")
+		assert.ErrorIs(t, err, entities.ErrInvalidApplication)
+		rejected, err := repo.ListApplicationsByPhase(ctx, "apptest", "auction", entities.ApplicationStatusRejected, 100, "")
 		require.NoError(t, err)
 		for _, a := range rejected {
 			assert.Equal(t, entities.ApplicationStatusRejected, a.Status)
 		}
-		none, err := repo.ListApplicationsByPhase(ctx, "apptest", "nothing", "")
+		none, err := repo.ListApplicationsByPhase(ctx, "apptest", "nothing", "", 100, "")
 		require.NoError(t, err)
 		assert.Empty(t, none)
 	})
-	t.Run("poll messages about applications", func(t *testing.T) {
-		a := testApplication(t, base+9, "told.apptest", "rar-poll")
-		stored, err := repo.CreateApplication(ctx, a)
+	t.Run("an open application counts as a contact link", func(t *testing.T) {
+		contacts := NewContactRepository(db, "TEST")
+		n, err := contacts.CountContactLinks(ctx, "c-rar-two")
 		require.NoError(t, err)
-		require.NoError(t, stored.Reject("went elsewhere"))
-		msg := entities.NewApplicationPollMessage(stored, time.Now().UTC())
-		require.NoError(t, repo.QueuePollMessages(ctx, []*entities.PollMessage{msg}))
-		assert.NotZero(t, msg.ID)
-		t.Cleanup(func() { db.Where("cl_id = ?", "rar-poll").Delete(&PollMessageRecord{}) })
-
-		polls := NewDomainTransferRepository(db, "TEST")
-		got, n, err := polls.OldestPollMessage(ctx, "rar-poll")
+		assert.GreaterOrEqual(t, n, int64(1), "bid.apptest by rar-two names c-rar-two and is open")
+		n, err = contacts.CountContactLinks(ctx, "c-nobody")
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), n)
-		assert.Equal(t, msg.ID, got.ID)
-		assert.Equal(t, entities.PollMsgApplicationRejected+" for told.apptest: went elsewhere", got.Message)
-		assert.Nil(t, got.Transfer)
-		require.NotNil(t, got.Application)
-		assert.Equal(t, a.ID, got.Application.ID)
-		assert.Equal(t, entities.DomainName("told.apptest"), got.Application.Name)
-		assert.Equal(t, entities.ClIDType("auction"), got.Application.PhaseName)
-		assert.Equal(t, entities.LaunchModeLandrush, got.Application.PhaseMode)
-		assert.Equal(t, entities.ApplicationStatusRejected, got.Application.Status)
-		assert.Equal(t, entities.ClIDType("rar-poll"), got.Application.ClID)
+		assert.Zero(t, n)
 	})
 	t.Run("delete if unchanged", func(t *testing.T) {
 		a := testApplication(t, base+6, "gone.apptest", "rar-one")

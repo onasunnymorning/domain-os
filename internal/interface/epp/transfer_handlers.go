@@ -2,6 +2,7 @@ package epp
 
 import (
 	"context"
+	"slices"
 	"strconv"
 
 	"github.com/beevik/etree"
@@ -91,9 +92,11 @@ func (s *Server) poll(ctx context.Context, cmd *command) {
 			if msg.Transfer != nil {
 				resData = transferData(msg.Transfer)
 			}
-			if msg.Application != nil {
+			if msg.Application != nil && slices.Contains(cmd.session.extensions, nsLaunch) {
 				// RFC 8334 §3.1.2: a message about an application carries
-				// <launch:infData> with the application's status.
+				// <launch:infData> with the application's status, to a
+				// session that negotiated the extension; another gets the
+				// text alone.
 				ext = launchInfData(msg.Application)
 			}
 			cmd.respondWithQueue(epplib.StatusAckToDequeue, messageQueue(count, msg), resData, ext)

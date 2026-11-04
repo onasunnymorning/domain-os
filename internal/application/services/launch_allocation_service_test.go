@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -36,7 +37,7 @@ func allocationRegistry(t *testing.T) (*LaunchAllocationService, *memstore.Regis
 		require.NoError(t, err)
 		apps = append(apps, res.Application)
 	}
-	svc := NewLaunchAllocationService(reg.Applications(), reg.Phases(), reg.TLDs(), reg, passThroughTx{}, nil)
+	svc := NewLaunchAllocationService(reg.Applications(), reg.Phases(), reg.TLDs(), reg.Contacts(), reg, passThroughTx{}, nil)
 	return svc, reg, apps
 }
 
@@ -151,14 +152,56 @@ func TestLaunchAllocation_Scope(t *testing.T) {
 	_, err = svc.Allocate(ctx, ryOther, &commands.AllocateApplicationCommand{ApplicationID: id})
 	assert.ErrorIs(t, err, entities.ErrTLDNotFound)
 
-	list, err := svc.ListApplications(ctx, ryOne, "test", "auction", "")
+	list, err := svc.ListApplications(ctx, ryOne, "test", "auction", "", 25, "")
 	require.NoError(t, err)
 	assert.Len(t, list, 3)
-	list, err = svc.ListApplications(ctx, ryOne, "test", "auction", entities.ApplicationStatusAllocated)
+	list, err = svc.ListApplications(ctx, ryOne, "test", "auction", entities.ApplicationStatusAllocated, 25, "")
 	require.NoError(t, err)
 	assert.Empty(t, list)
-	_, err = svc.ListApplications(ctx, ryOne, "test", "auction", "nope")
+	_, err = svc.ListApplications(ctx, ryOne, "test", "auction", "nope", 25, "")
 	assert.ErrorIs(t, err, entities.ErrInvalidApplication)
-	_, err = svc.ListApplications(ctx, ryOther, "test", "auction", "")
+	_, err = svc.ListApplications(ctx, ryOther, "test", "auction", "", 25, "")
 	assert.ErrorIs(t, err, entities.ErrTLDNotFound)
+
+	t.Run("pages by cursor", func(t *testing.T) {
+		first, err := svc.ListApplications(ctx, ryOne, "test", "auction", "", 2, "")
+		require.NoError(t, err)
+		require.Len(t, first, 2)
+		last, _ := first[1].ID.Int64()
+		rest, err := svc.ListApplications(ctx, ryOne, "test", "auction", "", 2, strconv.FormatInt(last, 10))
+		require.NoError(t, err)
+		require.Len(t, rest, 1)
+		assert.NotContains(t, []entities.RoidType{first[0].ID, first[1].ID}, rest[0].ID)
+	})
+}
+
+func TestLaunchAllocation_ContactsAndValidation(t *testing.T) {
+	svc, reg, apps := allocationRegistry(t)
+	ctx := context.Background()
+
+	t.Run("a contact deleted since filing refuses the allocation", func(t *testing.T) {
+		n, err := reg.Contacts().CountContactLinks(ctx, "rar-one-c")
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, n, int64(2), "open applications count as links, so the registrar cannot delete the contact itself")
+		require.NoError(t, reg.Contacts().DeleteContactByID(ctx, "rar-one-c")) // an administrator's delete
+		_, err = svc.Allocate(ctx, ryOne, &commands.AllocateApplicationCommand{ApplicationID: apps[0].ID.String()})
+		assert.ErrorIs(t, err, entities.ErrApplicationContactGone)
+		assert.Nil(t, reg.Domain("bid.test"))
+		assert.Equal(t, entities.ApplicationStatusPendingAllocation, reg.Application(apps[0].ID.String()).Status, "nothing changed")
+	})
+	t.Run("a contact re-created by another registrar refuses the allocation", func(t *testing.T) {
+		reg.AddContact("rar-one-c", rar2.String())
+		_, err := svc.Allocate(ctx, ryOne, &commands.AllocateApplicationCommand{ApplicationID: apps[0].ID.String()})
+		assert.ErrorIs(t, err, entities.ErrApplicationContactGone)
+	})
+	t.Run("an allocated domain is not pendingCreate, whatever the phase requires", func(t *testing.T) {
+		reg.SetPolicy("test", func(p *entities.PhasePolicy) { v := true; p.RequiresValidation = &v })
+		got, err := svc.Allocate(ctx, ryOne, &commands.AllocateApplicationCommand{ApplicationID: apps[1].ID.String()})
+		require.NoError(t, err)
+		assert.Equal(t, entities.ApplicationStatusAllocated, got.Status)
+		dom := reg.Domain("bid.test")
+		require.NotNil(t, dom)
+		assert.False(t, dom.Status.PendingCreate, "validated as an application already")
+		assert.True(t, dom.Status.OK)
+	})
 }

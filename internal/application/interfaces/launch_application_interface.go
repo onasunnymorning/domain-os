@@ -15,9 +15,10 @@ import (
 type LaunchApplicationService interface {
 	// GetApplication returns one application by ID.
 	GetApplication(ctx context.Context, scope entities.RegistryScope, id string) (*entities.LaunchApplication, error)
-	// ListApplications lists the applications filed in a phase, oldest
-	// first, those of one status when status is not empty.
-	ListApplications(ctx context.Context, scope entities.RegistryScope, tld, phase string, status entities.ApplicationStatus) ([]*entities.LaunchApplication, error)
+	// ListApplications lists a page of the applications filed in a phase,
+	// oldest first, those of one status when status is not empty; the
+	// cursor is the one a previous page gave (INV-11).
+	ListApplications(ctx context.Context, scope entities.RegistryScope, tld, phase string, status entities.ApplicationStatus, pageSize int, pageCursor string) ([]*entities.LaunchApplication, error)
 	// Validate records the outcome of validating a pendingValidation
 	// application, and tells the applicant.
 	Validate(ctx context.Context, scope entities.RegistryScope, cmd *commands.ValidateApplicationCommand) (*entities.LaunchApplication, error)

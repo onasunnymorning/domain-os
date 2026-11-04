@@ -3,12 +3,14 @@ package rest
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
 	"github.com/onasunnymorning/domain-os/internal/application/services"
+	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
 
@@ -42,13 +44,15 @@ func NewLaunchApplicationController(e *gin.Engine, svc interfaces.LaunchApplicat
 
 // ListApplications godoc
 // @Summary List the applications filed in a launch phase
-// @Description The applications registrars filed in an application phase (ADR 0024 §3), oldest first; status narrows to one status (pendingValidation, pendingAllocation, allocated, rejected, invalid). The request names the TLD's operator in X-Tenant-ID (another operator's TLD is 404), or holds registry:platform:admin.
+// @Description A page of the applications registrars filed in an application phase (ADR 0024 §3), oldest first; status narrows to one status (pendingValidation, pendingAllocation, allocated, rejected, invalid); pagesize and cursor page as every list does (the cursor is the one the previous page's meta gave). The request names the TLD's operator in X-Tenant-ID (another operator's TLD is 404), or holds registry:platform:admin.
 // @Tags Launch applications
 // @Produce json
 // @Param tldName path string true "TLD name"
 // @Param phaseName path string true "Phase name"
 // @Param status query string false "One status"
-// @Success 200 {array} entities.LaunchApplication
+// @Param pagesize query int false "Page size"
+// @Param cursor query string false "The previous page's cursor"
+// @Success 200 {object} response.ListItemResult
 // @Failure 400
 // @Failure 404
 // @Router /tlds/{tldName}/phases/{phaseName}/applications [get]
@@ -57,7 +61,17 @@ func (ctrl *LaunchApplicationController) ListApplications(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	apps, err := ctrl.svc.ListApplications(ctx.Request.Context(), scope, ctx.Param("tldName"), ctx.Param("phaseName"), entities.ApplicationStatus(ctx.Query("status")))
+	pageSize, err := GetPageSize(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	pageCursor, err := GetAndDecodeCursor(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	apps, err := ctrl.svc.ListApplications(ctx.Request.Context(), scope, ctx.Param("tldName"), ctx.Param("phaseName"), entities.ApplicationStatus(ctx.Query("status")), pageSize, pageCursor)
 	if err != nil {
 		applicationError(ctx, err)
 		return
@@ -65,7 +79,12 @@ func (ctrl *LaunchApplicationController) ListApplications(ctx *gin.Context) {
 	if apps == nil {
 		apps = []*entities.LaunchApplication{}
 	}
-	ctx.JSON(http.StatusOK, apps)
+	res := response.ListItemResult{Data: apps}
+	if len(apps) > 0 {
+		id, _ := apps[len(apps)-1].ID.Int64()
+		res.SetMeta(ctx, strconv.FormatInt(id, 10), len(apps), pageSize, nil)
+	}
+	ctx.JSON(http.StatusOK, res)
 }
 
 // GetApplication godoc
@@ -190,7 +209,7 @@ func applicationError(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, entities.ErrApplicationTransition), errors.Is(err, entities.ErrApplicationFinal),
 		errors.Is(err, entities.ErrApplicationChanged), errors.Is(err, entities.ErrDomainAlreadyExists),
-		errors.Is(err, services.ErrDomainExists):
+		errors.Is(err, services.ErrDomainExists), errors.Is(err, entities.ErrApplicationContactGone):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, services.ErrReasonRequired), errors.Is(err, entities.ErrInvalidApplication),
 		errors.Is(err, entities.ErrInvalidDomain), errors.Is(err, entities.ErrInvalidRegistryScope),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"gorm.io/gorm"
@@ -116,6 +117,20 @@ func (r *LaunchApplicationRepository) CreateApplication(ctx context.Context, a *
 	}
 	stored := &LaunchApplicationRecord{}
 	err = dbFrom(ctx, r.db).Transaction(func(tx *gorm.DB) error {
+		// The name's lock, then the check an allocation could invalidate:
+		// a name registered since the service checked it is refused here,
+		// and a filing cannot slip between an allocation's registration
+		// and its rejection of the other applications.
+		if err := lockName(tx, rec.Name); err != nil {
+			return err
+		}
+		var registered int64
+		if err := tx.Model(&Domain{}).Where("name = ?", rec.Name).Count(&registered).Error; err != nil {
+			return err
+		}
+		if registered > 0 {
+			return entities.ErrDomainAlreadyExists
+		}
 		if err := tx.Create(rec).Error; err != nil {
 			if isUniqueViolation(err) {
 				return entities.ErrApplicationExists
@@ -161,14 +176,40 @@ func (r *LaunchApplicationRepository) ListApplicationsByName(ctx context.Context
 	return out, nil
 }
 
+// LockName implements repositories.LaunchApplicationRepository, with a
+// transaction-scoped advisory lock on the name's hash.
+func (r *LaunchApplicationRepository) LockName(ctx context.Context, name string) error {
+	return lockName(dbFrom(ctx, r.db), name)
+}
+
+// lockName takes the transaction-scoped advisory lock for name on tx. It
+// is released when the transaction ends; outside one it is released at
+// once, which protects nothing, so every caller runs in one.
+func lockName(tx *gorm.DB, name string) error {
+	return tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", name).Error
+}
+
 // ListApplicationsByPhase implements repositories.LaunchApplicationRepository.
-func (r *LaunchApplicationRepository) ListApplicationsByPhase(ctx context.Context, tld, phase string, status entities.ApplicationStatus) ([]*entities.LaunchApplication, error) {
-	q := dbFrom(ctx, r.db).Preload("Hosts").Preload("DSRecords", orderApplicationDS).Where("tld_name = ? AND phase_name = ?", tld, phase)
+// The page is bounded (Limit) before the child records are loaded; the
+// cursor is the last application's ID, and IDs rise with filing order.
+func (r *LaunchApplicationRepository) ListApplicationsByPhase(ctx context.Context, tld, phase string, status entities.ApplicationStatus, pageSize int, pageCursor string) ([]*entities.LaunchApplication, error) {
+	var after int64
+	if pageCursor != "" {
+		var err error
+		if after, err = strconv.ParseInt(pageCursor, 10, 64); err != nil {
+			return nil, fmt.Errorf("%w: cursor %q", entities.ErrInvalidApplication, pageCursor)
+		}
+	}
+	if pageSize <= 0 {
+		pageSize = 25
+	}
+	q := dbFrom(ctx, r.db).Preload("Hosts").Preload("DSRecords", orderApplicationDS).
+		Where("tld_name = ? AND phase_name = ? AND id > ?", tld, phase, after)
 	if status != "" {
 		q = q.Where("status = ?", string(status))
 	}
 	var recs []LaunchApplicationRecord
-	if err := q.Order("created_at, id").Find(&recs).Error; err != nil {
+	if err := q.Order("id").Limit(pageSize).Find(&recs).Error; err != nil {
 		return nil, err
 	}
 	out := make([]*entities.LaunchApplication, len(recs))

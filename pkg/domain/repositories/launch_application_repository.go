@@ -15,7 +15,9 @@ type LaunchApplicationRepository interface {
 	// CreateApplication stores a, with its nameservers and DS records, and
 	// returns it as stored. A registrar may hold one open (non-final)
 	// application per name and phase: a second is
-	// entities.ErrApplicationExists.
+	// entities.ErrApplicationExists. A name registered meanwhile is
+	// entities.ErrDomainAlreadyExists: the write holds the name's lock
+	// (LockName) while it checks.
 	CreateApplication(ctx context.Context, a *entities.LaunchApplication) (*entities.LaunchApplication, error)
 	// GetApplicationByID returns the application with ID id, or
 	// entities.ErrApplicationNotFound.
@@ -23,9 +25,17 @@ type LaunchApplicationRepository interface {
 	// ListApplicationsByName returns every application for name, of every
 	// registrar and status, oldest first.
 	ListApplicationsByName(ctx context.Context, name string) ([]*entities.LaunchApplication, error)
-	// ListApplicationsByPhase returns the applications filed in a phase of
-	// a TLD, oldest first, those of one status when status is not empty.
-	ListApplicationsByPhase(ctx context.Context, tld, phase string, status entities.ApplicationStatus) ([]*entities.LaunchApplication, error)
+	// ListApplicationsByPhase returns a page of the applications filed in a
+	// phase of a TLD, oldest first, those of one status when status is not
+	// empty: at most pageSize, after the opaque cursor a previous page gave
+	// (INV-11), which is the last application's ID.
+	ListApplicationsByPhase(ctx context.Context, tld, phase string, status entities.ApplicationStatus, pageSize int, pageCursor string) ([]*entities.LaunchApplication, error)
+	// LockName serialises the writes that decide who gets a name, within
+	// the transaction ctx carries: CreateApplication takes it before it
+	// checks the name is unregistered, and an allocation takes it before it
+	// registers the name and rejects the other applications, so no filing
+	// can slip between the two and stay pending for an allocated name.
+	LockName(ctx context.Context, name string) error
 	// QueuePollMessages queues msgs, about applications, in their
 	// registrars' queues (repositories.PollMessageRepository reads them),
 	// in the transaction ctx carries if any, so that a status change and

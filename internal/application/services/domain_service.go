@@ -1203,6 +1203,10 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 type registration struct {
 	quote    *entities.Quote
 	authInfo entities.AuthInfoHash
+	// validated says the registration was validated before it is made (an
+	// allocated application), so the phase's RequiresValidation does not
+	// leave the domain pendingCreate.
+	validated bool
 }
 
 // RegisterApplication registers the name of app, an application the
@@ -1227,7 +1231,7 @@ func (svc *DomainService) RegisterApplication(ctx context.Context, app *entities
 		RegistrantID: app.RegistrantID.String(), AdminID: app.AdminID.String(), TechID: app.TechID.String(), BillingID: app.BillingID.String(),
 		Years: app.Years, HostNames: app.HostNames, PhaseName: app.PhaseName.String(), DSRecords: app.DSRecords,
 	}
-	return svc.registerIn(ctx, cmd, &app.Name, phase, registration{quote: quote, authInfo: app.AuthInfo})
+	return svc.registerIn(ctx, cmd, &app.Name, phase, registration{quote: quote, authInfo: app.AuthInfo, validated: true})
 }
 
 // registerIn is RegisterDomain once the phase is known: the availability
@@ -1245,8 +1249,12 @@ func (svc *DomainService) registerIn(ctx context.Context, cmd *commands.Register
 		return nil, err
 	}
 
-	// If the domain is not available, return now
+	// If the domain is not available, return now. A name registered since
+	// it was checked keeps its sentinel, so a caller can answer "exists".
 	if !checkResult.Available {
+		if checkResult.Reason == ErrDomainExists.Error() {
+			return nil, errors.Join(entities.ErrInvalidDomain, ErrDomainExists)
+		}
 		return nil, errors.Join(entities.ErrInvalidDomain, errors.New(checkResult.Reason))
 	}
 
@@ -1316,6 +1324,10 @@ func (svc *DomainService) registerIn(ctx context.Context, cmd *commands.Register
 	}
 	if reg.authInfo != "" {
 		dom.AuthInfo = reg.authInfo // the applicant's code, held hashed since filing
+	}
+	if reg.validated && dom.Status.PendingCreate {
+		dom.Status.PendingCreate = false
+		dom.SetOKStatusIfNeeded()
 	}
 
 	if err := dom.SetDSRecords(cmd.DSRecords); err != nil {

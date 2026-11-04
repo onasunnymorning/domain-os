@@ -39,25 +39,29 @@ type LaunchAllocationService struct {
 	applications repositories.LaunchApplicationRepository
 	phases       repositories.PhaseRepository
 	tlds         repositories.TLDRepository
+	contacts     repositories.ContactRepository
 	registrar    ApplicationRegistrar
 	tx           repositories.Transactor
 	events       repositories.EventPublisher
 	now          func() time.Time
 }
 
-// NewLaunchAllocationService returns the service. registrar registers an
-// allocated name (DomainService); tx runs an allocation, its rejections and
-// their poll messages in one transaction; events may be nil.
+// NewLaunchAllocationService returns the service. contacts checks, at
+// allocation, that the application's contacts still exist and are the
+// applicant's; registrar registers an allocated name (DomainService); tx
+// runs an allocation, its rejections and their poll messages in one
+// transaction; events may be nil.
 func NewLaunchAllocationService(
 	applications repositories.LaunchApplicationRepository,
 	phases repositories.PhaseRepository,
 	tlds repositories.TLDRepository,
+	contacts repositories.ContactRepository,
 	registrar ApplicationRegistrar,
 	tx repositories.Transactor,
 	events repositories.EventPublisher,
 ) *LaunchAllocationService {
 	return &LaunchAllocationService{
-		applications: applications, phases: phases, tlds: tlds, registrar: registrar, tx: tx, events: events, now: time.Now,
+		applications: applications, phases: phases, tlds: tlds, contacts: contacts, registrar: registrar, tx: tx, events: events, now: time.Now,
 	}
 }
 
@@ -67,14 +71,14 @@ func (s *LaunchAllocationService) GetApplication(ctx context.Context, scope enti
 }
 
 // ListApplications implements interfaces.LaunchApplicationService.
-func (s *LaunchAllocationService) ListApplications(ctx context.Context, scope entities.RegistryScope, tld, phase string, status entities.ApplicationStatus) ([]*entities.LaunchApplication, error) {
+func (s *LaunchAllocationService) ListApplications(ctx context.Context, scope entities.RegistryScope, tld, phase string, status entities.ApplicationStatus, pageSize int, pageCursor string) ([]*entities.LaunchApplication, error) {
 	if err := s.tldInScope(ctx, scope, tld); err != nil {
 		return nil, err
 	}
 	if status != "" && !status.IsValid() {
 		return nil, fmt.Errorf("%w: status %q", entities.ErrInvalidApplication, status)
 	}
-	return s.applications.ListApplicationsByPhase(ctx, tld, phase, status)
+	return s.applications.ListApplicationsByPhase(ctx, tld, phase, status, pageSize, pageCursor)
 }
 
 // Validate implements interfaces.LaunchApplicationService.
@@ -149,9 +153,21 @@ func (s *LaunchAllocationService) Allocate(ctx context.Context, scope entities.R
 	if err != nil {
 		return nil, fmt.Errorf("read phase %s of %s: %w", app.PhaseName, app.TLDName, err)
 	}
+	// The contacts were the applicant's when the application was filed; a
+	// contact deleted since (open applications count as links, so only an
+	// administrator's delete), or re-created by another registrar, must
+	// not reach the domain.
+	if err := s.contactsStillTheApplicants(ctx, app); err != nil {
+		return nil, err
+	}
 	before := app.DeepCopy()
 	ctx, finish := s.tx.Begin(ctx)
 	defer func() { err = finish(err) }()
+	// The name's lock (LaunchApplicationRepository.LockName): no filing for
+	// the name runs between the registration below and the rejections.
+	if err := s.applications.LockName(ctx, app.Name.String()); err != nil {
+		return nil, err
+	}
 
 	dom, err := s.registrar.RegisterApplication(ctx, app, phase)
 	if err != nil {
@@ -191,6 +207,29 @@ func (s *LaunchAllocationService) Allocate(ctx context.Context, scope entities.R
 	}
 	s.publish(ctx, EventApplicationAllocated, cmd, before, winner)
 	return winner, nil
+}
+
+// contactsStillTheApplicants checks that every contact the application
+// names exists and is the applicant's (entities.ErrApplicationContactGone
+// otherwise). The registration write then holds them by foreign key.
+func (s *LaunchAllocationService) contactsStillTheApplicants(ctx context.Context, app *entities.LaunchApplication) error {
+	seen := map[entities.ClIDType]bool{}
+	for _, id := range []entities.ClIDType{app.RegistrantID, app.AdminID, app.TechID, app.BillingID} {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		c, err := s.contacts.GetContactByID(ctx, id.String())
+		switch {
+		case errors.Is(err, entities.ErrContactNotFound):
+			return fmt.Errorf("%w: %s", entities.ErrApplicationContactGone, id)
+		case err != nil:
+			return fmt.Errorf("look up contact %s: %w", id, err)
+		case c.ClID != app.ClID:
+			return fmt.Errorf("%w: %s is %s's", entities.ErrApplicationContactGone, id, c.ClID)
+		}
+	}
+	return nil
 }
 
 // inScope returns the application with ID id if its TLD is within scope:

@@ -336,7 +336,7 @@ func TestLaunchAllocationOverPostgres(t *testing.T) {
 	}
 	winner, loser := file(rar1), file(rar2)
 
-	alloc := NewLaunchAllocationService(applications, phases, f.tldRepo, f.registry, postgres.NewTransactor(db), f.events)
+	alloc := NewLaunchAllocationService(applications, phases, f.tldRepo, postgres.NewContactRepository(db, "EPPTEST"), f.registry, postgres.NewTransactor(db), f.events)
 	allocated, err := alloc.Allocate(ctx, testPlatformScope, &commands.AllocateApplicationCommand{ApplicationID: winner.ID.String()})
 	require.NoError(t, err)
 	assert.Equal(t, entities.ApplicationStatusAllocated, allocated.Status)
@@ -377,4 +377,28 @@ func TestLaunchAllocationOverPostgres(t *testing.T) {
 
 	_, err = alloc.Allocate(ctx, testPlatformScope, &commands.AllocateApplicationCommand{ApplicationID: loser.ID.String()})
 	assert.ErrorIs(t, err, entities.ErrApplicationTransition)
+
+	t.Run("a name registered since filing is a conflict, and a filing for a registered name is refused", func(t *testing.T) {
+		res, err := svc.Create(ctx, entities.RegistrarClID(rar1), commands.EPPCreateDomainCommand{
+			Name: "taken." + tld, RegistrantID: "c" + rar1, Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar1}},
+			Launch: &commands.EPPLaunchCreate{Phase: commands.EPPLaunchPhase{Value: "landrush"}, Type: "application"},
+		})
+		require.NoError(t, err)
+		_, err = f.registry.RegisterDomain(ctx, &commands.RegisterDomainCommand{Name: "taken." + tld, ClID: rar2, RegistrantID: "c" + rar2, TechID: "c" + rar2, Years: 1})
+		require.NoError(t, err)
+		_, err = alloc.Allocate(ctx, testPlatformScope, &commands.AllocateApplicationCommand{ApplicationID: res.Application.ID.String()})
+		assert.ErrorIs(t, err, ErrDomainExists)
+		_, err = svc.Create(ctx, entities.RegistrarClID(rar2), commands.EPPCreateDomainCommand{
+			Name: "taken." + tld, RegistrantID: "c" + rar2, Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar2}},
+			Launch: &commands.EPPLaunchCreate{Phase: commands.EPPLaunchPhase{Value: "landrush"}, Type: "application"},
+		})
+		assert.ErrorIs(t, err, ErrDomainExists)
+		// The repository's own check, under the name's lock, for a filing
+		// whose availability check ran before the registration.
+		late := res.Application.DeepCopy()
+		late.ID, _ = f.roids.GenerateRoid(entities.RoidTypeApplication)
+		late.ClID = entities.ClIDType(rar2)
+		_, err = applications.CreateApplication(ctx, late)
+		assert.ErrorIs(t, err, entities.ErrDomainAlreadyExists)
+	})
 }

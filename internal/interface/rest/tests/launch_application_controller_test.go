@@ -122,13 +122,30 @@ var _ = Describe("LaunchApplicationController", Ordered, func() {
 	It("lists the applications filed in the phase, by status", func() {
 		resp := launchReq(http.MethodGet, fmt.Sprintf("/tlds/%s/phases/%s/applications", tldName, phaseName), ryID, false, nil)
 		Expect(resp.Code).To(Equal(http.StatusOK), resp.Body.String())
-		var apps []entities.LaunchApplication
-		Expect(DecodeJSON(resp, &apps)).To(Succeed())
-		Expect(apps).To(HaveLen(3))
+		var page struct {
+			Data []entities.LaunchApplication
+			Meta struct{ PageCursor string }
+		}
+		body := resp.Body.String()
+		Expect(json.Unmarshal([]byte(body), &page)).To(Succeed())
+		Expect(page.Data).To(HaveLen(3))
+		Expect(body).NotTo(ContainSubstring(`"AuthInfo":`), "the code hash never leaves the registry")
+		Expect(body).To(ContainSubstring(`"AuthInfoSet":true`))
+
+		resp = launchReq(http.MethodGet, fmt.Sprintf("/tlds/%s/phases/%s/applications?pagesize=2", tldName, phaseName), ryID, false, nil)
+		Expect(resp.Code).To(Equal(http.StatusOK), resp.Body.String())
+		Expect(DecodeJSON(resp, &page)).To(Succeed())
+		Expect(page.Data).To(HaveLen(2))
+		Expect(page.Meta.PageCursor).NotTo(BeEmpty())
+		resp = launchReq(http.MethodGet, fmt.Sprintf("/tlds/%s/phases/%s/applications?pagesize=2&cursor=%s", tldName, phaseName, page.Meta.PageCursor), ryID, false, nil)
+		Expect(resp.Code).To(Equal(http.StatusOK), resp.Body.String())
+		Expect(DecodeJSON(resp, &page)).To(Succeed())
+		Expect(page.Data).To(HaveLen(1))
+
 		resp = launchReq(http.MethodGet, fmt.Sprintf("/tlds/%s/phases/%s/applications?status=allocated", tldName, phaseName), ryID, false, nil)
 		Expect(resp.Code).To(Equal(http.StatusOK))
-		Expect(DecodeJSON(resp, &apps)).To(Succeed())
-		Expect(apps).To(BeEmpty())
+		Expect(DecodeJSON(resp, &page)).To(Succeed())
+		Expect(page.Data).To(BeEmpty())
 		resp = launchReq(http.MethodGet, fmt.Sprintf("/tlds/%s/phases/%s/applications?status=nope", tldName, phaseName), ryID, false, nil)
 		Expect(resp.Code).To(Equal(http.StatusBadRequest))
 	})

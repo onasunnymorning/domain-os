@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -87,6 +88,10 @@ var (
 	ErrApplicationTransition = errors.New("the application's status does not allow that")
 	// ErrInvalidApplication: an application that does not hold together.
 	ErrInvalidApplication = errors.New("invalid application")
+	// ErrApplicationContactGone: a contact the application names no longer
+	// exists, or is another registrar's, so the name cannot be allocated
+	// to it as it stands; the applicant changes the application first.
+	ErrApplicationContactGone = errors.New("a contact the application names no longer exists or is another registrar's")
 )
 
 // ApplicationQuote is the price quoted when an application was filed, as
@@ -323,4 +328,16 @@ func (a *LaunchApplication) DeepCopy() *LaunchApplication {
 	c.HostNames = slices.Clone(a.HostNames)
 	c.DSRecords = slices.Clone(a.DSRecords)
 	return &c
+}
+
+// MarshalJSON writes the application without its code's hash, which must
+// never leave the registry, and with AuthInfoSet saying whether a code is
+// set, as Domain.MarshalJSON does.
+func (a LaunchApplication) MarshalJSON() ([]byte, error) {
+	type withoutMethods LaunchApplication
+	return json.Marshal(struct {
+		withoutMethods
+		AuthInfo    *struct{} `json:"AuthInfo,omitempty"` // nil: the field is left out
+		AuthInfoSet bool      `json:"AuthInfoSet"`
+	}{withoutMethods: withoutMethods(a), AuthInfoSet: a.AuthInfo.IsSet()})
 }

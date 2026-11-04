@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -175,4 +176,18 @@ func TestNewRoidType_Application(t *testing.T) {
 	assert.NoError(t, r.Validate(), "an application ID is roidType-valid, so it can be echoed as a <domain:roid>")
 	assert.True(t, r.IsIssuedHere())
 	assert.Equal(t, APPLICATION_ROID_ID, r.ObjectIdentifier())
+}
+
+func TestLaunchApplication_MarshalJSON(t *testing.T) {
+	a, err := NewLaunchApplication(testAppID, "rushed.test", "rar-one", "Tr4nsf3r-C0de-Xq9#Lm2!", applicationPhase(t, false), 1, time.Now().UTC())
+	require.NoError(t, err)
+	out, err := json.Marshal(a)
+	require.NoError(t, err)
+	assert.NotContains(t, string(out), string(a.AuthInfo), "the hash never leaves the registry")
+	assert.Contains(t, string(out), `"AuthInfoSet":true`)
+	assert.Contains(t, string(out), `"ID":"7_APP-TEST"`)
+	var back map[string]any
+	require.NoError(t, json.Unmarshal(out, &back))
+	_, has := back["AuthInfo"]
+	assert.False(t, has)
 }
