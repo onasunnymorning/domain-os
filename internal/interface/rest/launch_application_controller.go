@@ -203,8 +203,9 @@ func (ctrl *LaunchApplicationController) Reject(ctx *gin.Context) {
 
 // applicationError maps the service's refusals to status codes: 404 for an
 // application or TLD outside the scope or missing; 409 for a status that
-// does not allow the decision, or a name taken meanwhile; 400 for bad
-// input; 500 otherwise.
+// does not allow the decision, a name taken meanwhile, or a contact or
+// nameserver the application names that is gone (the operator has the
+// applicant repair it); 400 for bad input; 500 otherwise.
 func applicationError(ctx *gin.Context, err error) {
 	switch {
 	case errors.Is(err, entities.ErrApplicationNotFound), errors.Is(err, entities.ErrTLDNotFound):
@@ -212,7 +213,10 @@ func applicationError(ctx *gin.Context, err error) {
 	case errors.Is(err, entities.ErrApplicationTransition), errors.Is(err, entities.ErrApplicationFinal),
 		errors.Is(err, entities.ErrApplicationChanged), errors.Is(err, entities.ErrDomainAlreadyExists),
 		errors.Is(err, services.ErrDomainExists), errors.Is(err, entities.ErrApplicationContactGone),
-		errors.Is(err, entities.ErrApplicationHostGone):
+		errors.Is(err, entities.ErrApplicationHostGone),
+		// A host or contact gone between the allocation's check and its
+		// write: the same repairable conflict, however it surfaces.
+		errors.Is(err, entities.ErrHostNotFound), errors.Is(err, entities.ErrContactNotFound):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, services.ErrReasonRequired), errors.Is(err, entities.ErrInvalidApplication),
 		errors.Is(err, entities.ErrInvalidDomain), errors.Is(err, entities.ErrInvalidRegistryScope),
