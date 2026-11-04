@@ -27,11 +27,13 @@ type LaunchApplicationRecord struct {
 	ClID      string `gorm:"not null"`
 	Status    string `gorm:"size:24;not null;index"`
 
-	RegistrantID *string
-	AdminID      *string
-	TechID       *string
-	BillingID    *string
-	Years        int `gorm:"not null"`
+	// The contacts are indexed: ContactRepository.CountContactLinks reads
+	// them on every contact delete.
+	RegistrantID *string `gorm:"index"`
+	AdminID      *string `gorm:"index"`
+	TechID       *string `gorm:"index"`
+	BillingID    *string `gorm:"index"`
+	Years        int     `gorm:"not null"`
 	// AuthInfo is the code's salted hash (RFC 9154), NULL when none is set.
 	AuthInfo *string
 	// The quote at filing, billed at allocation (entities.ApplicationQuote).
@@ -54,11 +56,13 @@ type LaunchApplicationRecord struct {
 func (LaunchApplicationRecord) TableName() string { return "launch_applications" }
 
 // LaunchApplicationHost is one of an application's nameservers, by name:
-// a host object of the applicant, looked up again at allocation.
+// a host object of the applicant, looked up again at allocation. The name
+// is indexed: HostRepository.GetHostAssociationCount reads it on every host
+// delete.
 type LaunchApplicationHost struct {
 	ID            int64  `gorm:"primaryKey"`
 	ApplicationID int64  `gorm:"not null;uniqueIndex:idx_launch_application_hosts_unique,priority:1"`
-	Name          string `gorm:"not null;uniqueIndex:idx_launch_application_hosts_unique,priority:2"`
+	Name          string `gorm:"not null;uniqueIndex:idx_launch_application_hosts_unique,priority:2;index"`
 }
 
 // TableName pins the table name.
