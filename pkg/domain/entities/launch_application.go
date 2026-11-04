@@ -92,6 +92,10 @@ var (
 	// exists, or is another registrar's, so the name cannot be allocated
 	// to it as it stands; the applicant changes the application first.
 	ErrApplicationContactGone = errors.New("a contact the application names no longer exists or is another registrar's")
+	// ErrApplicationHostGone: a nameserver the application names is no
+	// longer one of the applicant's host objects (deleted or renamed), so
+	// the name cannot be allocated to it as it stands.
+	ErrApplicationHostGone = errors.New("a nameserver the application names is no longer one of the applicant's host objects")
 )
 
 // ApplicationQuote is the price quoted when an application was filed, as

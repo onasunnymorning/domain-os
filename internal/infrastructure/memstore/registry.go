@@ -991,7 +991,22 @@ func (v registryHosts) ListHostNamesUnder(_ context.Context, clid, domain string
 }
 
 func (v registryHosts) GetHostAssociationCount(_ context.Context, roid int64) (int64, error) {
-	return v.links(roid, func(*entities.Domain) bool { return true })
+	n, err := v.links(roid, func(*entities.Domain) bool { return true })
+	if err != nil {
+		return 0, err
+	}
+	// Open applications name their registrar's hosts too, as the Postgres
+	// repository counts.
+	v.r.mu.Lock()
+	defer v.r.mu.Unlock()
+	if h := v.r.hostByRoid(roid); h != nil {
+		for _, a := range v.r.applications {
+			if !a.Status.IsFinal() && a.ClID == h.ClID && slices.Contains(a.HostNames, h.Name.String()) {
+				n++
+			}
+		}
+	}
+	return n, nil
 }
 
 func (v registryHosts) CountHostLinksFromOtherSponsors(_ context.Context, roid int64, clid string) (int64, error) {

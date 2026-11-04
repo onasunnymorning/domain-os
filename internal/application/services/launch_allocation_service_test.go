@@ -38,7 +38,7 @@ func allocationRegistry(t *testing.T) (*LaunchAllocationService, *memstore.Regis
 		require.NoError(t, err)
 		apps = append(apps, res.Application)
 	}
-	svc := NewLaunchAllocationService(reg.Applications(), reg.Phases(), reg.TLDs(), reg.Contacts(), reg, passThroughTx{}, nil)
+	svc := NewLaunchAllocationService(reg.Applications(), reg.Phases(), reg.TLDs(), reg.Contacts(), reg.Hosts(), reg, passThroughTx{}, nil)
 	return svc, reg, apps
 }
 
@@ -190,6 +190,18 @@ func TestLaunchAllocation_ContactsAndValidation(t *testing.T) {
 		assert.Nil(t, reg.Domain("bid.test"))
 		assert.Equal(t, entities.ApplicationStatusPendingAllocation, reg.Application(apps[0].ID.String()).Status, "nothing changed")
 	})
+	t.Run("a nameserver deleted since filing refuses the allocation", func(t *testing.T) {
+		host := reg.Host("ns1.rar-two.net", rar2.String())
+		require.NotNil(t, host)
+		id, _ := host.RoID.Int64()
+		n, err := reg.Hosts().GetHostAssociationCount(ctx, id)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, n, int64(1), "the open application counts as a link, so the registrar cannot delete the host itself")
+		require.NoError(t, reg.Hosts().DeleteHostByRoid(ctx, id)) // an administrator's delete
+		_, err = svc.Allocate(ctx, ryOne, &commands.AllocateApplicationCommand{ApplicationID: apps[1].ID.String()})
+		assert.ErrorIs(t, err, entities.ErrApplicationHostGone)
+		reg.AddHost("ns1.rar-two.net", rar2.String())
+	})
 	t.Run("a contact re-created by another registrar refuses the allocation", func(t *testing.T) {
 		reg.AddContact("rar-one-c", rar2.String())
 		_, err := svc.Allocate(ctx, ryOne, &commands.AllocateApplicationCommand{ApplicationID: apps[0].ID.String()})
@@ -216,7 +228,7 @@ func (failingPublisher) Publish(context.Context, ...entities.DomainEvent) error 
 
 func TestLaunchAllocation_PublishFailureFailsTheDecision(t *testing.T) {
 	_, reg, apps := allocationRegistry(t)
-	svc := NewLaunchAllocationService(reg.Applications(), reg.Phases(), reg.TLDs(), reg.Contacts(), reg, passThroughTx{}, failingPublisher{})
+	svc := NewLaunchAllocationService(reg.Applications(), reg.Phases(), reg.TLDs(), reg.Contacts(), reg.Hosts(), reg, passThroughTx{}, failingPublisher{})
 	ctx := context.Background()
 	_, err := svc.Reject(ctx, ryOne, &commands.RejectApplicationCommand{ApplicationID: apps[2].ID.String(), Reason: "x"})
 	require.Error(t, err)

@@ -388,7 +388,19 @@ func (r *HostRepository) GetHostAssociationCount(ctx context.Context, roid int64
 	if err != nil {
 		return 0, err
 	}
-	return count, nil
+	// An open launch application names its registrar's host objects by name
+	// (ADR 0024 §3): the domain it may become needs them, so they count as
+	// links until the application is final.
+	var apps int64
+	err = dbFrom(ctx, r.db).Raw(`SELECT COUNT(*) FROM launch_application_hosts lh
+		JOIN launch_applications a ON a.id = lh.application_id
+		JOIN hosts h ON h.ro_id = ?
+		WHERE lh.name = h.name AND a.cl_id = h.cl_id AND a.status IN ?`,
+		roid, []string{string(entities.ApplicationStatusPendingValidation), string(entities.ApplicationStatusPendingAllocation)}).Scan(&apps).Error
+	if err != nil {
+		return 0, err
+	}
+	return count + apps, nil
 }
 
 func getInt64RoidFromHostRoidString(roidString string) (int64, error) {

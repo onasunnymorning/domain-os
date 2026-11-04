@@ -39,28 +39,30 @@ type LaunchAllocationService struct {
 	phases       repositories.PhaseRepository
 	tlds         repositories.TLDRepository
 	contacts     repositories.ContactRepository
+	hosts        repositories.HostRepository
 	registrar    ApplicationRegistrar
 	tx           repositories.Transactor
 	events       repositories.EventPublisher
 	now          func() time.Time
 }
 
-// NewLaunchAllocationService returns the service. contacts checks, at
-// allocation, that the application's contacts still exist and are the
-// applicant's; registrar registers an allocated name (DomainService); tx
-// runs an allocation, its rejections and their poll messages in one
+// NewLaunchAllocationService returns the service. contacts and hosts check,
+// at allocation, that the application's contacts and nameservers are still
+// the applicant's; registrar registers an allocated name (DomainService);
+// tx runs an allocation, its rejections and their poll messages in one
 // transaction; events may be nil.
 func NewLaunchAllocationService(
 	applications repositories.LaunchApplicationRepository,
 	phases repositories.PhaseRepository,
 	tlds repositories.TLDRepository,
 	contacts repositories.ContactRepository,
+	hosts repositories.HostRepository,
 	registrar ApplicationRegistrar,
 	tx repositories.Transactor,
 	events repositories.EventPublisher,
 ) *LaunchAllocationService {
 	return &LaunchAllocationService{
-		applications: applications, phases: phases, tlds: tlds, contacts: contacts, registrar: registrar, tx: tx, events: events, now: time.Now,
+		applications: applications, phases: phases, tlds: tlds, contacts: contacts, hosts: hosts, registrar: registrar, tx: tx, events: events, now: time.Now,
 	}
 }
 
@@ -161,6 +163,9 @@ func (s *LaunchAllocationService) Allocate(ctx context.Context, scope entities.R
 	if err := s.contactsStillTheApplicants(ctx, app); err != nil {
 		return nil, err
 	}
+	if err := s.hostsStillTheApplicants(ctx, app); err != nil {
+		return nil, err
+	}
 	before := app.DeepCopy()
 	ctx, finish := s.tx.Begin(ctx)
 	defer func() { err = finish(err) }()
@@ -232,6 +237,23 @@ func (s *LaunchAllocationService) contactsStillTheApplicants(ctx context.Context
 			return fmt.Errorf("look up contact %s: %w", id, err)
 		case c.ClID != app.ClID:
 			return fmt.Errorf("%w: %s is %s's", entities.ErrApplicationContactGone, id, c.ClID)
+		}
+	}
+	return nil
+}
+
+// hostsStillTheApplicants checks that every nameserver the application
+// names is still one of the applicant's host objects
+// (entities.ErrApplicationHostGone otherwise): an application names hosts
+// by name, so a host deleted (by an administrator: open applications count
+// as links) or renamed since filing is gone from it.
+func (s *LaunchAllocationService) hostsStillTheApplicants(ctx context.Context, app *entities.LaunchApplication) error {
+	for _, name := range app.HostNames {
+		if _, err := s.hosts.GetHostByNameAndClID(ctx, name, app.ClID.String()); err != nil {
+			if errors.Is(err, entities.ErrHostNotFound) {
+				return fmt.Errorf("%w: %s", entities.ErrApplicationHostGone, name)
+			}
+			return fmt.Errorf("look up host %s: %w", name, err)
 		}
 	}
 	return nil

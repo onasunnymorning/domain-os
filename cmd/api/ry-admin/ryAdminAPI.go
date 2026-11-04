@@ -427,7 +427,7 @@ func main() {
 	rest.NewEventController(r, domainService, authMiddleware)
 	rest.NewEventSearchController(r, eventSearchService, authMiddleware)
 	rest.NewPhaseController(r, phaseService, authMiddleware)
-	rest.NewLaunchApplicationController(r, appservices.NewLaunchAllocationService(launchApplicationRepo, phaseRepo, tldRepo, contactRepo, domainService, postgres.NewTransactor(gormDB), eventPublisher), authMiddleware)
+	rest.NewLaunchApplicationController(r, appservices.NewLaunchAllocationService(launchApplicationRepo, phaseRepo, tldRepo, contactRepo, hostRepo, domainService, postgres.NewTransactor(gormDB), eventPublisher), authMiddleware)
 	// Lifecycle policies (ADR 0023): the named timing a phase follows.
 	rest.NewLifecyclePoliciesController(r, appservices.NewLifecyclePolicyService(lifecyclePolicyRepo), authMiddleware)
 	rest.NewFeeController(r, feeService, authMiddleware)

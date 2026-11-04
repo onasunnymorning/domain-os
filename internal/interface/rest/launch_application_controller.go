@@ -211,7 +211,8 @@ func applicationError(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, entities.ErrApplicationTransition), errors.Is(err, entities.ErrApplicationFinal),
 		errors.Is(err, entities.ErrApplicationChanged), errors.Is(err, entities.ErrDomainAlreadyExists),
-		errors.Is(err, services.ErrDomainExists), errors.Is(err, entities.ErrApplicationContactGone):
+		errors.Is(err, services.ErrDomainExists), errors.Is(err, entities.ErrApplicationContactGone),
+		errors.Is(err, entities.ErrApplicationHostGone):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, services.ErrReasonRequired), errors.Is(err, entities.ErrInvalidApplication),
 		errors.Is(err, entities.ErrInvalidDomain), errors.Is(err, entities.ErrInvalidRegistryScope),

@@ -336,7 +336,16 @@ func TestLaunchAllocationOverPostgres(t *testing.T) {
 	}
 	winner, loser := file(rar1), file(rar2)
 
-	alloc := NewLaunchAllocationService(applications, phases, f.tldRepo, postgres.NewContactRepository(db, "EPPTEST"), f.registry, postgres.NewTransactor(db), f.events)
+	// An open application names its registrar's hosts, which then count as
+	// links: the registrar cannot delete them over EPP.
+	loserHost, err := f.hostRepo.GetHostByNameAndClID(ctx, "ns1."+rar2+".net", rar2)
+	require.NoError(t, err)
+	loserHostID, _ := loserHost.RoID.Int64()
+	links, err := f.hostRepo.GetHostAssociationCount(ctx, loserHostID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), links, "the open application")
+
+	alloc := NewLaunchAllocationService(applications, phases, f.tldRepo, postgres.NewContactRepository(db, "EPPTEST"), f.hostRepo, f.registry, postgres.NewTransactor(db), f.events)
 	allocated, err := alloc.Allocate(ctx, testPlatformScope, &commands.AllocateApplicationCommand{ApplicationID: winner.ID.String()})
 	require.NoError(t, err)
 	assert.Equal(t, entities.ApplicationStatusAllocated, allocated.Status)
@@ -353,6 +362,9 @@ func TestLaunchAllocationOverPostgres(t *testing.T) {
 	rejected, err := applications.GetApplicationByID(ctx, loser.ID)
 	require.NoError(t, err)
 	assert.Equal(t, entities.ApplicationStatusRejected, rejected.Status)
+	links, err = f.hostRepo.GetHostAssociationCount(ctx, loserHostID)
+	require.NoError(t, err)
+	assert.Zero(t, links, "a final application is no longer a link")
 
 	polls := postgres.NewDomainTransferRepository(db, "EPPTEST")
 	msg, n, err := polls.OldestPollMessage(ctx, entities.ClIDType(rar2))
