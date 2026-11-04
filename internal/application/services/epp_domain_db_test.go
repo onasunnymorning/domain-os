@@ -345,6 +345,12 @@ func TestLaunchAllocationOverPostgres(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), links, "the open application")
 
+	// The phase's price rises after filing: allocation must bill the quote
+	// from filing (2 x 2500), not price the name again (2 x 9999).
+	auction, err := phases.GetPhaseByTLDAndName(ctx, tld, "auction")
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&postgres.Price{}).Where("phase_id = ? AND currency = ?", auction.ID, "USD").Update("registration_amount", 9999).Error)
+
 	alloc := NewLaunchAllocationService(applications, phases, f.tldRepo, postgres.NewContactRepository(db, "EPPTEST"), f.hostRepo, f.registry, postgres.NewTransactor(db), f.events)
 	allocated, err := alloc.Allocate(ctx, testPlatformScope, &commands.AllocateApplicationCommand{ApplicationID: winner.ID.String()})
 	require.NoError(t, err)
@@ -385,7 +391,7 @@ func TestLaunchAllocationOverPostgres(t *testing.T) {
 		}
 	}
 	require.NoError(t, json.Unmarshal(registered.Data, &payload))
-	assert.Equal(t, float64(5000), payload.Quote.Price.Amount, "the quote from filing, not a new one")
+	assert.Equal(t, float64(5000), payload.Quote.Price.Amount, "the quote from filing, not the raised price")
 
 	_, err = alloc.Allocate(ctx, testPlatformScope, &commands.AllocateApplicationCommand{ApplicationID: loser.ID.String()})
 	assert.ErrorIs(t, err, entities.ErrApplicationTransition)
