@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { phasesApi } from '@/lib/api/phases';
 import { tldsApi } from '@/lib/api/tlds';
-import { Phase, CategorizedPhases, PhaseStatus } from '@/lib/types/phase';
+import { Phase, CategorizedPhases, PhaseStatus, LaunchSettings } from '@/lib/types/phase';
 
 // Utility functions to determine phase status
 const getPhaseStatus = (phase: Phase): PhaseStatus => {
@@ -115,6 +115,7 @@ export function useCreatePhase(tldName: string) {
       type: 'GA' | 'Launch';
       starts: string;
       ends?: string | null;
+      launch?: LaunchSettings;
     }) => phasesApi.create(tldName, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['phases', tldName] });
@@ -136,6 +137,26 @@ export function useDeletePhase(tldName: string) {
         queryFn: () => tldsApi.get(tldName),
       });
       return phasesApi.delete(tldName, phaseName, tld.RyID);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['phases', tldName] });
+    },
+  });
+}
+
+// Hook to replace a launch phase's launch settings (ADR 0024). As a phase
+// delete, the request names the TLD's operator, from the cached TLD.
+export function useSetLaunchSettings(tldName: string, phaseName: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (settings: LaunchSettings) => {
+      const tld = await queryClient.fetchQuery({
+        queryKey: ['tld', tldName],
+        queryFn: () => tldsApi.get(tldName),
+        staleTime: 5 * 60_000, // a TLD's operator does not change
+      });
+      return phasesApi.setLaunchSettings(tldName, phaseName, settings, tld.RyID);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['phases', tldName] });

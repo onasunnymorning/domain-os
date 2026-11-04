@@ -34,6 +34,52 @@ export interface LaunchSettings {
   retainMarks: boolean;
 }
 
+export const LAUNCH_MODES: { value: LaunchMode; label: string; hint: string; servedOverEPP: boolean }[] = [
+  { value: 'open', label: 'Open', hint: 'A general launch window before or beside GA', servedOverEPP: true },
+  { value: 'landrush', label: 'Landrush', hint: 'Early access, usually at a premium', servedOverEPP: true },
+  { value: 'custom', label: 'Custom', hint: 'A phase of your own; registrars name it', servedOverEPP: true },
+  { value: 'sunrise', label: 'Sunrise', hint: 'Trademark holders first; not yet served over EPP', servedOverEPP: false },
+  { value: 'claims', label: 'Claims', hint: 'A claims period; not yet served over EPP', servedOverEPP: false },
+];
+
+export const REGISTRATION_MODELS: { value: RegistrationModel; label: string; hint: string }[] = [
+  { value: 'first-come', label: 'First come', hint: 'A create registers the domain at once' },
+  { value: 'application', label: 'Applications', hint: 'A create files an application; you allocate each name' },
+];
+
+// A registrar's application for a name in an application phase (ADR 0024 §3),
+// as the admin API returns it. The transfer code itself never leaves the
+// registry: AuthInfoSet says whether one is set.
+export type LaunchApplicationStatus = 'pendingValidation' | 'pendingAllocation' | 'allocated' | 'rejected' | 'invalid';
+
+export interface LaunchApplication {
+  ID: string;
+  Name: string;
+  TLDName: string;
+  PhaseName: string;
+  PhaseMode: LaunchMode;
+  ClID: string;
+  Status: LaunchApplicationStatus;
+  RegistrantID: string;
+  AdminID: string;
+  TechID: string;
+  BillingID: string;
+  HostNames: string[] | null;
+  Years: number;
+  AuthInfoSet: boolean;
+  Quote: { Currency: string; Amount: number; Class: string };
+  Reason: string;
+  DomainRoID: string;
+  CreatedAt: string;
+  UpdatedAt: string;
+}
+
+export const APPLICATION_STATUSES: LaunchApplicationStatus[] = ['pendingValidation', 'pendingAllocation', 'allocated', 'rejected', 'invalid'];
+
+export function isFinalApplication(status: LaunchApplicationStatus): boolean {
+  return status === 'allocated' || status === 'rejected' || status === 'invalid';
+}
+
 export interface Price {
   currency: string;
   registrationAmount: number;

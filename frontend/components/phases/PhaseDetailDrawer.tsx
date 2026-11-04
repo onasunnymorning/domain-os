@@ -24,6 +24,8 @@ import { PhaseDateSection } from './sections/PhaseDateSection';
 import { PhasePricingSection } from './sections/PhasePricingSection';
 import { PhaseFeeSection } from './sections/PhaseFeeSection';
 import { PhasePolicySection } from './sections/PhasePolicySection';
+import { PhaseLaunchSection } from './sections/PhaseLaunchSection';
+import { LaunchApplicationsSection } from './sections/LaunchApplicationsSection';
 import { PhaseLifecycleSection } from './sections/PhaseLifecycleSection';
 import { PhaseMetadataSection } from './sections/PhaseMetadataSection';
 import { PhaseConfigDiff } from './PhaseConfigDiff';
@@ -149,6 +151,25 @@ export function PhaseDetailDrawer({ phase, open, onClose, tldName, allPhases = [
                 tldName={tldName || ''}
                 onRefetch={handleRefetch}
               />
+
+              {/* Launch settings (ADR 0024): mode, registration model, marks; and the
+                  applications filed when the phase collects them */}
+              {phaseData.type === 'Launch' && (
+                <>
+                  <div className="border-t" />
+                  <PhaseLaunchSection
+                    phase={phaseData}
+                    tldName={tldName || ''}
+                    onRefetch={handleRefetch}
+                  />
+                  {phaseData.launch?.model === 'application' && (
+                    <>
+                      <div className="border-t" />
+                      <LaunchApplicationsSection phase={phaseData} tldName={tldName || ''} />
+                    </>
+                  )}
+                </>
+              )}
 
               {/* Divider */}
               <div className="border-t" />

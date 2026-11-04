@@ -1,6 +1,6 @@
 # ADR 0024 — Launch phases and the EPP launch extension
 
-- **Status:** Proposed (sections 1 and 2 are implemented; sections 3 and 4 are the design the following PRs build)
+- **Status:** Accepted (sections 1 to 3 are implemented: the model in #537, first-come phases over EPP in #538, applications in #539, allocation in #540, the admin UI in the PR after; section 4 is deferred to roadmap 9a–9c)
 - **Implemented so far:** 2026-11-03 — `entities.LaunchSettings` on `Phase` (`launch_*` columns on `phases`), `TLD.RegistrationContextAt` as the one rule for which phase governs a registration, `Domain.RegistrationPhaseName`, `PUT /tlds/{tld}/phases/{phase}/launch`, time-aware activity on `Phase` (`IsActiveAt`, `HasStartedAt`, `HasEndedAt`) and the `GetCurrentLaunchPhases` fix (roadmap 8a). The `launch-1.0` extension over EPP for first-come phases: the schema models, the greeting, `<launch:check type="avail">` and `<launch:create>` (roadmap 8b).
 - **Date:** 2026-11-03
 - **Deciders:** Platform / Registry

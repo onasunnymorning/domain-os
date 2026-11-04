@@ -1,4 +1,4 @@
-import { Phase } from '@/lib/types/phase';
+import { Phase, LaunchSettings } from '@/lib/types/phase';
 import { apiClient } from './client';
 
 export const phasesApi = {
@@ -26,6 +26,9 @@ export const phasesApi = {
     type: 'GA' | 'Launch';
     starts: string;
     ends?: string | null;
+    // A launch phase's launch settings at creation (ADR 0024); omitted, it
+    // starts open and first come. Refused on a GA phase.
+    launch?: LaunchSettings;
   }): Promise<Phase> => {
     const response = await apiClient.post(`/tlds/${tldName}/phases`, data);
     return response.data;
@@ -43,6 +46,15 @@ export const phasesApi = {
   // End a phase (set end date)
   endPhase: async (tldName: string, phaseName: string, endDate: string): Promise<Phase> => {
     const response = await apiClient.put(`/tlds/${tldName}/phases/${phaseName}/end`, { ends: endDate });
+    return response.data;
+  },
+
+  // Replace a launch phase's launch settings (ADR 0024). A phase edit confined
+  // to the TLD's operator, so the request names it (X-Tenant-ID, ADR-0006).
+  setLaunchSettings: async (tldName: string, phaseName: string, settings: LaunchSettings, operatorId: string): Promise<Phase> => {
+    const response = await apiClient.put(`/tlds/${tldName}/phases/${phaseName}/launch`, settings, {
+      headers: { 'X-Tenant-ID': operatorId },
+    });
     return response.data;
   },
 
