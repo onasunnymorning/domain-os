@@ -229,7 +229,7 @@ func (s *Server) dispatch(ctx context.Context, cmd *command, body []byte) {
 		s.rejectSchema(cmd, err)
 		return
 	}
-	if !objectMatchesCommand(cmd) || !extensionsOnce(cmd) {
+	if !objectMatchesCommand(cmd) || !extensionsOnce(cmd) || !extensionsMatchCommand(cmd) {
 		return
 	}
 	cmd.describe()
@@ -304,6 +304,35 @@ func extensionsOnce(cmd *command) bool {
 			return false
 		}
 		seen[key] = true
+	}
+	return true
+}
+
+// extensionsMatchCommand answers 2001 to a command carrying an extension
+// element meant for another command, such as <delete> with <launch:update>
+// or <host:info> with <launch:info>, and reports whether it may go on. Every
+// extension element a client may send (secDNS, RGP, launch) is named for
+// the domain command it extends: <launch:check> for <domain:check>,
+// <secDNS:create> for <domain:create>. The schema's wildcard takes any of
+// them on any command; a handler reads only its own, so a mismatched one
+// would be ignored and the command answered as done, which is how a
+// <domain:create> with <launch:check> would register in GA and a
+// <domain:delete> with <launch:update> would delete.
+func extensionsMatchCommand(cmd *command) bool {
+	ext := cmd.doc.FindElement("/epp/command/extension")
+	if ext == nil {
+		return true
+	}
+	for _, el := range ext.ChildElements() {
+		if el.Tag == cmd.frame.command && cmd.frame.objectNS == nsDomain {
+			continue
+		}
+		on := "<" + cmd.frame.command + ">"
+		if obj := cmd.doc.FindElement("/epp/command/" + cmd.frame.command + "/*"); obj != nil {
+			on = "<" + obj.FullTag() + ">"
+		}
+		cmd.respond(epplib.StatusCommandSyntaxError, "Command syntax error; <"+el.FullTag()+"> extends <domain:"+el.Tag+">, not "+on, nil)
+		return false
 	}
 	return true
 }

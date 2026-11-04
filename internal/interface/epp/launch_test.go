@@ -168,6 +168,44 @@ func TestLaunchCreateRefusals(t *testing.T) {
 	})
 }
 
+// A launch extension element is named for the domain command it extends;
+// on any other command it is 2001, before the handler, so that it can
+// neither be ignored (a <domain:delete> with <launch:update> deleting, a
+// <domain:create> with <launch:check> registering in GA) nor act.
+func TestLaunchExtensionMustMatchCommand(t *testing.T) {
+	creds := newTestCredentials(t)
+	launchRegistry(t, creds)
+	ts := startServerWith(t, testConfig(), listenLoopback(t), creds)
+	c := dial(t, ts.addr)
+	requireCode(t, c.roundTrip(loginWithServices([]string{nsDomain, nsHost, nsContact}, []string{nsLaunch, nsSecDNS})), "1000")
+	requireCode(t, c.roundTrip(createXML("mine.test", createOpts{})), "1000")
+
+	domain := `xmlns:domain="urn:ietf:params:xml:ns:domain-1.0"`
+	ext := func(tag, inner string) string {
+		return `<extension><launch:` + tag + ` xmlns:launch="` + nsLaunch + `">` + inner + `</launch:` + tag + `></extension>`
+	}
+	id := `<launch:phase>landrush</launch:phase><launch:applicationID>abc-1</launch:applicationID>`
+	for _, tc := range []struct{ name, frame, want string }{
+		{"<domain:delete> with <launch:update>", cmdXML(`<delete><domain:delete `+domain+`><domain:name>mine.test</domain:name></domain:delete></delete>`+ext("update", id), "MX-1"), "<launch:update> extends <domain:update>, not <domain:delete>"},
+		{"<domain:create> with <launch:check>", createXML("other.test", createOpts{ext: `<launch:check xmlns:launch="` + nsLaunch + `" type="avail">` + launchPhaseXML("landrush", "") + `</launch:check>`}), "<launch:check> extends <domain:check>, not <domain:create>"},
+		{"<domain:renew> with <launch:create>", cmdXML(`<renew><domain:renew `+domain+`><domain:name>mine.test</domain:name><domain:curExpDate>`+time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")+`</domain:curExpDate></domain:renew></renew><extension>`+launchCreateXML("landrush", "", "", "")+`</extension>`, "MX-3"), "<launch:create> extends <domain:create>, not <domain:renew>"},
+		{"<domain:update> with <launch:delete>", domainUpdateXML("mine.test", "<domain:chg/>", `<launch:delete xmlns:launch="`+nsLaunch+`">`+id+`</launch:delete>`), "<launch:delete> extends <domain:delete>, not <domain:update>"},
+		{"<host:info> with <launch:info>", cmdXML(`<info><host:info xmlns:host="urn:ietf:params:xml:ns:host-1.0"><host:name>ns1.mine.test</host:name></host:info></info>`+ext("info", id), "MX-5"), "<launch:info> extends <domain:info>, not <host:info>"},
+		{"<contact:check> with <launch:check>", cmdXML(`<check><contact:check xmlns:contact="urn:ietf:params:xml:ns:contact-1.0"><contact:id>registrar1-c1</contact:id></contact:check></check>`+ext("check", ""), "MX-6"), "<launch:check> extends <domain:check>, not <contact:check>"},
+		{"<domain:delete> with <secDNS:update>", cmdXML(`<delete><domain:delete `+domain+`><domain:name>mine.test</domain:name></domain:delete></delete><extension>`+secDNSUpdateXML("", "<secDNS:rem><secDNS:all>true</secDNS:all></secDNS:rem>")+`</extension>`, "MX-7"), "<secDNS:update> extends <domain:update>, not <domain:delete>"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := c.roundTrip(tc.frame)
+			requireCode(t, resp, "2001")
+			assert.Contains(t, msg(resp), tc.want)
+		})
+	}
+	reg := creds.domains.registry
+	assert.False(t, reg.Domain("mine.test").Status.PendingDelete, "the deletes did nothing")
+	assert.Nil(t, reg.Domain("other.test"), "the create with <launch:check> registered nothing")
+	assert.Len(t, reg.Registered, 1, "only mine.test was registered")
+}
+
 func TestLaunchCheckAvailability(t *testing.T) {
 	creds := newTestCredentials(t)
 	launchRegistry(t, creds)
