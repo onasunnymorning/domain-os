@@ -38,12 +38,15 @@ const (
 
 // prefixes name namespaces in error paths, so a path reads like the frame.
 var prefixes = map[string]string{
-	NSEPP:     "",
-	NSDomain:  "domain:",
-	NSHost:    "host:",
-	NSContact: "contact:",
-	NSSecDNS:  "secDNS:",
-	NSRGP:     "rgp:",
+	NSEPP:        "",
+	NSDomain:     "domain:",
+	NSHost:       "host:",
+	NSContact:    "contact:",
+	NSSecDNS:     "secDNS:",
+	NSRGP:        "rgp:",
+	NSLaunch:     "launch:",
+	NSMark:       "mark:",
+	NSSignedMark: "smd:",
 }
 
 // Error is a frame that does not match the schema. Path locates the element
@@ -268,6 +271,20 @@ func findAttr(attrs []Attribute, name string) *Attribute {
 		}
 	}
 	return nil
+}
+
+// Text is el's character data as validation saw it: every character-data
+// child joined, with comments and processing instructions skipped. A
+// handler must read element values with it, never etree's Element.Text,
+// which stops at the first comment or processing instruction, so that
+// <launch:phase><?x?>landrush</launch:phase> would read as empty after
+// validation accepted "landrush". A nil el reads as empty.
+func Text(el *etree.Element) string {
+	if el == nil {
+		return ""
+	}
+	s, _ := textOf(el)
+	return s
 }
 
 // textOf returns el's character data, and whether any of it is not

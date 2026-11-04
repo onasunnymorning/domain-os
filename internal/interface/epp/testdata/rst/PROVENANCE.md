@@ -15,9 +15,10 @@ The files in this directory, except `xsd/epp-schemas.xsd` and this file, are cop
 | `epp-cases.yaml` | `inc/epp/cases.yaml` |
 | `epp-extensions.yaml` | `epp-extensions/epp-extensions.yaml` |
 | `xsd/epp-1.0.xsd`, `eppcom-1.0.xsd`, `domain-1.0.xsd`, `host-1.0.xsd`, `contact-1.0.xsd`, `secDNS-1.1.xsd`, `rgp-1.0.xsd` | `epp-extensions/xsd/` |
+| `xsd/launch-1.0.xsd`, `mark-1.0.xsd`, `signedMark-1.0.xsd`, `xmldsig-core-schema.xsd` (copied 2026-11-03, same commit) | `epp-extensions/xsd/`. `launch-1.0` imports `mark-1.0` and `signedMark-1.0`, which imports XML Signature; all four are needed for xmllint to load the launch schema |
 | `xsd/epp-schemas.xsd` | *Not from the source.* Written here: it imports the pinned schemas with their locations, because they import one another by namespace only |
 
-`launch-1.0.xsd` is not pinned yet. It imports the mark and signedMark schemas, which nothing here uses; it arrives with launch-phase support.
+The Go models (`../../schema`, ADR 0016) cover `launch-1.0` for the frames a client sends. Of the trademark evidence a `<launch:create>` may carry, only `<smd:encodedSignedMark>` (the form ICANN's SMD files take) and `<launch:codeMark>` with a `<launch:code>` are modelled; a decoded `<smd:signedMark>` and an inline `<mark:mark>` are not, so a frame carrying one is 2001 until sunrise support (roadmap 9b) models the mark and XML Signature schemas. None of this evidence is verified yet: a create carrying any of it is refused with 2306.
 
 ## Moving to a newer release
 

@@ -15,6 +15,10 @@ type EPPDomainService interface {
 	// unavailable name is a result with a reason; an error means the
 	// registry could not answer.
 	Check(ctx context.Context, names []string) ([]*queries.DomainCheckResult, error)
+	// LaunchCheck is Check in the launch phase named (RFC 8334 §3.1.1, the
+	// availability check form): the phase must be an active launch phase
+	// of each name's TLD, or the command is refused.
+	LaunchCheck(ctx context.Context, names []string, phase commands.EPPLaunchPhase) ([]*queries.DomainCheckResult, error)
 	// Info returns a domain the registrar sponsors; or, for another
 	// registrar that gives the domain's transfer code (authInfo, nil if none
 	// was given), its limited view (RFC 9154 §5.3).

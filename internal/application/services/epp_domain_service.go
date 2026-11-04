@@ -115,6 +115,26 @@ func NewEPPDomainService(d EPPDomainServiceDeps) *EPPDomainService {
 // Check is not scoped to a registrar: availability is the same for all
 // (ADR 0006 scopes reads and writes of sponsored objects, not this).
 func (s *EPPDomainService) Check(ctx context.Context, names []string) ([]*queries.DomainCheckResult, error) {
+	return s.check(ctx, names, entities.PhaseRef{})
+}
+
+// LaunchCheck is Check in the launch phase a <launch:check type="avail">
+// names (RFC 8334 §3.1.1.2, ADR 0024): availability under that phase's
+// label rules, in the plain <domain:chkData>. The phase is resolved as a
+// registration would resolve it (TLD.RegistrationContextAt): an unknown,
+// GA, ended, future or ambiguous phase refuses the command rather than
+// answering names, since the phase is the command's, not a name's.
+func (s *EPPDomainService) LaunchCheck(ctx context.Context, names []string, phase commands.EPPLaunchPhase) ([]*queries.DomainCheckResult, error) {
+	return s.check(ctx, names, launchRef(phase))
+}
+
+// launchRef is the PhaseRef a <launch:phase> asks for: its name attribute,
+// if given, and its value as the mode.
+func launchRef(p commands.EPPLaunchPhase) entities.PhaseRef {
+	return entities.PhaseRef{Name: entities.ClIDType(p.Name), Mode: entities.LaunchMode(p.Value)}
+}
+
+func (s *EPPDomainService) check(ctx context.Context, names []string, ref entities.PhaseRef) ([]*queries.DomainCheckResult, error) {
 	results := make([]*queries.DomainCheckResult, len(names))
 	parsed := make([]*entities.DomainName, len(names))
 	tlds := map[string]*tldForCheck{}
@@ -129,7 +149,7 @@ func (s *EPPDomainService) Check(ctx context.Context, names []string) ([]*querie
 		tlds[dn.ParentDomain()] = nil
 	}
 	for name := range tlds {
-		t, err := s.tldForCheck(ctx, name)
+		t, err := s.tldForCheck(ctx, name, ref)
 		if err != nil {
 			return nil, err
 		}
@@ -179,14 +199,20 @@ func (s *EPPDomainService) Check(ctx context.Context, names []string) ([]*querie
 	return results, nil
 }
 
-// tldForCheck is what Check needs to know about a TLD: its current GA
-// phase, or why no name in it is available.
+// tldForCheck is what Check and Create need to know about a TLD: the phase
+// that governs a registration in it (the GA phase in force, or the launch
+// phase asked for), or why no name in it is available.
 type tldForCheck struct {
 	phase  *entities.Phase
 	reason string
 }
 
-func (s *EPPDomainService) tldForCheck(ctx context.Context, name string) (*tldForCheck, error) {
+// tldForCheck resolves the phase ref against the TLD's phases
+// (TLD.RegistrationContextAt, ADR 0024). A TLD that is not served, or has
+// no phases, or has no GA phase in force when none is named, is an answer
+// (reason), not an error. A launch phase named that cannot be registered in
+// is an error, answered to the command.
+func (s *EPPDomainService) tldForCheck(ctx context.Context, name string, ref entities.PhaseRef) (*tldForCheck, error) {
 	// Phases are listed oldest first, a page at a time; a TLD that has
 	// accumulated many has its current GA phase on a later page.
 	var phases []*entities.Phase
@@ -216,11 +242,14 @@ func (s *EPPDomainService) tldForCheck(ctx context.Context, name string) (*tldFo
 	for _, p := range phases {
 		t.Phases = append(t.Phases, *p)
 	}
-	phase, err := t.GetCurrentGAPhase()
+	rc, err := t.RegistrationContextAt(ref, s.now().UTC())
 	if err != nil {
-		return &tldForCheck{reason: CheckReasonNotOpen}, nil //nolint:nilerr // no current GA phase is an answer, not a failure
+		if ref.IsGA() && errors.Is(err, entities.ErrNoActivePhase) {
+			return &tldForCheck{reason: CheckReasonNotOpen}, nil //nolint:nilerr // no current GA phase is an answer, not a failure
+		}
+		return nil, err
 	}
-	return &tldForCheck{phase: phase}, nil
+	return &tldForCheck{phase: rc.Phase}, nil
 }
 
 // registeredOrReserved looks names up at once, and returns which of them

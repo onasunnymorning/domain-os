@@ -30,6 +30,27 @@ type EPPCreateDomainCommand struct {
 	DSData     []EPPDSData
 	MaxSigLife int
 	KeyData    bool
+	// Launch is the <launch:create> extension (RFC 8334 §3.3), nil if none
+	// was given.
+	Launch *EPPLaunchCreate
+}
+
+// EPPLaunchPhase is a <launch:phase> (RFC 8334 §2.3): one of the five
+// phase values, and the name attribute if one was given.
+type EPPLaunchPhase struct {
+	Value string // sunrise, landrush, claims, open or custom
+	Name  string
+}
+
+// EPPLaunchCreate is a <launch:create>: the phase, the type attribute
+// (application, registration or empty), and how much trademark evidence it
+// carried, which the registry does not yet verify.
+type EPPLaunchCreate struct {
+	Phase EPPLaunchPhase
+	Type  string
+	// Marks counts the <launch:codeMark> and <smd:encodedSignedMark>
+	// elements; Notices the <launch:notice> elements.
+	Marks, Notices int
 }
 
 // EPPDSData is one <secDNS:dsData>.

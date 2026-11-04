@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+  <command>
+    <create>
+      <domain:create xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
+        <domain:name>example.com</domain:name>
+        <domain:registrant>jd1234</domain:registrant>
+        <domain:authInfo>
+          <domain:pw>2fooBAR</domain:pw>
+        </domain:authInfo>
+      </domain:create>
+    </create>
+    <extension>
+      <launch:create xmlns:launch="urn:ietf:params:xml:ns:launch-1.0">
+        <launch:phase>sunrise</launch:phase>
+        <smd:encodedSignedMark xmlns:smd="urn:ietf:params:xml:ns:signedMark-1.0" encoding="base64">
+          PHNtZDpzaWduZWRNYXJrIHhtbG5zOnNtZD0idXJuOmlldGY6cGFyYW1zOnhtbDpuczpzaWduZWRNYXJrLTEuMCI+Li4uPC9zbWQ6c2lnbmVkTWFyaz4=
+        </smd:encodedSignedMark>
+      </launch:create>
+    </extension>
+    <clTRID>ABC-12364</clTRID>
+  </command>
+</epp>

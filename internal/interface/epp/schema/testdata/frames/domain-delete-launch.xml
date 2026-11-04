@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+  <command>
+    <delete>
+      <domain:delete xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
+        <domain:name>example.com</domain:name>
+      </domain:delete>
+    </delete>
+    <extension>
+      <launch:delete xmlns:launch="urn:ietf:params:xml:ns:launch-1.0">
+        <launch:phase>sunrise</launch:phase>
+        <launch:applicationID>abc123</launch:applicationID>
+      </launch:delete>
+    </extension>
+    <clTRID>ABC-12367</clTRID>
+  </command>
+</epp>

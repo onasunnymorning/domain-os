@@ -118,7 +118,7 @@ A frame containing a `<!DOCTYPE>` or any other `<!...>` declaration is always an
 
 Fixed in code; the design is [ARCHITECTURE.md §4](ARCHITECTURE.md#4-frame--protocol-hygiene).
 
-**The pipeline.** Every frame passes, in order: the frame scanner (size, DTD, depth and element caps; 2001), parsing, routing (2000 for an unknown command, 2101 for an RFC 5730 command that is not bound), the session state (2002 before login, or for a second login), the services negotiated at login (below), schema validation (2001), a check that an object command's element is that command's (2001: `<delete><host:info>` passes the schema, whose wildcard takes any object element), a check that no extension element is given twice (2001: a handler reads one, so a second `<secDNS:update>` would be ignored), the policy (the registrar's EPP policy, [§ Policies](#policies); `epp_policy_decisions_total{rule,action}`), and the handler. Then the command is audited and its response sent.
+**The pipeline.** Every frame passes, in order: the frame scanner (size, DTD, depth and element caps; 2001), parsing, routing (2000 for an unknown command, 2101 for an RFC 5730 command that is not bound), the session state (2002 before login, or for a second login), the services negotiated at login (below), schema validation (2001), a check that an object command's element is that command's (2001: `<delete><host:info>` passes the schema, whose wildcard takes any object element), a check that no extension element is given twice (2001: a handler reads one, so a second `<secDNS:update>` would be ignored), a check that every extension element is named for the domain command it extends (2001: `<delete>` with `<launch:update>`, or `<host:info>` with `<launch:info>`, would otherwise be answered as if the extension were not there), the policy (the registrar's EPP policy, [§ Policies](#policies); `epp_policy_decisions_total{rule,action}`), and the handler. Then the command is audited and its response sent.
 
 **Schema validation** ([ADR 0016](../adr/0016-epp-schema-validation-in-go.md)). Every `<hello>` and every bound command is validated against Go models of the EPP schemas, which a differential test keeps in agreement with xmllint on the RST-pinned XSDs. A failure is 2001, with a message naming the element and the rule it broke (`Command syntax error; /epp/command/login/pw: must be 6 to 16 characters`), never the value. A malformed `<login>` is not a failed login. `epp_frames_rejected_total{reason="schema"}` counts them.
 
@@ -131,7 +131,20 @@ Fixed in code; the design is [ARCHITECTURE.md §4](ARCHITECTURE.md#4-frame--prot
 | A command on an object service the session did not ask for | 2307 |
 | A command carrying an extension the session did not ask for | 2103 |
 
-The greeting offers the domain, contact and host object services. It offers three extensions: DNSSEC (`secDNS-1.1`, RFC 5910) for DS data on `<domain:create>`, `<domain:info>` and `<domain:update>`; RGP (`rgp-1.0`, RFC 3915) for the grace period statuses on `<domain:info>`; and secure authorization information for transfer (`secure-authinfo-transfer-1.0`, RFC 9154), which defines no elements and says the registry keeps domain transfer codes as below.
+The greeting offers the domain, contact and host object services. It offers four extensions: DNSSEC (`secDNS-1.1`, RFC 5910) for DS data on `<domain:create>`, `<domain:info>` and `<domain:update>`; RGP (`rgp-1.0`, RFC 3915) for the grace period statuses on `<domain:info>`; secure authorization information for transfer (`secure-authinfo-transfer-1.0`, RFC 9154), which defines no elements and says the registry keeps domain transfer codes as below; and launch phases (`launch-1.0`, RFC 8334) on `<domain:check>` and `<domain:create>`, below.
+
+**Launch phases** ([ADR 0024](../adr/0024-launch-phases-and-epp-launch-extension.md)). A `<launch:phase>` names the phase a command is about: its value (`sunrise`, `landrush`, `claims`, `open` or `custom`) is the phase's mode, its `name` attribute the phase's name. Without a name, the one active launch phase of that mode is meant; the name is needed only when two of one mode are open. The phase must be an active launch phase of the name's TLD: naming no phase, a GA phase, one that has ended or not started, or a mode with two phases open is 2306, naming the phase and the mode when they disagree. Renew, transfer, delete and restore take no launch extension: a registered domain's lifecycle is the GA phase's (ADR 0023).
+
+| Command | Answer |
+|---|---|
+| `<domain:check>` with `<launch:check type="avail">` | The plain `<domain:chkData>`, each name's availability under the phase named (its label rules), with no extension in the response (RFC 8334 §3.1.1.2) |
+| `<launch:check>` of the claims form (the default) or the trademark form | 2102: the registry does not serve claims yet (roadmap 9c) |
+| `<domain:create>` with `<launch:create>` in an open, landrush or custom phase that registers at once | Registered under that phase's prices, fees, policy and horizon, answered as a GA create is (`<launch:creData>` is for applications only); the domain records its phase |
+| `<launch:create type="application">` | 2306: that phase registers at once |
+| A create in a phase that collects applications | 2306 until applications land (roadmap 8c) |
+| A create in a sunrise or claims phase, or carrying `<launch:codeMark>`, `<smd:encodedSignedMark>` or `<launch:notice>` | 2306: trademark evidence is not verified yet (roadmap 9a–9c) |
+| A decoded `<smd:signedMark>` or inline `<mark:mark>` | 2001: not modelled until sunrise lands |
+| `<launch:info>`, `<launch:update>`, `<launch:delete>` | 2306 until applications land |
 
 **`<domain:check>`.** Each name is answered in the order asked, duplicates included, with `avail="1"` or `avail="0"` and a reason:
 
@@ -148,13 +161,14 @@ Availability is the same for every registrar. A command costs two lookups howeve
 
 **`<domain:info>`.** Answered in full only to the sponsoring registrar (ADR 0006). Another registrar gets 2201 without the domain's transfer code, and is not told who the sponsor is; with the code, see *Transfer codes* below. Authorization information other than a password (`<domain:ext>`) is 2102, from any registrar. The `<infData>` carries the name, ROID, statuses, registrant and contacts, nameservers and subordinate hosts as the `hosts` attribute selects (`all`, the default; `del`; `sub`; `none`), the sponsor and creator, and the dates, `<domain:trDate>` once the domain has been transferred. When a transfer code is set it carries an empty `<domain:authInfo><domain:pw/></domain:authInfo>`, never the code; when none is set, no `<domain:authInfo>`. A session that logged in with RGP also gets `<rgp:infData>` with the domain's grace period statuses (`addPeriod`, `renewPeriod`, `autoRenewPeriod`, `transferPeriod`; or, once deleted, `redemptionPeriod`, `pendingRestore` or `pendingDelete`), when it is in one.
 
-**`<domain:create>`.** The registrar must be accredited for the TLD (ADR 0006). The domain is registered in the TLD's current general-availability phase, through the same registration path as the admin API, which prices it, assigns its ROID and writes its `domain.registered` event with the session's login (`epp:<login>`) as actor and the svTRID as correlation ID. Every rule is applied in one order, by the registry, so that of several problems with a command the first in this order is the one reported:
+**`<domain:create>`.** The registrar must be accredited for the TLD (ADR 0006). The domain is registered in the TLD's current general-availability phase, or in the active launch phase a `<launch:create>` names (above), through the same registration path as the admin API, which prices it, assigns its ROID and writes its `domain.registered` event with the session's login (`epp:<login>`) as actor and the svTRID as correlation ID. Every rule is applied in one order, by the registry, so that of several problems with a command the first in this order is the one reported:
 
 | Refusal | Code |
 |---|---|
 | Not a valid domain name | 2005 |
-| TLD not served, or not open (no GA phase in force) | 2306 |
+| TLD not served, or not open (no GA phase in force); or the launch phase named cannot be registered in | 2306 |
 | Registrar not accredited for the TLD | 2201 |
+| The launch phase collects applications, or needs trademark evidence verified; `type="application"`; marks or notices given | 2306 |
 | A period in months that is not whole years | 2306 |
 | Period outside 1 year to the phase's maximum horizon (10 by default); no period is 1 year | 2004 |
 | The phase's label rules exclude the name | 2306 |

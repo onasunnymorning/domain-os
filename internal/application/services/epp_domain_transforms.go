@@ -324,7 +324,7 @@ func (s *EPPDomainService) applyDomainContacts(ctx context.Context, scope entiti
 	if err := s.checkContacts(ctx, scope, added); err != nil {
 		return err
 	}
-	t, err := s.tldForCheck(ctx, dom.Name.ParentDomain())
+	t, err := s.tldForCheck(ctx, dom.Name.ParentDomain(), entities.PhaseRef{})
 	if err != nil {
 		return err
 	}

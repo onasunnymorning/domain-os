@@ -24,7 +24,7 @@ var supportedObjects = []string{nsDomain, nsContact, nsHost}
 // statuses on <domain:info>. Secure authorization information for transfer
 // (RFC 9154) defines no elements: offering it says the registry keeps
 // domain transfer codes as RFC 9154 requires (entities.AuthInfoHash).
-var supportedExtensions = []string{nsSecDNS, nsRGP, nsSecureAuthInfo}
+var supportedExtensions = []string{nsSecDNS, nsRGP, nsSecureAuthInfo, nsLaunch}
 
 // greetingDocument builds the RFC 5730 §2.4 greeting.
 func greetingDocument(now time.Time) *etree.Document {

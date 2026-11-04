@@ -94,7 +94,7 @@ func (s *Server) hostUpdate(ctx context.Context, cmd *command) {
 		c.RemoveAddresses, c.RemoveStatuses = hostAddrs(rem), statusValues(rem)
 	}
 	if name := update.FindElement("chg/name"); name != nil {
-		c.NewName = schema.TokenValue(name.Text())
+		c.NewName = schema.TokenValue(schema.Text(name))
 	}
 	ctx, cancel := context.WithTimeout(withActor(ctx, cmd), commandTimeout)
 	defer cancel()
@@ -128,7 +128,7 @@ func hostAddrs(el *etree.Element) []commands.EPPHostAddress {
 	for _, a := range el.SelectElements("addr") {
 		out = append(out, commands.EPPHostAddress{
 			Version: schema.TokenValue(a.SelectAttrValue("ip", "v4")),
-			Address: schema.TokenValue(a.Text()),
+			Address: schema.TokenValue(schema.Text(a)),
 		})
 	}
 	return out

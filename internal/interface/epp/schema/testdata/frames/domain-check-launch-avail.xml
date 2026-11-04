@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<epp xmlns="urn:ietf:params:xml:ns:epp-1.0">
+  <command>
+    <check>
+      <domain:check xmlns:domain="urn:ietf:params:xml:ns:domain-1.0">
+        <domain:name>example.com</domain:name>
+        <domain:name>example.net</domain:name>
+      </domain:check>
+    </check>
+    <extension>
+      <launch:check xmlns:launch="urn:ietf:params:xml:ns:launch-1.0" type="avail">
+        <launch:phase name="landrush-2026">landrush</launch:phase>
+      </launch:check>
+    </extension>
+    <clTRID>ABC-12360</clTRID>
+  </command>
+</epp>
