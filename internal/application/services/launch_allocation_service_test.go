@@ -113,9 +113,9 @@ func TestLaunchAllocation_ValidateAndReject(t *testing.T) {
 	t.Run("invalid needs a reason", func(t *testing.T) {
 		reg.SetApplication(app.ID.String(), func(a *entities.LaunchApplication) { a.Status = entities.ApplicationStatusPendingValidation })
 		_, err := svc.Validate(ctx, ryOne, &commands.ValidateApplicationCommand{ApplicationID: app.ID.String(), Reason: "not eligible"})
-		assert.ErrorIs(t, err, ErrDecisionRequired, "an omitted outcome decides nothing")
+		assert.ErrorIs(t, err, entities.ErrDecisionRequired, "an omitted outcome decides nothing")
 		_, err = svc.Validate(ctx, ryOne, &commands.ValidateApplicationCommand{ApplicationID: app.ID.String(), Valid: boolPtr(false)})
-		assert.ErrorIs(t, err, ErrReasonRequired)
+		assert.ErrorIs(t, err, entities.ErrReasonRequired)
 		got, err := svc.Validate(ctx, ryOne, &commands.ValidateApplicationCommand{ApplicationID: app.ID.String(), Valid: boolPtr(false), Reason: "not eligible"})
 		require.NoError(t, err)
 		assert.Equal(t, entities.ApplicationStatusInvalid, got.Status)
@@ -124,7 +124,7 @@ func TestLaunchAllocation_ValidateAndReject(t *testing.T) {
 	t.Run("reject", func(t *testing.T) {
 		other := apps[2]
 		_, err := svc.Reject(ctx, ryOne, &commands.RejectApplicationCommand{ApplicationID: other.ID.String()})
-		assert.ErrorIs(t, err, ErrReasonRequired)
+		assert.ErrorIs(t, err, entities.ErrReasonRequired)
 		got, err := svc.Reject(ctx, ryOne, &commands.RejectApplicationCommand{ApplicationID: other.ID.String(), Reason: "withdrawn by the operator"})
 		require.NoError(t, err)
 		assert.Equal(t, entities.ApplicationStatusRejected, got.Status)

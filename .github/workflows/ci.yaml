@@ -85,6 +85,8 @@ jobs:
         with:
           version: v2.12
           args: --config .golangci.arch.yml
+      - name: Architecture tests (INV-06 determinism, INV-09 sentinels)
+        run: go test -count=1 -run 'TestWorkflowDeterminism|TestSentinelsAreDeclaredInTheDomain|TestCountSentinels' ./internal/application/workflows/ ./internal/arch/
 
   envcheck:
     name: Env Var Drift Check

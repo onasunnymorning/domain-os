@@ -13,7 +13,6 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
-	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
@@ -542,7 +541,7 @@ func (ctrl *DomainController) RegisterDomain(ctx *gin.Context) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
-		if errors.Is(err, services.ErrRegistrarNotAccredited) {
+		if errors.Is(err, entities.ErrRegistrarNotAccredited) {
 			ctx.JSON(403, gin.H{"error": err.Error()})
 			return
 		}
@@ -743,7 +742,7 @@ func (ctrl *DomainController) AutoRenewDomain(ctx *gin.Context) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
 		}
-		if errors.Is(err, services.ErrAutoRenewNotEnabledRar) || errors.Is(err, services.ErrAutoRenewNotEnabledTLD) {
+		if errors.Is(err, entities.ErrAutoRenewNotEnabledRar) || errors.Is(err, entities.ErrAutoRenewNotEnabledTLD) {
 			ctx.JSON(403, gin.H{"error": err.Error()})
 			return
 		}
@@ -1376,7 +1375,7 @@ func (ctrl *DomainController) SetStatus(ctx *gin.Context) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
 		}
-		if errors.Is(err, services.ErrCannotSetDomainStatus) || errors.Is(err, entities.ErrInvalidDomainStatus) {
+		if errors.Is(err, entities.ErrCannotSetDomainStatus) || errors.Is(err, entities.ErrInvalidDomainStatus) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
@@ -1408,7 +1407,7 @@ func (ctrl *DomainController) UnSetStatus(ctx *gin.Context) {
 			ctx.JSON(404, gin.H{"error": err.Error()})
 			return
 		}
-		if errors.Is(err, services.ErrCannotSetDomainStatus) {
+		if errors.Is(err, entities.ErrCannotSetDomainStatus) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}

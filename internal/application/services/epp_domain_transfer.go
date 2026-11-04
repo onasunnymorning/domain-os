@@ -43,10 +43,10 @@ func (s *EPPDomainService) transferRequest(ctx context.Context, scope entities.R
 	}
 	accredited, err := s.registrars.IsRegistrarAccreditedForTLD(ctx, dom.Name.ParentDomain(), scope.String())
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrCouldNotDetermineAccreditation, err)
+		return nil, fmt.Errorf("%w: %w", entities.ErrCouldNotDetermineAccreditation, err)
 	}
 	if !accredited {
-		return nil, ErrRegistrarNotAccredited
+		return nil, entities.ErrRegistrarNotAccredited
 	}
 	years := 1
 	if cmd.Period != 0 {

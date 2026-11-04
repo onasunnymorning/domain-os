@@ -14,7 +14,6 @@ import (
 
 	"github.com/onasunnymorning/domain-os/internal/appcontext"
 	"github.com/onasunnymorning/domain-os/internal/application/commands"
-	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/interface/epp/schema"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 )
@@ -32,9 +31,9 @@ var refusals = []struct {
 	{entities.ErrContactNotFound, epplib.StatusObjectDoesNotExist},
 	{entities.ErrHostNotFound, epplib.StatusObjectDoesNotExist},
 	{entities.ErrEPPNotSponsor, epplib.StatusAuthorizationError},
-	{services.ErrRegistrarNotAccredited, epplib.StatusAuthorizationError},
-	{services.ErrDomainExists, epplib.StatusObjectExists},
-	{services.ErrDomainBlocked, epplib.StatusDataManagementPolicyViolation},
+	{entities.ErrRegistrarNotAccredited, epplib.StatusAuthorizationError},
+	{entities.ErrDomainExists, epplib.StatusObjectExists},
+	{entities.ErrDomainBlocked, epplib.StatusDataManagementPolicyViolation},
 	{entities.ErrEPPInvalidPeriod, epplib.StatusValueRangeError},
 	{entities.ErrEPPContactRequired, epplib.StatusMissingParameter},
 	{entities.ErrEPPContactProhibited, epplib.StatusParameterPolicyError},

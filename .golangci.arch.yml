@@ -85,6 +85,43 @@ linters:
             - pkg: log/slog
               desc: "workflows must log via workflow.GetLogger(ctx) (INV-12)"
 
+        # INV-18 — adapters depend on ports, not implementations.
+        # The interface layer (REST, EPP, CLI, ...) imports the application
+        # interfaces and the domain, never the concrete services package: a
+        # handler that holds an interface can be tested with a fake and the
+        # service behind it swapped. The files still importing the package
+        # are allowlisted with what they take from it; each line goes when
+        # that type gets a port in internal/application/interfaces (or, for
+        # a refusal, a domain sentinel per INV-09). Counts as of 2026-11-04.
+        adapters-depend-on-ports:
+          files:
+            - "**/internal/interface/**"
+            - "!**/*_test.go"
+            # rest/tests/api_test_suite.go is the REST suite's composition
+            # root (not a _test.go file, so Ginkgo can share it): it wires
+            # the real services as cmd/api does, which is the one place an
+            # adapter package may name them.
+            - "!**/internal/interface/rest/tests/**"
+            # epp/server.go: *services.EPPAuditLostError, matched with
+            # errors.As to close the session when the audit log is lost.
+            # Goes when the audit service declares that error in the domain.
+            - "!**/internal/interface/epp/server.go"
+            # rest: concrete service types held where no port exists yet.
+            - "!**/internal/interface/rest/dnssec_controller.go"           # *services.DnssecService
+            - "!**/internal/interface/rest/event_search_controller.go"     # *services.EventSearchService
+            - "!**/internal/interface/rest/escrow_keys_controller.go"      # *services.EscrowKeyVersionCreated (a result type)
+            - "!**/internal/interface/rest/escrow_validation_controller.go" # *services.EscrowKeyService
+            # cli: the escrow and JISC tooling constructs its services and
+            # opens its databases through the package; a composition root
+            # in cmd/ would take that over.
+            - "!**/internal/interface/cli/escrow/csvToSQLiteController.go"
+            - "!**/internal/interface/cli/escrow/escrowAnalysis_controller.go"
+            - "!**/internal/interface/cli/escrow/streamingEscrowAnalysis_controller.go"
+            - "!**/internal/interface/cli/jisc/jisc_controller.go"
+          deny:
+            - pkg: github.com/onasunnymorning/domain-os/internal/application/services
+              desc: "adapters depend on internal/application/interfaces and the domain, not on the services package (INV-18)"
+
         # INV-01 — telemetry is never on the event delivery path.
         outbox-no-telemetry:
           files:

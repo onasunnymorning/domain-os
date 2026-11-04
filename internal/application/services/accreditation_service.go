@@ -12,8 +12,6 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
 
-var ErrInvalidAccreditation = errors.New("invalid accreditation")
-
 // AccreditationService implements the AccreditationService interface
 type AccreditationService struct {
 	accRepo        repositories.AccreditationRepository
@@ -42,19 +40,19 @@ func (s *AccreditationService) CreateAccreditation(ctx context.Context, tldName,
 	// Get the TLD
 	tld, err := s.tldRepo.GetByName(ctx, tldName, false)
 	if err != nil {
-		return errors.Join(ErrInvalidAccreditation, err)
+		return errors.Join(entities.ErrInvalidAccreditation, err)
 	}
 
 	// Get the Registrar, preloading TLDs
 	rar, err := s.rarRepo.GetByClID(ctx, rarClID, true)
 	if err != nil {
-		return errors.Join(ErrInvalidAccreditation, err)
+		return errors.Join(entities.ErrInvalidAccreditation, err)
 	}
 
 	// Accredit the Registrar using domain functions
 	err = rar.AccreditFor(tld)
 	if err != nil {
-		return errors.Join(ErrInvalidAccreditation, err)
+		return errors.Join(entities.ErrInvalidAccreditation, err)
 	}
 
 	// Save the accreditation and return the result
@@ -73,19 +71,19 @@ func (s *AccreditationService) DeleteAccreditation(ctx context.Context, tldName,
 	// Get the TLD
 	tld, err := s.tldRepo.GetByName(ctx, tldName, false)
 	if err != nil {
-		return errors.Join(ErrInvalidAccreditation, err)
+		return errors.Join(entities.ErrInvalidAccreditation, err)
 	}
 
 	// Get the Registrar, preloading TLDs
 	rar, err := s.rarRepo.GetByClID(ctx, rarClID, true)
 	if err != nil {
-		return errors.Join(ErrInvalidAccreditation, err)
+		return errors.Join(entities.ErrInvalidAccreditation, err)
 	}
 
 	// Deaccredit the Registrar using domain functions
 	err = rar.DeAccreditFor(tld)
 	if err != nil {
-		return errors.Join(ErrInvalidAccreditation, err)
+		return errors.Join(entities.ErrInvalidAccreditation, err)
 	}
 
 	// Delete the accreditation and return the result

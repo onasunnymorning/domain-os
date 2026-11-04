@@ -5,7 +5,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/onasunnymorning/domain-os/internal/application/interfaces"
-	"github.com/onasunnymorning/domain-os/internal/application/services"
 	"github.com/onasunnymorning/domain-os/internal/interface/rest/response"
 	"github.com/onasunnymorning/domain-os/pkg/domain/entities"
 	"github.com/onasunnymorning/domain-os/pkg/domain/queries"
@@ -54,7 +53,7 @@ func (ctrl *AccreditationController) Accredit(ctx *gin.Context) {
 	err := ctrl.accService.CreateAccreditation(ctx.Request.Context(), tldName, rarClID)
 	if err != nil {
 		e.Details.Error = err.Error()
-		if errors.Is(err, services.ErrInvalidAccreditation) {
+		if errors.Is(err, entities.ErrInvalidAccreditation) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 		} else {
 			ctx.JSON(500, gin.H{"error": err.Error()})
@@ -86,7 +85,7 @@ func (ctrl *AccreditationController) Deaccredit(ctx *gin.Context) {
 	err := ctrl.accService.DeleteAccreditation(ctx.Request.Context(), tldName, rarClID)
 	if err != nil {
 		e.Details.Error = err.Error()
-		if errors.Is(err, services.ErrInvalidAccreditation) {
+		if errors.Is(err, entities.ErrInvalidAccreditation) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}

@@ -19,29 +19,6 @@ import (
 	"github.com/onasunnymorning/domain-os/pkg/domain/repositories"
 )
 
-var (
-	// ErrDomainExists is returned when a domain already exists
-	ErrDomainExists = errors.New("domain exists")
-	// ErrDomainBlocked is returned when a domain is blocked
-	ErrDomainBlocked = errors.New("domain is blocked")
-	// ErrPhaseRequired is returned when a phase is required to check domain availability
-	ErrPhaseRequired = errors.New("phase is required to check domain availability")
-	// ErrAutoRenewNotEnabledRar is returned when auto renew is not enabled for the registrar
-	ErrAutoRenewNotEnabledRar = errors.New("auto renew is not enabled for this registrar")
-	// ErrAutoRenewNotEnabledRar is returned when auto renew is not enabled for the TLD
-	ErrAutoRenewNotEnabledTLD = errors.New("auto renew is not enabled for this TLD")
-	// ErrRegistrarNotAccredited is returned when the registrar is not accredited for the TLD
-	ErrRegistrarNotAccredited = errors.New("registrar is not accredited for this TLD")
-	// ErrCouldNotDetermineAccreditation is returned when the accreditation could not be determined
-	ErrCouldNotDetermineAccreditation = errors.New("could not determine accreditation")
-	// ErrMissingFXRate is returned when the FX rate is required but can't be determined
-	ErrMissingFXRate = errors.New("missing FX rate")
-	// ErrCannotSetDomainStatus is returned when the domain status cannot be set
-	ErrCannotSetDomainStatus = errors.New("cannot set domain status")
-	// ErrCannotUnSetDomainStatus is returned when the domain status cannot be unset
-	ErrCannotUnSetDomainStatus = errors.New("cannot unset domain status")
-)
-
 // DomainService immplements the DomainService interface
 type DomainService struct {
 	domainRepository repositories.DomainRepository
@@ -1076,7 +1053,7 @@ func (svc *DomainService) availabilityIn(ctx context.Context, response *queries.
 		return response, err
 	}
 	if exists {
-		response.Reason = ErrDomainExists.Error()
+		response.Reason = entities.ErrDomainExists.Error()
 		return response, nil
 	}
 
@@ -1087,7 +1064,7 @@ func (svc *DomainService) availabilityIn(ctx context.Context, response *queries.
 		return response, err
 	}
 	if blocked {
-		response.Reason = ErrDomainBlocked.Error()
+		response.Reason = entities.ErrDomainBlocked.Error()
 		return response, nil
 	}
 
@@ -1110,7 +1087,7 @@ func (svc *DomainService) CheckDomain(ctx context.Context, q *queries.DomainChec
 
 	// Check the availability of the domain in the phase or the current GA phase
 	availability, err := svc.CheckDomainAvailability(ctx, q.DomainName.String(), q.PhaseName)
-	if err != nil && !errors.Is(err, ErrDomainExists) && !errors.Is(err, ErrDomainBlocked) && !errors.Is(err, entities.ErrLabelNotValidInPhase) {
+	if err != nil && !errors.Is(err, entities.ErrDomainExists) && !errors.Is(err, entities.ErrDomainBlocked) && !errors.Is(err, entities.ErrLabelNotValidInPhase) {
 		return nil, err
 	}
 	// Create the result object
@@ -1159,11 +1136,11 @@ func (svc *DomainService) RegisterDomain(ctx context.Context, cmd *commands.Regi
 	domName := entities.DomainName(cmd.Name)
 	isAccredited, err := svc.rarRepo.IsRegistrarAccreditedForTLD(ctx, domName.ParentDomain(), cmd.ClID)
 	if err != nil {
-		return nil, errors.Join(ErrCouldNotDetermineAccreditation, err)
+		return nil, errors.Join(entities.ErrCouldNotDetermineAccreditation, err)
 	}
 	if !isAccredited {
 		dom := entities.DomainName(cmd.Name)
-		return nil, errors.Join(ErrRegistrarNotAccredited, fmt.Errorf("Registrar.ClID: %s, TLD: %s", cmd.ClID, dom.ParentDomain()))
+		return nil, errors.Join(entities.ErrRegistrarNotAccredited, fmt.Errorf("Registrar.ClID: %s, TLD: %s", cmd.ClID, dom.ParentDomain()))
 	}
 
 	// The TLD, with its phases, prices and fees, is read once here: the
@@ -1252,8 +1229,8 @@ func (svc *DomainService) registerIn(ctx context.Context, cmd *commands.Register
 	// If the domain is not available, return now. A name registered since
 	// it was checked keeps its sentinel, so a caller can answer "exists".
 	if !checkResult.Available {
-		if checkResult.Reason == ErrDomainExists.Error() {
-			return nil, errors.Join(entities.ErrInvalidDomain, ErrDomainExists)
+		if checkResult.Reason == entities.ErrDomainExists.Error() {
+			return nil, errors.Join(entities.ErrInvalidDomain, entities.ErrDomainExists)
 		}
 		return nil, errors.Join(entities.ErrInvalidDomain, errors.New(checkResult.Reason))
 	}
@@ -1556,7 +1533,7 @@ func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, year
 		return nil, err
 	}
 	if !phase.Lifecycle().AutoRenewAllowed() {
-		return nil, ErrAutoRenewNotEnabledTLD
+		return nil, entities.ErrAutoRenewNotEnabledTLD
 	}
 
 	// Get the Registrar and check if the registrar has opted in for auto renew
@@ -1565,7 +1542,7 @@ func (svc *DomainService) AutoRenewDomain(ctx context.Context, name string, year
 		return nil, err
 	}
 	if !rar.Autorenew {
-		return nil, ErrAutoRenewNotEnabledRar
+		return nil, entities.ErrAutoRenewNotEnabledRar
 	}
 
 	// Create a lifecycle event for logging
@@ -1977,7 +1954,7 @@ func (s *DomainService) quoteIn(ctx context.Context, q *queries.QuoteRequest, ph
 		fx, err = s.fxRepo.GetByBaseAndTargetCurrency(ctx, phase.Policy.BaseCurrency, strings.ToUpper(q.Currency))
 		if err != nil {
 			// If we don't have an FX rate, and we need it, return an error
-			return nil, errors.Join(ErrMissingFXRate, err)
+			return nil, errors.Join(entities.ErrMissingFXRate, err)
 		}
 	}
 
@@ -2049,7 +2026,7 @@ func (s *DomainService) SetStatus(ctx context.Context, domainName, status string
 	defer done(&err)
 	// Fail early before making any DB calls
 	if !slices.Contains(entities.ValidDomainStatuses, (status)) {
-		return nil, errors.Join(ErrCannotSetDomainStatus, entities.ErrInvalidDomainStatus)
+		return nil, errors.Join(entities.ErrCannotSetDomainStatus, entities.ErrInvalidDomainStatus)
 	}
 	// Get the domain
 	dom, err := s.GetDomainByName(ctx, domainName, false)
@@ -2063,7 +2040,7 @@ func (s *DomainService) SetStatus(ctx context.Context, domainName, status string
 	// Set the status
 	err = dom.SetStatus(status)
 	if err != nil {
-		return nil, errors.Join(ErrCannotSetDomainStatus, err)
+		return nil, errors.Join(entities.ErrCannotSetDomainStatus, err)
 	}
 
 	// Save the domain
@@ -2096,7 +2073,7 @@ func (s *DomainService) UnSetStatus(ctx context.Context, domainName, status stri
 	defer done(&err)
 	// Fail early before making any DB calls
 	if !slices.Contains(entities.ValidDomainStatuses, status) {
-		return nil, errors.Join(ErrCannotSetDomainStatus, entities.ErrInvalidDomainStatus)
+		return nil, errors.Join(entities.ErrCannotSetDomainStatus, entities.ErrInvalidDomainStatus)
 	}
 	// Get the domain
 	dom, err := s.GetDomainByName(ctx, domainName, false)
@@ -2110,7 +2087,7 @@ func (s *DomainService) UnSetStatus(ctx context.Context, domainName, status stri
 	// Unset the status
 	err = dom.UnSetStatus(status)
 	if err != nil {
-		return nil, errors.Join(ErrCannotSetDomainStatus, err)
+		return nil, errors.Join(entities.ErrCannotSetDomainStatus, err)
 	}
 
 	// Save the domain
@@ -2442,7 +2419,7 @@ func (svc *DomainService) BatchAutoRenewDomains(ctx context.Context, names []str
 		// Check if phase allows auto-renew
 		if !phase.Lifecycle().AutoRenewAllowed() {
 			for _, n := range tldNames {
-				result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: ErrAutoRenewNotEnabledTLD.Error()})
+				result.Failed = append(result.Failed, BatchFailure{DomainName: n, Error: entities.ErrAutoRenewNotEnabledTLD.Error()})
 			}
 			continue
 		}
@@ -2462,7 +2439,7 @@ func (svc *DomainService) BatchAutoRenewDomains(ctx context.Context, names []str
 				rarCache[clid] = rar
 			}
 			if !rar.Autorenew {
-				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: ErrAutoRenewNotEnabledRar.Error()})
+				result.Failed = append(result.Failed, BatchFailure{DomainName: name, Error: entities.ErrAutoRenewNotEnabledRar.Error()})
 				continue
 			}
 

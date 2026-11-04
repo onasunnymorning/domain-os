@@ -162,10 +162,10 @@ func (s *EPPDomainService) admitCreate(ctx context.Context, scope entities.Regis
 	}
 	accredited, err := s.registrars.IsRegistrarAccreditedForTLD(ctx, dn.ParentDomain(), scope.String())
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrCouldNotDetermineAccreditation, err)
+		return nil, fmt.Errorf("%w: %w", entities.ErrCouldNotDetermineAccreditation, err)
 	}
 	if !accredited {
-		return nil, ErrRegistrarNotAccredited
+		return nil, entities.ErrRegistrarNotAccredited
 	}
 	if err := admitLaunchCreate(t.phase, cmd.Launch); err != nil {
 		return nil, err
@@ -181,9 +181,9 @@ func (s *EPPDomainService) admitCreate(ctx context.Context, scope entities.Regis
 	case err != nil:
 		return nil, err
 	case registered[dn.String()]:
-		return nil, ErrDomainExists
+		return nil, entities.ErrDomainExists
 	case reserved[dn.String()]:
-		return nil, ErrDomainBlocked
+		return nil, entities.ErrDomainBlocked
 	}
 	if err := adm.c.assignContacts(cmd.Contacts); err != nil {
 		return nil, err
@@ -229,7 +229,7 @@ func (s *EPPDomainService) registerAdmitted(ctx context.Context, scope entities.
 		// Another registrar may have registered the name since it was
 		// checked; that is "exists", whatever the registration path said.
 		if _, lookupErr := s.domains.GetDomainByName(ctx, adm.name.String(), false); lookupErr == nil {
-			return nil, ErrDomainExists
+			return nil, entities.ErrDomainExists
 		}
 		return nil, err
 	}

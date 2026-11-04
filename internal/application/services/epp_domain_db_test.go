@@ -158,7 +158,7 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 		c := create
 		c.RegistrantID, c.Contacts, c.HostNames = "c"+rar2, []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar2}}, nil
 		_, err := svc.Create(ctx, scope2, c)
-		require.ErrorIs(t, err, ErrRegistrarNotAccredited)
+		require.ErrorIs(t, err, entities.ErrRegistrarNotAccredited)
 	})
 
 	// The EPP adapter marks the context with the session's login, as here.
@@ -202,7 +202,7 @@ func TestEPPDomainCreateOverPostgres(t *testing.T) {
 	})
 	t.Run("a second create of the name is refused as existing", func(t *testing.T) {
 		_, err := svc.Create(ctx, scope1, create)
-		require.ErrorIs(t, err, ErrDomainExists)
+		require.ErrorIs(t, err, entities.ErrDomainExists)
 	})
 	t.Run("another registrar cannot read it", func(t *testing.T) {
 		_, err := svc.Info(ctx, scope2, create.Name, nil)
@@ -430,12 +430,12 @@ func TestLaunchAllocationOverPostgres(t *testing.T) {
 		_, err = f.registry.RegisterDomain(ctx, &commands.RegisterDomainCommand{Name: "taken." + tld, ClID: rar2, RegistrantID: "c" + rar2, TechID: "c" + rar2, Years: 1})
 		require.NoError(t, err)
 		_, err = alloc.Allocate(ctx, testPlatformScope, &commands.AllocateApplicationCommand{ApplicationID: res.Application.ID.String()})
-		assert.ErrorIs(t, err, ErrDomainExists)
+		assert.ErrorIs(t, err, entities.ErrDomainExists)
 		_, err = svc.Create(ctx, entities.RegistrarClID(rar2), commands.EPPCreateDomainCommand{
 			Name: "taken." + tld, RegistrantID: "c" + rar2, Contacts: []commands.EPPDomainContact{{Type: "tech", ID: "c" + rar2}},
 			Launch: &commands.EPPLaunchCreate{Phase: commands.EPPLaunchPhase{Value: "landrush"}, Type: "application"},
 		})
-		assert.ErrorIs(t, err, ErrDomainExists)
+		assert.ErrorIs(t, err, entities.ErrDomainExists)
 		// The repository's own check, under the name's lock, for a filing
 		// whose availability check ran before the registration.
 		late := res.Application.DeepCopy()

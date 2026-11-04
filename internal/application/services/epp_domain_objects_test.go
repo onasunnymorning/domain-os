@@ -91,8 +91,8 @@ func TestEPPDomainCreateRefusals(t *testing.T) {
 		{"eleven years", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period = 11 }, entities.ErrEPPInvalidPeriod},
 		{"121 months", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period, c.PeriodUnit = 120+1, "m" }, entities.ErrEPPPeriodNotWholeYears},
 		{"132 months", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period, c.PeriodUnit = 132, "m" }, entities.ErrEPPInvalidPeriod},
-		{"registered", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "taken.test" }, ErrDomainExists},
-		{"reserved", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "held.test" }, ErrDomainBlocked},
+		{"registered", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "taken.test" }, entities.ErrDomainExists},
+		{"reserved", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "held.test" }, entities.ErrDomainBlocked},
 		{"a contact without a type", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[0].Type = "" }, entities.ErrEPPContactTypeMissing},
 		{"two contacts of one type", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[0].Type = "tech" }, entities.ErrEPPDuplicateContactType},
 		{"unknown contact", rar1, func(c *commands.EPPCreateDomainCommand) { c.Contacts[0].ID = "nobody" }, entities.ErrContactNotFound},
@@ -151,7 +151,7 @@ func TestEPPDomainCreateRefusals(t *testing.T) {
 		reg.AddTLD("other", true)
 		cmd.Name = "x.other"
 		_, err := svc.Create(context.Background(), rar1, cmd)
-		require.ErrorIs(t, err, ErrRegistrarNotAccredited)
+		require.ErrorIs(t, err, entities.ErrRegistrarNotAccredited)
 	})
 }
 
@@ -177,7 +177,7 @@ func TestEPPDomainCreateRefusalOrder(t *testing.T) {
 	}{
 		{"an invalid name comes first", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "-bad-.test" }, entities.ErrInvalidDomain},
 		{"then the TLD", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.closed" }, entities.ErrEPPTLDNotOpen},
-		{"then accreditation", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.open" }, ErrRegistrarNotAccredited},
+		{"then accreditation", rar1, func(c *commands.EPPCreateDomainCommand) { c.Name = "x.open" }, entities.ErrRegistrarNotAccredited},
 		{"then the period", rar1, func(*commands.EPPCreateDomainCommand) {}, entities.ErrEPPPeriodNotWholeYears},
 		{"then the contacts", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period = 12 }, entities.ErrEPPDuplicateContactType},
 		{"then the nameservers", rar1, func(c *commands.EPPCreateDomainCommand) { c.Period, c.Contacts = 12, c.Contacts[:2] }, entities.ErrEPPHostAttributes},
@@ -221,7 +221,7 @@ func TestEPPDomainCreateLostRace(t *testing.T) {
 		return errors.New("duplicate key value violates unique constraint")
 	})
 	_, err := svc.Create(context.Background(), rar1, validCreate("race.test"))
-	require.ErrorIs(t, err, ErrDomainExists, "a lost race is reported as the name existing")
+	require.ErrorIs(t, err, entities.ErrDomainExists, "a lost race is reported as the name existing")
 }
 
 func TestEPPDomainInfo(t *testing.T) {

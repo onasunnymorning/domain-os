@@ -63,7 +63,7 @@ func (s *EPPDomainService) fileApplication(ctx context.Context, scope entities.R
 	}
 	stored, err := s.applications.CreateApplication(ctx, app)
 	if errors.Is(err, entities.ErrDomainAlreadyExists) {
-		return nil, ErrDomainExists // registered since it was checked
+		return nil, entities.ErrDomainExists // registered since it was checked
 	}
 	return stored, err
 }
