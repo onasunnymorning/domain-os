@@ -32,13 +32,33 @@ type fakeTMCHRepo struct {
 	fail   map[string]error
 }
 
+// stale is the repository's decision under its lock: a fetched set that
+// does not supersede the stored one has its fetch time recorded and is
+// refused with ErrTMCHListStale.
+func (r *fakeTMCHRepo) stale(stored *entities.TMCHSetStatus, fetched entities.TMCHSetStatus, touch func()) error {
+	if stored != nil && !fetched.Supersedes(stored) {
+		touch()
+		return entities.ErrTMCHListStale
+	}
+	return nil
+}
+
 func (r *fakeTMCHRepo) ReplaceCertificates(_ context.Context, b *entities.TMCHCertificates, ev []entities.DomainEvent) error {
 	if err := r.fail[entities.TMCHSetCertificates]; err != nil {
+		return err
+	}
+	var stored *entities.TMCHSetStatus
+	if r.certs != nil {
+		st := r.certs.Status()
+		stored = &st
+	}
+	if err := r.stale(stored, b.Status(), func() { r.certs.FetchedAt = b.FetchedAt }); err != nil {
 		return err
 	}
 	r.certs, r.events = b, append(r.events, ev...)
 	return nil
 }
+func (r *fakeTMCHRepo) MarkFetched(context.Context, string, time.Time) error { return nil }
 func (r *fakeTMCHRepo) GetCertificates(context.Context) (*entities.TMCHCertificates, error) {
 	if r.certs == nil {
 		return nil, entities.ErrTMCHDataMissing
@@ -49,6 +69,14 @@ func (r *fakeTMCHRepo) ReplaceSMDRL(_ context.Context, l *entities.SMDRevocation
 	if err := r.fail[entities.TMCHSetSMDRL]; err != nil {
 		return err
 	}
+	var stored *entities.TMCHSetStatus
+	if r.smdrl != nil {
+		st := r.smdrl.Status()
+		stored = &st
+	}
+	if err := r.stale(stored, l.Status(), func() { r.smdrl.FetchedAt = l.FetchedAt }); err != nil {
+		return err
+	}
 	r.smdrl, r.events = l, append(r.events, ev...)
 	return nil
 }
@@ -57,6 +85,14 @@ func (r *fakeTMCHRepo) IsSMDRevoked(_ context.Context, id string) (bool, error) 
 }
 func (r *fakeTMCHRepo) ReplaceDNL(_ context.Context, l *entities.DNLList, ev []entities.DomainEvent) error {
 	if err := r.fail[entities.TMCHSetDNL]; err != nil {
+		return err
+	}
+	var stored *entities.TMCHSetStatus
+	if r.dnl != nil {
+		st := r.dnl.Status()
+		stored = &st
+	}
+	if err := r.stale(stored, l.Status(), func() { r.dnl.FetchedAt = l.FetchedAt }); err != nil {
 		return err
 	}
 	r.dnl, r.events = l, append(r.events, ev...)
@@ -169,7 +205,12 @@ func TestTMCHService_Refresh(t *testing.T) {
 		revoked, _ := repo.IsSMDRevoked(ctx, "1-65535")
 		assert.True(t, revoked)
 
-		// The same generation again: nothing written, nothing emitted.
+		// The same generation again: nothing written but the fetch time,
+		// nothing emitted.
+		later := tmchNow.Add(6 * time.Hour)
+		feed := tmchFeed(t, gen)
+		feed.dnl.FetchedAt, feed.smdrl.FetchedAt, feed.certs.FetchedAt = later, later, later
+		svc.fetcher = feed
 		result, err = svc.Refresh(ctx)
 		require.NoError(t, err)
 		assert.Equal(t, map[string]string{"certificates": "unchanged", "smdrl": "unchanged", "dnl": "unchanged"}, outcomes(result))
@@ -177,6 +218,7 @@ func TestTMCHService_Refresh(t *testing.T) {
 		assert.Equal(t, 0, result.Refreshed())
 		require.NotNil(t, result.Sets[2].Status, "an unchanged set still reports what is stored")
 		assert.Equal(t, 1, result.Sets[2].Status.Entries)
+		assert.Equal(t, later, result.Sets[2].Status.FetchedAt, "the fetch is recorded although nothing changed")
 	})
 
 	t.Run("a newer generation replaces, an older one does not", func(t *testing.T) {

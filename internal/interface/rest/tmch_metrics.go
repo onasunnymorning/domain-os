@@ -40,7 +40,7 @@ func NewTMCHCollector(svc interfaces.TMCHService) *TMCHCollector {
 		generated: prometheus.NewDesc("tmch_set_generated_timestamp_seconds",
 			"When the Clearinghouse generated the stored copy of a TMCH data set, as a Unix timestamp; 0 until first fetched.", []string{"set"}, nil),
 		fetched: prometheus.NewDesc("tmch_set_fetched_timestamp_seconds",
-			"When this registry last fetched a TMCH data set, as a Unix timestamp; 0 until first fetched.", []string{"set"}, nil),
+			"When this registry last fetched a TMCH data set from the Clearinghouse, whether or not it brought a new generation, as a Unix timestamp; 0 until first fetched.", []string{"set"}, nil),
 		entries: prometheus.NewDesc("tmch_set_entries",
 			"How many entries the stored copy of a TMCH data set holds.", []string{"set"}, nil),
 		certsExpire: prometheus.NewDesc("tmch_certificates_not_after_timestamp_seconds",
@@ -72,8 +72,11 @@ func (c *TMCHCollector) Collect(ch chan<- prometheus.Metric) {
 	defer cancel()
 	status, err := c.svc.Status(ctx)
 	if err != nil {
+		// The per-set series are left out rather than read as "never
+		// fetched": they go stale, and the error counter says why.
 		c.errs.Add(1)
-		status = &entities.TMCHStatus{}
+		ch <- prometheus.MustNewConstMetric(c.readErrors, prometheus.CounterValue, float64(c.errs.Load()))
+		return
 	}
 	ch <- prometheus.MustNewConstMetric(c.readErrors, prometheus.CounterValue, float64(c.errs.Load()))
 

@@ -40,9 +40,9 @@ func RefreshTMCH(ctx workflow.Context, params RefreshTMCHParams) (RefreshTMCHRes
 	}
 
 	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-		// The DNL list is tens of megabytes behind credentials; one download
-		// is minutes at worst.
-		StartToCloseTimeout: 15 * time.Minute,
+		// Three downloads of up to five minutes each, then the DNL replace;
+		// the activity heartbeats every 30 seconds while it runs.
+		StartToCloseTimeout: 30 * time.Minute,
 		HeartbeatTimeout:    5 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval:    time.Minute,

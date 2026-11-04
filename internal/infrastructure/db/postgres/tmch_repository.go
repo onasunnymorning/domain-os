@@ -17,8 +17,10 @@ import (
 // row per set in tmch_sets says what is stored and how fresh it is; the
 // entries of each set are in their own table, keyed by what the EPP path
 // will look up (the SMD ID, the label). A set is replaced whole in one
-// transaction, with its outbox events (INV-01), under an advisory lock so
-// two refreshes never interleave.
+// transaction, with its outbox events (INV-01), under an advisory lock, and
+// only after re-reading the stored header under that lock: the decision
+// that the fetched set supersedes the stored one is made where it cannot
+// race another refresh.
 
 // TMCHSetRecord is one data set's header: tmch_sets.
 type TMCHSetRecord struct {
@@ -28,7 +30,9 @@ type TMCHSetRecord struct {
 	FetchedAt   time.Time `gorm:"not null"`
 	Source      string    `gorm:"size:512"`
 	Entries     int
+	Rejected    int
 	ExpiresAt   *time.Time
+	Fingerprint string `gorm:"size:64"`
 }
 
 func (TMCHSetRecord) TableName() string { return "tmch_sets" }
@@ -74,13 +78,32 @@ type TMCHRepository struct{ db *gorm.DB }
 func NewTMCHRepository(db *gorm.DB) *TMCHRepository { return &TMCHRepository{db: db} }
 
 // replace runs fn in a transaction that holds the set's advisory lock, then
-// writes the set header and the events in the same transaction.
+// writes the set header and the events in the same transaction. Under the
+// lock it re-reads the stored header: a fetched set that does not supersede
+// it (entities.TMCHSetStatus.Supersedes) only has its fetch time recorded,
+// and entities.ErrTMCHListStale is returned with nothing else written.
 func (r *TMCHRepository) replace(ctx context.Context, set TMCHSetRecord, events []entities.DomainEvent, fn func(tx *gorm.DB) error) error {
-	return dbFrom(ctx, r.db).Transaction(func(tx *gorm.DB) error {
+	// stale is decided inside the transaction and reported after it: the
+	// fetch time it records has to commit, which an error returned from the
+	// callback would roll back.
+	stale := false
+	err := dbFrom(ctx, r.db).Transaction(func(tx *gorm.DB) error {
 		if tx.Dialector.Name() == "postgres" {
 			if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", "tmch:"+set.Name).Error; err != nil {
 				return fmt.Errorf("lock tmch %s: %w", set.Name, err)
 			}
+		}
+		var stored TMCHSetRecord
+		switch err := tx.Where("name = ?", set.Name).First(&stored).Error; {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+		case err != nil:
+			return fmt.Errorf("read tmch set %s: %w", set.Name, err)
+		case !set.toStatus().Supersedes(stored.toStatus()):
+			stale = true
+			if err := tx.Model(&TMCHSetRecord{}).Where("name = ?", set.Name).Update("fetched_at", set.FetchedAt).Error; err != nil {
+				return fmt.Errorf("mark tmch %s fetched: %w", set.Name, err)
+			}
+			return nil
 		}
 		if err := fn(tx); err != nil {
 			return err
@@ -104,6 +127,13 @@ func (r *TMCHRepository) replace(ctx context.Context, set TMCHSetRecord, events 
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if stale {
+		return fmt.Errorf("%w: %s generated %s", entities.ErrTMCHListStale, set.Name, set.GeneratedAt.Format(time.RFC3339))
+	}
+	return nil
 }
 
 // deleteAll empties a set's table.
@@ -112,11 +142,19 @@ func deleteAll(tx *gorm.DB, model interface{}) error {
 }
 
 func tmchSetRecord(s entities.TMCHSetStatus, version int) TMCHSetRecord {
-	return TMCHSetRecord{Name: s.Set, Version: version, GeneratedAt: s.GeneratedAt, FetchedAt: s.FetchedAt, Source: s.Source, Entries: s.Entries, ExpiresAt: s.ExpiresAt}
+	return TMCHSetRecord{Name: s.Set, Version: version, GeneratedAt: s.GeneratedAt, FetchedAt: s.FetchedAt, Source: s.Source, Entries: s.Entries, Rejected: s.Rejected, ExpiresAt: s.ExpiresAt, Fingerprint: s.Fingerprint}
 }
 
 func (r TMCHSetRecord) toStatus() *entities.TMCHSetStatus {
-	return &entities.TMCHSetStatus{Set: r.Name, GeneratedAt: r.GeneratedAt.UTC(), FetchedAt: r.FetchedAt.UTC(), Source: r.Source, Entries: r.Entries, ExpiresAt: utcPtr(r.ExpiresAt)}
+	return &entities.TMCHSetStatus{Set: r.Name, GeneratedAt: r.GeneratedAt.UTC(), FetchedAt: r.FetchedAt.UTC(), Source: r.Source, Entries: r.Entries, Rejected: r.Rejected, ExpiresAt: utcPtr(r.ExpiresAt), Fingerprint: r.Fingerprint}
+}
+
+// MarkFetched records a fetch that brought nothing new.
+func (r *TMCHRepository) MarkFetched(ctx context.Context, set string, fetchedAt time.Time) error {
+	if err := dbFrom(ctx, r.db).Model(&TMCHSetRecord{}).Where("name = ?", set).Update("fetched_at", fetchedAt.UTC()).Error; err != nil {
+		return fmt.Errorf("mark tmch %s fetched: %w", set, err)
+	}
+	return nil
 }
 
 // ReplaceCertificates stores the bundle in place of the one stored.

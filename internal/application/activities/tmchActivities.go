@@ -3,6 +3,7 @@ package activities
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.temporal.io/sdk/activity"
 	"gorm.io/gorm"
@@ -37,13 +38,16 @@ func NewTMCHActivitiesWithService(svc interfaces.TMCHService) *TMCHActivities {
 // It returns the result and, when any set failed, an error so Temporal
 // retries: a retry is safe, a set already stored is left unchanged.
 func (a *TMCHActivities) RefreshTMCHData(ctx context.Context, correlationID string) (queries.TMCHRefreshResult, error) {
-	if activity.IsActivity(ctx) {
-		activity.RecordHeartbeat(ctx, "fetching TMCH data")
-	}
 	if !a.svc.Configured() {
 		logger := activity.GetLogger(ctx)
 		logger.Info("TMCH feed not configured; nothing to refresh", "correlationID", correlationID)
 		return queries.TMCHRefreshResult{}, nil
+	}
+	// The downloads and the DNL replace can take minutes; heartbeat while
+	// they run so a slow attempt is not timed out and retried beside itself.
+	if activity.IsActivity(ctx) {
+		stop := heartbeat(ctx, tmchHeartbeatEvery, "refreshing TMCH data")
+		defer stop()
 	}
 	result, err := a.svc.Refresh(ctx)
 	if result == nil {
@@ -53,4 +57,28 @@ func (a *TMCHActivities) RefreshTMCHData(ctx context.Context, correlationID stri
 		return *result, fmt.Errorf("refresh TMCH data: %w", err)
 	}
 	return *result, nil
+}
+
+// tmchHeartbeatEvery is how often the refresh activity heartbeats; the
+// workflow's heartbeat timeout is a multiple of it.
+const tmchHeartbeatEvery = 30 * time.Second
+
+// heartbeat records a heartbeat every interval until stop is called.
+func heartbeat(ctx context.Context, every time.Duration, details string) (stop func()) {
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(every)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				activity.RecordHeartbeat(ctx, details)
+			}
+		}
+	}()
+	return func() { close(done) }
 }

@@ -193,23 +193,30 @@ a label, a duplicate entry are refused whole).
 
 **Refresh.** The `refresh-tmch` schedule (every `TMCH_REFRESH_INTERVAL`,
 6h by default, at least hourly) runs one activity through
-`services.TMCHService.Refresh`: fetch each set, and store it only when the
-Clearinghouse generated it later than the one stored. A set is replaced
-whole in one transaction with its `tmch.<set>.refreshed` outbox event
-(INV-01), under an advisory lock, so a reader never sees a partial list and
-the same generation fetched twice writes nothing. A set that fails leaves
-the stored one in place and fails the run, which Temporal retries. The
-admin API runs the same refresh on `POST /tmch/refresh`
-(`registry:policy:admin`).
+`services.TMCHService.Refresh`: fetch each set and have the repository
+store it when it supersedes the stored one (a later generation; for the CA
+bundle, which has no generation of its own, also different contents). The
+repository decides under the set's advisory lock, re-reading the stored
+header there, and replaces the set whole in one transaction with its
+`tmch.<set>.refreshed` outbox event (INV-01): a reader never sees a partial
+list, the same generation fetched twice writes nothing but its fetch time,
+and a slow refresh behind a fast one cannot put an older list back. A row
+of a list that is not an entry (an invalid label, a duplicate) is left out
+and counted rather than failing the list; a file that loses more rows than
+it keeps is refused. A set that fails leaves the stored one in place and
+fails the run, which Temporal retries. The admin API runs the same refresh
+on `POST /tmch/refresh` (`registry:policy:admin`).
 
 **Where the feed is configured.** The URLs and the registry's TMDB
 credentials are deployment settings (ADR 0018: environment, `TMCH_CA_URL`,
 `TMCH_SMDRL_URL`, `TMCH_DNL_URL`, `TMCH_USERNAME`, `TMCH_PASSWORD`,
 `TMCH_REFRESH_INTERVAL`), because they differ between the pilot and the
-production Clearinghouse and the password is a secret. Without credentials
-the feed is not configured: the schedule exists and does nothing, the
-admin API says so, and no freshness alert fires, since such an installation
-runs no sunrise or claims phase.
+production Clearinghouse and the password is a secret. The URLs have
+defaults, so the credentials are what makes an installation a TMCH client:
+without them the feed is not configured, the schedule exists and does
+nothing, the admin API says so, and no freshness alert fires, since such an
+installation runs no sunrise or claims phase. The credentials go only to
+the configured hosts: a redirect to another host or scheme is refused.
 
 **Freshness.** `GET /tmch` reports each set's generation and fetch time.
 The admin API serves them as `tmch_set_generated_timestamp_seconds`,

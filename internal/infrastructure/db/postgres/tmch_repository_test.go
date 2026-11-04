@@ -89,6 +89,11 @@ func TestTMCHRepository(t *testing.T) {
 		require.Len(t, got.Certificates, 1)
 		assert.Equal(t, second.Certificates[0].SerialNumber, got.Certificates[0].SerialNumber)
 		assert.Equal(t, int64(1), eventsBefore(), "no events were given, none written")
+		assert.ErrorIs(t, repo.ReplaceCertificates(ctx, second, event(entities.TMCHSetCertificates)), entities.ErrTMCHListStale, "the same bundle again")
+		assert.Equal(t, int64(1), eventsBefore())
+		status, err = repo.Status(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, second.Fingerprint(), status.Certificates.Fingerprint)
 	})
 
 	t.Run("smdrl", func(t *testing.T) {
@@ -129,6 +134,35 @@ func TestTMCHRepository(t *testing.T) {
 		revoked, err = repo.IsSMDRevoked(ctx, "0000001751373633628125-65535")
 		require.NoError(t, err)
 		assert.False(t, revoked)
+
+		// The decision is made under the lock: the same generation again,
+		// or an older one, is refused with its fetch time recorded and no
+		// event, so a slow refresh behind a fast one cannot put a list back.
+		events := eventsBefore()
+		same, err := entities.NewSMDRevocationList(1, gen.Add(24*time.Hour), []entities.SMDRevocation{{SMDID: "late-1", RevokedAt: gen}}, "https://ry.example/smdrl-latest.csv", now.Add(3*time.Minute))
+		require.NoError(t, err)
+		err = repo.ReplaceSMDRL(ctx, same, event(entities.TMCHSetSMDRL))
+		assert.ErrorIs(t, err, entities.ErrTMCHListStale)
+		older, err := entities.NewSMDRevocationList(1, gen, []entities.SMDRevocation{{SMDID: "late-2", RevokedAt: gen}}, "https://ry.example/smdrl-latest.csv", now.Add(4*time.Minute))
+		require.NoError(t, err)
+		assert.ErrorIs(t, repo.ReplaceSMDRL(ctx, older, event(entities.TMCHSetSMDRL)), entities.ErrTMCHListStale)
+		for _, id := range []string{"late-1", "late-2"} {
+			revoked, err = repo.IsSMDRevoked(ctx, id)
+			require.NoError(t, err)
+			assert.False(t, revoked, "nothing of a refused list is stored")
+		}
+		status, err = repo.Status(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 0, status.SMDRL.Entries)
+		assert.Equal(t, gen.Add(24*time.Hour), status.SMDRL.GeneratedAt)
+		assert.Equal(t, now.Add(4*time.Minute), status.SMDRL.FetchedAt, "the fetch is recorded")
+		assert.Equal(t, events, eventsBefore(), "no event for a refused list")
+
+		require.NoError(t, repo.MarkFetched(ctx, entities.TMCHSetSMDRL, now.Add(5*time.Minute)))
+		status, err = repo.Status(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, now.Add(5*time.Minute), status.SMDRL.FetchedAt)
+		require.NoError(t, repo.MarkFetched(ctx, entities.TMCHSetDNL, now), "a set never stored is left alone")
 	})
 
 	t.Run("dnl", func(t *testing.T) {

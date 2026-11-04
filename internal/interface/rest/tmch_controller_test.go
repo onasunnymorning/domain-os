@@ -121,8 +121,22 @@ func TestTMCHCollector(t *testing.T) {
 	assert.Equal(t, 0.0, gaugeValue(t, reg, "tmch_status_read_errors_total", nil))
 
 	svc.statusErr = errors.New("db down")
-	assert.Equal(t, 0.0, gaugeValue(t, reg, "tmch_set_entries", map[string]string{"set": "dnl"}), "an unreadable status reads as nothing stored")
+	assert.False(t, hasMetric(t, reg, "tmch_set_entries"), "an unreadable status leaves the per-set series out rather than reading as never fetched")
+	assert.False(t, hasMetric(t, reg, "tmch_certificates_not_after_timestamp_seconds"))
+	assert.Equal(t, 1.0, gaugeValue(t, reg, "tmch_feed_configured", nil))
 	assert.GreaterOrEqual(t, gaugeValue(t, reg, "tmch_status_read_errors_total", nil), 1.0, "every scrape that cannot read counts")
+}
+
+func hasMetric(t *testing.T, g prometheus.Gatherer, name string) bool {
+	t.Helper()
+	families, err := g.Gather()
+	require.NoError(t, err)
+	for _, f := range families {
+		if f.GetName() == name {
+			return true
+		}
+	}
+	return false
 }
 
 func gaugeValue(t *testing.T, g prometheus.Gatherer, name string, labels map[string]string) float64 {

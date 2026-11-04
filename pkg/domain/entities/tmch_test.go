@@ -59,6 +59,11 @@ func TestNewTMCHCertificates(t *testing.T) {
 		require.NotNil(t, s.ExpiresAt)
 		assert.Equal(t, c.ExpiresAt(), *s.ExpiresAt)
 		assert.Contains(t, c.Certificates[1].PEM, "BEGIN CERTIFICATE")
+		assert.Len(t, c.Fingerprint(), 64)
+		assert.Equal(t, c.Fingerprint(), s.Fingerprint)
+		only, err := NewTMCHCertificates(valid, "test", tmchNow)
+		require.NoError(t, err)
+		assert.NotEqual(t, c.Fingerprint(), only.Fingerprint(), "a bundle that dropped a certificate has another fingerprint")
 	})
 	t.Run("refusals", func(t *testing.T) {
 		for name, tc := range map[string]struct {
@@ -104,15 +109,21 @@ func TestNewSMDRevocationList(t *testing.T) {
 		entries []SMDRevocation
 		want    error
 	}{
-		"version 2":        {2, gen, entries, ErrTMCHListVersion},
-		"no generation":    {1, time.Time{}, entries, ErrTMCHListGenerated},
-		"empty id":         {1, gen, []SMDRevocation{{SMDID: "", RevokedAt: gen}}, ErrTMCHEntryInvalid},
-		"no revocation at": {1, gen, []SMDRevocation{{SMDID: "x-1"}}, ErrTMCHEntryInvalid},
-		"duplicate":        {1, gen, []SMDRevocation{{SMDID: "x-1", RevokedAt: gen}, {SMDID: "x-1", RevokedAt: gen}}, ErrTMCHEntryDuplicate},
+		"version 2":               {2, gen, entries, ErrTMCHListVersion},
+		"no generation":           {1, time.Time{}, entries, ErrTMCHListGenerated},
+		"only bad rows":           {1, gen, []SMDRevocation{{SMDID: "", RevokedAt: gen}, {SMDID: "x-1"}}, ErrTMCHEntriesRejected},
+		"more rejected than kept": {1, gen, []SMDRevocation{{SMDID: "x-1", RevokedAt: gen}, {SMDID: "x-1", RevokedAt: gen}, {SMDID: "x-1", RevokedAt: gen}}, ErrTMCHEntriesRejected},
 	} {
 		_, err := NewSMDRevocationList(tc.version, tc.gen, tc.entries, "test", tmchNow)
 		assert.ErrorIs(t, err, tc.want, name)
 	}
+	// A bad row beside good ones is left out and counted, not fatal: one
+	// bad row must not keep a day's revocations from being stored.
+	tolerant, err := NewSMDRevocationList(1, gen, append(entries, SMDRevocation{SMDID: "", RevokedAt: gen}, SMDRevocation{SMDID: "0000001751373633628125-65535", RevokedAt: gen}), "test", tmchNow)
+	require.NoError(t, err)
+	assert.Len(t, tolerant.Entries, 2)
+	assert.Equal(t, 2, tolerant.Rejected, "an empty ID and a duplicate")
+	assert.Equal(t, 2, tolerant.Status().Rejected)
 	empty, err := NewSMDRevocationList(1, gen, nil, "test", tmchNow)
 	require.NoError(t, err, "an empty list is a list: nothing revoked")
 	assert.Empty(t, empty.Entries)
@@ -137,21 +148,42 @@ func TestNewDNLList(t *testing.T) {
 	assert.Equal(t, 3, s.Entries)
 	assert.Equal(t, 26*time.Hour, s.Age(tmchNow))
 
-	for name, tc := range map[string]struct {
-		entries []DNLEntry
-		want    error
-	}{
-		"bad label":  {[]DNLEntry{{Label: "-bad", LookupKey: "k", InsertedAt: gen}}, ErrTMCHEntryInvalid},
-		"no key":     {[]DNLEntry{{Label: "ok", LookupKey: "", InsertedAt: gen}}, ErrTMCHEntryInvalid},
-		"no time":    {[]DNLEntry{{Label: "ok", LookupKey: "k"}}, ErrTMCHEntryInvalid},
-		"duplicate":  {[]DNLEntry{{Label: "ok", LookupKey: "k", InsertedAt: gen}, {Label: "OK", LookupKey: "k2", InsertedAt: gen}}, ErrTMCHEntryDuplicate},
-		"with space": {[]DNLEntry{{Label: "a b", LookupKey: "k", InsertedAt: gen}}, ErrTMCHEntryInvalid},
+	// Rows that are not entries are left out and counted; a label this
+	// registry could never register loses nothing by being left off.
+	bad := []DNLEntry{
+		{Label: "-bad", LookupKey: "k", InsertedAt: gen},
+		{Label: "ok", LookupKey: "", InsertedAt: gen},
+		{Label: "ok", LookupKey: "k"},
+		{Label: "a b", LookupKey: "k", InsertedAt: gen},
+		{Label: "ALPHA", LookupKey: "k2", InsertedAt: gen}, // a duplicate of alpha
+	}
+	tolerant, err := NewDNLList(1, gen, append(append([]DNLEntry{}, entries...), bad[0], bad[4]), "test", tmchNow)
+	require.NoError(t, err)
+	assert.Len(t, tolerant.Entries, 3)
+	assert.Equal(t, 2, tolerant.Rejected, "an invalid label and a duplicate")
+	assert.Equal(t, "2013041500/3/1/1/def", tolerant.Lookup("alpha").LookupKey, "the first listing of a label is the one kept")
+	for name, rows := range map[string][]DNLEntry{
+		"only bad rows":           bad,
+		"more rejected than kept": append(append([]DNLEntry{}, entries...), bad...), // 5 of 8
 	} {
-		_, err := NewDNLList(1, gen, tc.entries, "test", tmchNow)
-		assert.ErrorIs(t, err, tc.want, name)
+		_, err = NewDNLList(1, gen, rows, "test", tmchNow)
+		assert.ErrorIs(t, err, ErrTMCHEntriesRejected, name)
 	}
 	_, err = NewDNLList(0, gen, nil, "test", tmchNow)
 	assert.ErrorIs(t, err, ErrTMCHListVersion)
+}
+
+func TestTMCHSetStatus_Supersedes(t *testing.T) {
+	gen := tmchNow
+	stored := &TMCHSetStatus{Set: TMCHSetDNL, GeneratedAt: gen}
+	assert.True(t, TMCHSetStatus{GeneratedAt: gen}.Supersedes(nil), "nothing stored")
+	assert.True(t, TMCHSetStatus{GeneratedAt: gen.Add(time.Hour)}.Supersedes(stored), "a later generation")
+	assert.False(t, TMCHSetStatus{GeneratedAt: gen}.Supersedes(stored), "the same generation")
+	assert.False(t, TMCHSetStatus{GeneratedAt: gen.Add(-time.Hour)}.Supersedes(stored), "an older generation never replaces a newer one")
+	bundle := &TMCHSetStatus{Set: TMCHSetCertificates, GeneratedAt: gen, Fingerprint: "a"}
+	assert.True(t, TMCHSetStatus{GeneratedAt: gen, Fingerprint: "b"}.Supersedes(bundle), "a bundle with other contents at the same generation (a certificate dropped)")
+	assert.False(t, TMCHSetStatus{GeneratedAt: gen, Fingerprint: "a"}.Supersedes(bundle))
+	assert.False(t, TMCHSetStatus{GeneratedAt: gen.Add(-time.Hour), Fingerprint: "b"}.Supersedes(bundle), "an older bundle does not")
 }
 
 func TestTMCHStatus_Set(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -50,19 +51,30 @@ func TestParseSMDRL(t *testing.T) {
 		file string
 		want error
 	}{
-		"empty file":        {"", ErrEmptyList},
-		"one line":          {"1,2026-11-04T00:00:00.0Z\n", ErrEmptyList},
-		"bad version":       {"x,2026-11-04T00:00:00.0Z\nsmd-id,insertion-datetime\n", ErrListHeader},
-		"bad generation":    {"1,yesterday\nsmd-id,insertion-datetime\n", ErrListHeader},
-		"wrong columns":     {"1,2026-11-04T00:00:00.0Z\nDNL,lookup-key,insertion-datetime\n", ErrListHeader},
-		"three fields":      {"1,2026-11-04T00:00:00.0Z\nsmd-id,insertion-datetime\na-1,2026-11-03T12:00:00.0Z,extra\n", ErrListRecord},
-		"bad timestamp":     {"1,2026-11-04T00:00:00.0Z\nsmd-id,insertion-datetime\na-1,noon\n", ErrListRecord},
-		"version 2":         {"2,2026-11-04T00:00:00.0Z\nsmd-id,insertion-datetime\n", entities.ErrTMCHListVersion},
-		"duplicate entries": {"1,2026-11-04T00:00:00.0Z\nsmd-id,insertion-datetime\na-1,2026-11-03T12:00:00.0Z\na-1,2026-11-03T12:00:00.0Z\n", entities.ErrTMCHEntryDuplicate},
+		"empty file":         {"", ErrEmptyList},
+		"one line":           {"1,2026-11-04T00:00:00.0Z\n", ErrEmptyList},
+		"bad version":        {"x,2026-11-04T00:00:00.0Z\nsmd-id,insertion-datetime\n", ErrListHeader},
+		"bad generation":     {"1,yesterday\nsmd-id,insertion-datetime\n", ErrListHeader},
+		"wrong columns":      {"1,2026-11-04T00:00:00.0Z\nDNL,lookup-key,insertion-datetime\n", ErrListHeader},
+		"three fields":       {"1,2026-11-04T00:00:00.0Z\nsmd-id,insertion-datetime\na-1,2026-11-03T12:00:00.0Z,extra\n", ErrListRecord},
+		"bad timestamp":      {"1,2026-11-04T00:00:00.0Z\nsmd-id,insertion-datetime\na-1,noon\n", ErrListRecord},
+		"version 2":          {"2,2026-11-04T00:00:00.0Z\nsmd-id,insertion-datetime\n", entities.ErrTMCHListVersion},
+		"only rejected rows": {"1,2026-11-04T00:00:00.0Z\nsmd-id,insertion-datetime\n,2026-11-03T12:00:00.0Z\n", entities.ErrTMCHEntriesRejected},
 	} {
 		_, err := ParseSMDRL(strings.NewReader(tc.file), "test", now)
 		assert.ErrorIs(t, err, tc.want, name)
 	}
+
+	t.Run("what real files carry", func(t *testing.T) {
+		// A UTF-8 BOM, CRLF line endings, a trailing blank line and a
+		// duplicated row (left out and counted).
+		file := "\xef\xbb\xbf1,2026-11-04T00:00:00.0Z\r\nsmd-id,insertion-datetime\r\na-1,2026-11-03T12:00:00.0Z\r\na-2,2026-11-03T12:00:00.0Z\r\na-1,2026-11-03T12:00:00.0Z\r\n\r\n"
+		l, err := ParseSMDRL(strings.NewReader(file), "test", now)
+		require.NoError(t, err)
+		assert.Len(t, l.Entries, 2)
+		assert.Equal(t, 1, l.Rejected)
+		assert.True(t, l.Revoked("a-2"))
+	})
 }
 
 func TestParseDNL(t *testing.T) {
@@ -81,7 +93,11 @@ func TestParseDNL(t *testing.T) {
 	_, err = ParseDNL(strings.NewReader("1,2026-11-04T00:00:00.0Z\nDNL,lookup-key,insertion-datetime\nok,key\n"), "test", now)
 	assert.ErrorIs(t, err, ErrListRecord)
 	_, err = ParseDNL(strings.NewReader("1,2026-11-04T00:00:00.0Z\nDNL,lookup-key,insertion-datetime\n-bad,key,2026-11-03T00:00:00.0Z\n"), "test", now)
-	assert.ErrorIs(t, err, entities.ErrTMCHEntryInvalid)
+	assert.ErrorIs(t, err, entities.ErrTMCHEntriesRejected, "a file of only bad rows is not a list")
+	tolerant, err := ParseDNL(strings.NewReader(dnlFile+"-bad,key,2026-11-03T00:00:00.0Z\n"), "test", now)
+	require.NoError(t, err, "a bad row beside good ones is left out")
+	assert.Len(t, tolerant.Entries, 2)
+	assert.Equal(t, 1, tolerant.Rejected)
 }
 
 func caPEM(t *testing.T) []byte {
@@ -127,6 +143,9 @@ func TestFeed(t *testing.T) {
 	feed.now = func() time.Time { return now }
 	assert.True(t, feed.Configured())
 	assert.False(t, NewFeed(Config{SMDRLURL: "x"}, nil).Configured())
+	noCreds := cfg
+	noCreds.Username, noCreds.Password = "", ""
+	assert.False(t, NewFeed(noCreds, nil).Configured(), "the URLs have defaults; the credentials are what makes an installation a TMCH client")
 
 	ctx := context.Background()
 	certs, err := feed.FetchCertificates(ctx)
@@ -158,4 +177,32 @@ func TestFeed(t *testing.T) {
 	cancel()
 	_, err = feed.FetchDNL(cancelled)
 	assert.ErrorIs(t, err, ErrFetch)
+
+	t.Run("credentials never leave the configured host", func(t *testing.T) {
+		elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			t.Errorf("the redirect target was fetched: %s", r.URL)
+		}))
+		defer elsewhere.Close()
+		redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, elsewhere.URL+"/dnl.csv", http.StatusFound)
+		}))
+		defer redirecting.Close()
+		_, err := NewFeed(Config{DNLURL: redirecting.URL + "/dnl/dnl-latest.csv", Username: "registry", Password: "pw"}, nil).FetchDNL(ctx)
+		assert.ErrorIs(t, err, ErrFetch)
+		assert.Contains(t, err.Error(), "redirect")
+	})
+
+	t.Run("a URL with userinfo is never shown", func(t *testing.T) {
+		u, _ := url.Parse(srv.URL)
+		u.User = url.UserPassword("inline", "secret-in-url")
+		withUser := NewFeed(Config{DNLURL: u.String() + "/dnl/dnl-latest.csv", Username: "registry", Password: "pw"}, nil)
+		dnl, err := withUser.FetchDNL(ctx)
+		require.NoError(t, err)
+		assert.NotContains(t, dnl.Source, "secret-in-url")
+		assert.Equal(t, srv.URL+"/dnl/dnl-latest.csv", dnl.Source)
+		u.Path = "/missing"
+		_, err = NewFeed(Config{CertificatesURL: u.String()}, nil).FetchCertificates(ctx)
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "secret-in-url")
+	})
 }

@@ -87,7 +87,7 @@ For a registrar's own misconfigured client: once it is fixed, lift the lockouts 
 A stale SMDRL may accept a revoked signed mark in a sunrise; a stale DNL list may answer a claims check wrongly. Neither stops registrations, so this is a same-day fix.
 
 1. `GET $API/tmch` shows each set's generation and fetch time; a fetch time that keeps moving with a generation that does not means the Clearinghouse is publishing the same list, which is their incident, not ours.
-2. Look at the last `refresh-tmch` runs in the Temporal UI (schedule `refresh-tmch`). The run's result names the set and the error: a 401 is the registry's TMDB credentials (`TMCH_USERNAME`, `TMCH_PASSWORD`), a 404 the URL (`TMCH_*_URL`; the pilot and production Clearinghouses differ), a parse error a format change to report to the Clearinghouse.
+2. Look at the last `refresh-tmch` runs in the Temporal UI (schedule `refresh-tmch`). A failed run's failure message names each set that failed and why: a 401 is the registry's TMDB credentials (`TMCH_USERNAME`, `TMCH_PASSWORD`), a 404 the URL (`TMCH_*_URL`; the pilot and production Clearinghouses differ), a parse error a format change to report to the Clearinghouse.
 3. Once the cause is fixed, `POST $API/tmch/refresh` (needs `registry:policy:admin`) fetches at once rather than waiting for the schedule.
 4. On an installation that runs no sunrise or claims phase, the feed may stay unconfigured; the alerts do not fire while `tmch_feed_configured` is 0.
 
@@ -153,7 +153,7 @@ A drop rehearsal: delete a set of test domains, let their redemption and pending
 
 ### Refresh the TMCH data by hand
 
-`POST $API/tmch/refresh` (needs `registry:policy:admin`) fetches the Clearinghouse's CA bundle, SMD revocation list and DNL list and stores each set the Clearinghouse has regenerated, as the `refresh-tmch` schedule does. The answer says what each set did (`refreshed`, `unchanged`, `failed`); 409 means the installation has no feed (`TMCH_USERNAME`, `TMCH_PASSWORD`), 502 that a set could not be fetched or stored, with the stored sets untouched. `GET $API/tmch` shows what is stored.
+`POST $API/tmch/refresh` (needs `registry:policy:admin`) fetches the Clearinghouse's CA bundle, SMD revocation list and DNL list and stores each set the Clearinghouse has regenerated, as the `refresh-tmch` schedule does. The answer says what each set did (`refreshed`, `unchanged`, `failed`); 409 means the installation has no feed (`TMCH_USERNAME`, `TMCH_PASSWORD`), 502 that at least one set could not be fetched or stored: that set keeps its previous copy, the sets that succeeded in the same run are stored. `GET $API/tmch` shows what is stored.
 
 ### Fuzz the frame decoder
 

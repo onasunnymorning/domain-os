@@ -20,6 +20,7 @@
 package tmch
 
 import (
+	"bytes"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -46,7 +47,11 @@ type listHeader struct {
 
 // readList reads the two header lines and returns the data records.
 func readList(r io.Reader, wantColumns []string) (listHeader, [][]string, error) {
-	cr := csv.NewReader(r)
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return listHeader{}, nil, fmt.Errorf("%w: %w", ErrListRecord, err)
+	}
+	cr := csv.NewReader(bytes.NewReader(bytes.TrimPrefix(raw, utf8BOM)))
 	cr.FieldsPerRecord = -1
 	cr.TrimLeadingSpace = true
 	records, err := cr.ReadAll()
