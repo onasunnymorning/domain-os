@@ -24,9 +24,20 @@ const statusStyle: Record<LaunchApplicationStatus, string> = {
   invalid: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-700/50',
 };
 
+// The quote is kept in the currency's minor unit (cents for USD, yen for JPY,
+// fils for BHD), so the currency decides the divisor and the precision.
+function fractionDigits(currency: string): number {
+  try {
+    return new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    return 2;
+  }
+}
+
 function quote(a: LaunchApplication): string {
   if (!a.Quote?.Currency) return '—';
-  return `${(a.Quote.Amount / 100).toFixed(2)} ${a.Quote.Currency}`;
+  const digits = fractionDigits(a.Quote.Currency);
+  return `${(a.Quote.Amount / 10 ** digits).toFixed(digits)} ${a.Quote.Currency}`;
 }
 
 /**

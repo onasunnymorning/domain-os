@@ -50,6 +50,15 @@ describe('LaunchApplicationsSection', () => {
     expect(screen.getByText(/allocated to another application/)).toBeInTheDocument();
   });
 
+  it("renders the quote in the currency's own precision", async () => {
+    show([
+      application({ Quote: { Currency: 'JPY', Amount: 5000, Class: 'standard' } }),
+      application({ ID: '8_APP-APEX', Quote: { Currency: 'BHD', Amount: 12345, Class: 'standard' } }),
+    ]);
+    expect(await screen.findByText('5000 JPY · 2y')).toBeInTheDocument();
+    expect(screen.getByText('12.345 BHD · 2y')).toBeInTheDocument();
+  });
+
   it('allocates a pendingAllocation application', async () => {
     vi.mocked(launchApplicationsApi.allocate).mockResolvedValue(application({ Status: 'allocated', DomainRoID: '9_DOM-APEX' }));
     show([application()]);

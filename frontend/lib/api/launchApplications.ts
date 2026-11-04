@@ -20,31 +20,31 @@ export const launchApplicationsApi = {
     if (opts.cursor) params.set('cursor', opts.cursor);
     if (opts.pageSize) params.set('pagesize', String(opts.pageSize));
     const query = params.toString();
-    const response = await apiClient.get(`/tlds/${tldName}/phases/${phaseName}/applications${query ? `?${query}` : ''}`, tenant(operatorId));
+    const response = await apiClient.get(`/tlds/${encodeURIComponent(tldName)}/phases/${encodeURIComponent(phaseName)}/applications${query ? `?${query}` : ''}`, tenant(operatorId));
     return response.data;
   },
 
   get: async (applicationId: string, operatorId: string): Promise<LaunchApplication> => {
-    const response = await apiClient.get(`/launch-applications/${applicationId}`, tenant(operatorId));
+    const response = await apiClient.get(`/launch-applications/${encodeURIComponent(applicationId)}`, tenant(operatorId));
     return response.data;
   },
 
   // Records the outcome of validating a pendingValidation application: valid,
   // or invalid with the reason.
   validate: async (applicationId: string, operatorId: string, outcome: { valid: boolean; reason?: string }): Promise<LaunchApplication> => {
-    const response = await apiClient.post(`/launch-applications/${applicationId}/validate`, outcome, tenant(operatorId));
+    const response = await apiClient.post(`/launch-applications/${encodeURIComponent(applicationId)}/validate`, outcome, tenant(operatorId));
     return response.data;
   },
 
   // Registers the name to the application and rejects the other applications
   // for it.
   allocate: async (applicationId: string, operatorId: string): Promise<LaunchApplication> => {
-    const response = await apiClient.post(`/launch-applications/${applicationId}/allocate`, {}, tenant(operatorId));
+    const response = await apiClient.post(`/launch-applications/${encodeURIComponent(applicationId)}/allocate`, {}, tenant(operatorId));
     return response.data;
   },
 
   reject: async (applicationId: string, operatorId: string, reason: string): Promise<LaunchApplication> => {
-    const response = await apiClient.post(`/launch-applications/${applicationId}/reject`, { reason }, tenant(operatorId));
+    const response = await apiClient.post(`/launch-applications/${encodeURIComponent(applicationId)}/reject`, { reason }, tenant(operatorId));
     return response.data;
   },
 };

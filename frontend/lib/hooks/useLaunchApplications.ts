@@ -26,8 +26,10 @@ export type ApplicationDecision =
   | { kind: 'allocate'; applicationId: string }
   | { kind: 'reject'; applicationId: string; reason: string };
 
-// One mutation for the three decisions, refreshing the phase's applications
-// and the TLD's domains (an allocation registers one).
+// One mutation for the three decisions. Validation and rejection touch one
+// application, so the phase's list is refreshed; an allocation also rejects the
+// competing applications for the name in every phase of the TLD and registers
+// a domain, so every phase's list and the TLD's domains are refreshed.
 export function useDecideApplication(tldName: string, phaseName: string) {
   const queryClient = useQueryClient();
   const operator = useOperator(tldName);
@@ -43,9 +45,13 @@ export function useDecideApplication(tldName: string, phaseName: string) {
           return launchApplicationsApi.reject(decision.applicationId, ryID, decision.reason);
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['launch-applications', tldName, phaseName] });
-      queryClient.invalidateQueries({ queryKey: ['domains'] });
+    onSuccess: (_result, decision) => {
+      if (decision.kind === 'allocate') {
+        queryClient.invalidateQueries({ queryKey: ['launch-applications', tldName] });
+        queryClient.invalidateQueries({ queryKey: ['domains'] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['launch-applications', tldName, phaseName] });
+      }
     },
   });
 }
