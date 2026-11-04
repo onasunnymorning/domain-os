@@ -20,9 +20,15 @@ const (
 	EventApplicationRejected  = "launch.application.rejected"
 )
 
-// ErrReasonRequired: an application is made invalid or rejected without a
-// reason.
-var ErrReasonRequired = errors.New("a reason is required")
+// Refusals of malformed decisions.
+var (
+	// ErrReasonRequired: an application is made invalid or rejected without
+	// a reason.
+	ErrReasonRequired = errors.New("a reason is required")
+	// ErrDecisionRequired: a validation outcome without the decision (valid
+	// true or false).
+	ErrDecisionRequired = errors.New("the decision is required: valid true or false")
+)
 
 // ApplicationRegistrar registers an allocated application's name:
 // DomainService.RegisterApplication.
@@ -88,9 +94,12 @@ func (s *LaunchAllocationService) Validate(ctx context.Context, scope entities.R
 	if err != nil {
 		return nil, err
 	}
+	if cmd.Valid == nil {
+		return nil, ErrDecisionRequired
+	}
 	before := app.DeepCopy()
 	event := EventApplicationValidated
-	if cmd.Valid {
+	if *cmd.Valid {
 		err = app.Validated()
 	} else {
 		if cmd.Reason == "" {

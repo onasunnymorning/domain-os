@@ -218,7 +218,7 @@ func applicationError(ctx *gin.Context, err error) {
 		// write: the same repairable conflict, however it surfaces.
 		errors.Is(err, entities.ErrHostNotFound), errors.Is(err, entities.ErrContactNotFound):
 		ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-	case errors.Is(err, services.ErrReasonRequired), errors.Is(err, entities.ErrInvalidApplication),
+	case errors.Is(err, services.ErrReasonRequired), errors.Is(err, services.ErrDecisionRequired), errors.Is(err, entities.ErrInvalidApplication),
 		errors.Is(err, entities.ErrInvalidDomain), errors.Is(err, entities.ErrInvalidRegistryScope),
 		errors.Is(err, entities.ErrContactDataPolicyViolation):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

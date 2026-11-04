@@ -179,7 +179,10 @@ var _ = Describe("LaunchApplicationController", Ordered, func() {
 	})
 
 	It("refuses to validate an application that is not pendingValidation", func() {
-		resp := launchReq(http.MethodPost, "/launch-applications/"+winner.ID.String()+"/validate", ryID, true, &commands.ValidateApplicationCommand{Valid: true})
+		resp := launchReq(http.MethodPost, "/launch-applications/"+winner.ID.String()+"/validate", ryID, true, map[string]any{"reason": "no decision given"})
+		Expect(resp.Code).To(Equal(http.StatusBadRequest), "an omitted outcome decides nothing: "+resp.Body.String())
+		valid := true
+		resp = launchReq(http.MethodPost, "/launch-applications/"+winner.ID.String()+"/validate", ryID, true, &commands.ValidateApplicationCommand{Valid: &valid})
 		Expect(resp.Code).To(Equal(http.StatusConflict), resp.Body.String())
 	})
 

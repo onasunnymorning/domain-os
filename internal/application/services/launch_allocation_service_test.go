@@ -98,12 +98,12 @@ func TestLaunchAllocation_ValidateAndReject(t *testing.T) {
 	app := apps[0]
 
 	t.Run("validate needs pendingValidation", func(t *testing.T) {
-		_, err := svc.Validate(ctx, ryOne, &commands.ValidateApplicationCommand{ApplicationID: app.ID.String(), Valid: true})
+		_, err := svc.Validate(ctx, ryOne, &commands.ValidateApplicationCommand{ApplicationID: app.ID.String(), Valid: boolPtr(true)})
 		assert.ErrorIs(t, err, entities.ErrApplicationTransition)
 	})
 	t.Run("validated", func(t *testing.T) {
 		reg.SetApplication(app.ID.String(), func(a *entities.LaunchApplication) { a.Status = entities.ApplicationStatusPendingValidation })
-		got, err := svc.Validate(ctx, ryOne, &commands.ValidateApplicationCommand{ApplicationID: app.ID.String(), Valid: true})
+		got, err := svc.Validate(ctx, ryOne, &commands.ValidateApplicationCommand{ApplicationID: app.ID.String(), Valid: boolPtr(true)})
 		require.NoError(t, err)
 		assert.Equal(t, entities.ApplicationStatusPendingAllocation, got.Status)
 		msgs := reg.Messages(rar1.String())
@@ -112,9 +112,11 @@ func TestLaunchAllocation_ValidateAndReject(t *testing.T) {
 	})
 	t.Run("invalid needs a reason", func(t *testing.T) {
 		reg.SetApplication(app.ID.String(), func(a *entities.LaunchApplication) { a.Status = entities.ApplicationStatusPendingValidation })
-		_, err := svc.Validate(ctx, ryOne, &commands.ValidateApplicationCommand{ApplicationID: app.ID.String()})
+		_, err := svc.Validate(ctx, ryOne, &commands.ValidateApplicationCommand{ApplicationID: app.ID.String(), Reason: "not eligible"})
+		assert.ErrorIs(t, err, ErrDecisionRequired, "an omitted outcome decides nothing")
+		_, err = svc.Validate(ctx, ryOne, &commands.ValidateApplicationCommand{ApplicationID: app.ID.String(), Valid: boolPtr(false)})
 		assert.ErrorIs(t, err, ErrReasonRequired)
-		got, err := svc.Validate(ctx, ryOne, &commands.ValidateApplicationCommand{ApplicationID: app.ID.String(), Reason: "not eligible"})
+		got, err := svc.Validate(ctx, ryOne, &commands.ValidateApplicationCommand{ApplicationID: app.ID.String(), Valid: boolPtr(false), Reason: "not eligible"})
 		require.NoError(t, err)
 		assert.Equal(t, entities.ApplicationStatusInvalid, got.Status)
 		assert.Equal(t, "not eligible", got.Reason)
@@ -237,3 +239,5 @@ func TestLaunchAllocation_PublishFailureFailsTheDecision(t *testing.T) {
 	require.Error(t, err, "the publisher's failure reaches the transaction's finisher, which rolls the decision back on Postgres")
 	assert.Contains(t, err.Error(), "outbox unavailable")
 }
+
+func boolPtr(b bool) *bool { return &b }

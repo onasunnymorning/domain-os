@@ -9,7 +9,9 @@ package commands
 // pendingAllocation, invalid ends it with the reason.
 type ValidateApplicationCommand struct {
 	ApplicationID string `json:"-"`
-	Valid         bool   `json:"valid"`
+	// Valid is the decision, and must be given: an omitted outcome is not
+	// an invalid application.
+	Valid *bool `json:"valid" binding:"required"`
 	// Reason says why an invalid application failed; required when Valid is
 	// false.
 	Reason string `json:"reason"`
