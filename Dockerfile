@@ -89,7 +89,7 @@ FROM alpine:3.21.8 AS admin-api
 ## apk refuses an image that would still carry the old one. Raise the pin,
 ## or name the next package Trivy flags, here.
 RUN apk upgrade --no-cache && \
-    apk add --no-cache python3 py3-pip bind-tools graphviz py3-cryptography tiff 'libexpat>=2.10.0-r0' pcre2 && \
+    apk add --no-cache python3 py3-pip bind-tools graphviz py3-cryptography tiff 'libexpat>=2.10.0-r0' pcre2 'musl>=1.2.5-r12' 'zlib>=1.3.2-r1' && \
     pip install dnsviz dnspython --break-system-packages --root-user-action=ignore
 
 # Copy librdkafka from the build image

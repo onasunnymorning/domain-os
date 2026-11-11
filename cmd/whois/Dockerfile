@@ -35,7 +35,10 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 FROM alpine:3.21.8 AS whois-server
 
 # Patch base-image OS packages against known CVEs
-RUN apk upgrade --no-cache
+# musl and zlib are pinned so a CVE fix changes this layer's text and the CI
+# build cache cannot serve the old packages (see the note in the root Dockerfile).
+RUN apk upgrade --no-cache && \
+    apk add --no-cache 'musl>=1.2.5-r12' 'zlib>=1.3.2-r1'
 
 # Create a non-root user and group
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
