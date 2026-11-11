@@ -41,11 +41,14 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 FROM alpine:3.21.8
 
 # Patch base-image OS packages, then install runtime dependencies
+# musl and zlib are pinned so a CVE fix changes this layer's text and the CI
+# build cache cannot serve the old packages (see the note in the root Dockerfile).
 RUN apk upgrade --no-cache && \
     apk --no-cache add \
     ca-certificates \
     tzdata \
     netcat-openbsd \
+    'musl>=1.2.5-r12' 'zlib>=1.3.2-r1' \
     && update-ca-certificates
 
 # Create non-root user for security
